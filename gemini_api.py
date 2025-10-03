@@ -6,7 +6,7 @@
 # Assumptions:
 # - The GEMINI_API_KEY is stored in a .env file in the project root.
 # - The langchain-google-genai package is installed (pip install langchain-google-genai).
-# - For tool calling and structured output, use models that support these features (e.g., gemini-1.5-pro or gemini-1.5-flash).
+# - For tool calling and structured output, use models that support these features (e.g., gemini-pro-latest or gemini-flash-latest).
 # - All functions handle API key loading internally via dotenv.
 # - Error handling is minimal; add try-except blocks as needed in production.
 # - Comments are provided for each function to explain usage, parameters, and return values,
@@ -20,12 +20,16 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.pydantic_v1 import BaseModel
 from langchain_core.tools import tool  # For defining tools if needed
 
-def _get_llm(model: str = "gemini-1.5-flash", temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> ChatGoogleGenerativeAI:
+DEFAULT_FLASH_MODEL = "gemini-flash-latest"
+DEFAULT_PRO_MODEL = "gemini-pro-latest"
+
+
+def _get_llm(model: str = DEFAULT_FLASH_MODEL, temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> ChatGoogleGenerativeAI:
     """
     Internal helper function to initialize the ChatGoogleGenerativeAI LLM.
     Loads the API key from .env and configures the model with provided parameters.
     
-    :param model: The Gemini model name (e.g., "gemini-1.5-pro", "gemini-1.5-flash").
+    :param model: The Gemini model name (e.g., "gemini-pro-latest", "gemini-flash-latest").
     :param temperature: Controls randomness (0.0 for deterministic, higher for creative).
     :param max_tokens: Maximum number of tokens in the response (optional).
     :param kwargs: Additional parameters like timeout, max_retries, etc.
@@ -44,7 +48,7 @@ def _get_llm(model: str = "gemini-1.5-flash", temperature: float = 0.7, max_toke
         **kwargs
     )
 
-def simple_call(prompt: str, model: str = "gemini-1.5-flash", temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> str:
+def simple_call(prompt: str, model: str = DEFAULT_FLASH_MODEL, temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> str:
     """
     Makes a simple LLM call with a single prompt string.
     Useful for basic text generation or completion tasks.
@@ -64,7 +68,7 @@ def simple_call(prompt: str, model: str = "gemini-1.5-flash", temperature: float
     response = llm.invoke(prompt)
     return response.content
 
-def chat_call(messages: List[Dict[str, str]], model: str = "gemini-1.5-flash", temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> str:
+def chat_call(messages: List[Dict[str, str]], model: str = DEFAULT_FLASH_MODEL, temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> str:
     """
     Makes a chat-style LLM call with a list of messages (supports system, user, assistant roles).
     Converts input dicts to LangChain message objects.
@@ -101,7 +105,7 @@ def chat_call(messages: List[Dict[str, str]], model: str = "gemini-1.5-flash", t
     response = llm.invoke(lc_messages)
     return response.content
 
-def call_with_tools(prompt: str, tools: List[Any], model: str = "gemini-1.5-pro", temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> Any:
+def call_with_tools(prompt: str, tools: List[Any], model: str = DEFAULT_PRO_MODEL, temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> Any:
     """
     Makes an LLM call with bound tools/functions for function calling.
     The LLM may return tool calls in the response if the prompt requires it.
@@ -130,7 +134,7 @@ def call_with_tools(prompt: str, tools: List[Any], model: str = "gemini-1.5-pro"
     response = llm_with_tools.invoke(prompt)
     return response
 
-def structured_output(prompt: str, schema: Type[BaseModel], method: str = "default", model: str = "gemini-1.5-pro", temperature: float = 0.0, max_tokens: int = None, **kwargs: Any) -> BaseModel:
+def structured_output(prompt: str, schema: Type[BaseModel], method: str = "default", model: str = DEFAULT_PRO_MODEL, temperature: float = 0.0, max_tokens: int = None, **kwargs: Any) -> BaseModel:
     """
     Makes an LLM call that enforces structured output based on a Pydantic schema.
     Useful for extracting data in a specific format.
@@ -161,7 +165,7 @@ def structured_output(prompt: str, schema: Type[BaseModel], method: str = "defau
     result = structured_llm.invoke(prompt)
     return result
 
-def json_output(prompt: str, system_instruction: str = "Respond only with valid JSON.", model: str = "gemini-1.5-pro", temperature: float = 0.0, max_tokens: int = None, **kwargs: Any) -> Dict:
+def json_output(prompt: str, system_instruction: str = "Respond only with valid JSON.", model: str = DEFAULT_PRO_MODEL, temperature: float = 0.0, max_tokens: int = None, **kwargs: Any) -> Dict:
     """
     Makes an LLM call that forces JSON output using generation config.
     Parses the response to a Python dict.
@@ -179,10 +183,24 @@ def json_output(prompt: str, system_instruction: str = "Respond only with valid 
     :return: Parsed JSON as a dict.
     """
     import json
-    llm = _get_llm(model, temperature, max_tokens, generation_config={"response_mime_type": "application/json"}, **kwargs)
+    llm = _get_llm(
+        model,
+        temperature,
+        max_tokens,
+        response_mime_type="application/json",
+        **kwargs,
+    )
     messages = [SystemMessage(content=system_instruction), HumanMessage(content=prompt)]
     response = llm.invoke(messages)
+    content = response.content.strip()
+    if content.startswith("```"):
+        lines = content.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        content = "\n".join(lines).strip()
     try:
-        return json.loads(response.content)
+        return json.loads(content)
     except json.JSONDecodeError:
         raise ValueError("Failed to parse JSON from response: " + response.content)
