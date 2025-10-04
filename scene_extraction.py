@@ -23,6 +23,7 @@ logger.addHandler(logging.NullHandler())
 
 
 EXCESSION_EPUB_PATH = "books/Iain Banks/Excession/Excession - Iain M. Banks.epub"
+ENABLE_REFINEMENT = False
 
 
 SCENE_EXTRACTION_SCHEMA_TEXT = """{
@@ -69,6 +70,7 @@ class SceneExtractionConfig:
     xai_max_tokens: int = 2048
     output_dir: str = "extracted_scenes"
     book_slug: Optional[str] = None
+    enable_refinement: bool = ENABLE_REFINEMENT
 
 
 @dataclass
@@ -130,7 +132,7 @@ class SceneExtractor:
         stats = {"book_slug": book_slug, "chapters": len(chapters), "scenes": 0}
         for chapter in chapters:
             raw_scenes = self._extract_chapter_scenes(chapter)
-            refined_map = self._refine_chapter_scenes(chapter, raw_scenes)
+            refined_map = self._refine_chapter_scenes(chapter, raw_scenes) if self.config.enable_refinement else {}
             stats["scenes"] += len(raw_scenes)
             self._persist_chapter_scenes(
                 book_slug=book_slug,
@@ -168,7 +170,7 @@ class SceneExtractor:
             else:
                 limit_param = chunk_limit
             raw_scenes = self._extract_chapter_scenes(chapter, chunk_limit=limit_param)
-            refined_map = self._refine_chapter_scenes(chapter, raw_scenes)
+            refined_map = self._refine_chapter_scenes(chapter, raw_scenes) if self.config.enable_refinement else {}
             stats["scenes"] += len(raw_scenes)
             total_chunks = len(self._chunk_chapter(chapter))
             chunks_considered = min(total_chunks, chunk_limit) if chunk_limit else total_chunks
@@ -398,6 +400,8 @@ class SceneExtractor:
         chapter: Chapter,
         scenes: List[RawScene],
     ) -> Dict[int, RefinedScene]:
+        if not self.config.enable_refinement:
+            return {}
         if not scenes:
             return {}
         prompt = self._build_refinement_prompt(chapter, scenes)
@@ -496,7 +500,8 @@ class SceneExtractor:
         raw_dir = os.path.join(self.config.output_dir, book_slug, "raw")
         refined_dir = os.path.join(self.config.output_dir, book_slug, "refined")
         os.makedirs(raw_dir, exist_ok=True)
-        os.makedirs(refined_dir, exist_ok=True)
+        if self.config.enable_refinement:
+            os.makedirs(refined_dir, exist_ok=True)
         for scene in raw_scenes:
             if scene.scene_id is None:
                 continue
@@ -516,6 +521,11 @@ class SceneExtractor:
                     "paragraph_span": list(scene.chunk_span),
                 },
             }
+            raw_path = os.path.join(raw_dir, filename)
+            with open(raw_path, "w", encoding="utf-8") as handle:
+                json.dump(raw_payload, handle, ensure_ascii=False, indent=2)
+            if not self.config.enable_refinement:
+                continue
             refined_payload = dict(raw_payload)
             if refinement:
                 refined_payload["refinement"] = {
@@ -529,10 +539,7 @@ class SceneExtractor:
                     "refined_excerpt": None,
                     "rationale": "No refinement results available.",
                 }
-            raw_path = os.path.join(raw_dir, filename)
             refined_path = os.path.join(refined_dir, filename)
-            with open(raw_path, "w", encoding="utf-8") as handle:
-                json.dump(raw_payload, handle, ensure_ascii=False, indent=2)
             with open(refined_path, "w", encoding="utf-8") as handle:
                 json.dump(refined_payload, handle, ensure_ascii=False, indent=2)
 
