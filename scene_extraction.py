@@ -61,7 +61,7 @@ REFINEMENT_SCHEMA: Dict[str, object] = {
 
 @dataclass
 class SceneExtractionConfig:
-    gemini_model: str = "gemini-2.5-pro"
+    gemini_model: str = "gemini-2.5-flash"
     gemini_temperature: float = 0.0
     max_chunk_chars: int = 12000
     chunk_overlap_paragraphs: int = 2
@@ -131,7 +131,7 @@ class SceneExtractor:
         chapters = self._load_chapters(book_path)
         stats = {"book_slug": book_slug, "chapters": len(chapters), "scenes": 0}
         for chapter in chapters:
-            raw_scenes = self._extract_chapter_scenes(chapter)
+            raw_scenes = self._extract_chapter_scenes(chapter, book_slug=book_slug)
             refined_map = self._refine_chapter_scenes(chapter, raw_scenes) if self.config.enable_refinement else {}
             stats["scenes"] += len(raw_scenes)
             self._persist_chapter_scenes(
@@ -169,7 +169,11 @@ class SceneExtractor:
                 limit_param = None
             else:
                 limit_param = chunk_limit
-            raw_scenes = self._extract_chapter_scenes(chapter, chunk_limit=limit_param)
+            raw_scenes = self._extract_chapter_scenes(
+                chapter,
+                chunk_limit=limit_param,
+                book_slug=book_slug,
+            )
             refined_map = self._refine_chapter_scenes(chapter, raw_scenes) if self.config.enable_refinement else {}
             stats["scenes"] += len(raw_scenes)
             total_chunks = len(self._chunk_chapter(chapter))
@@ -251,14 +255,28 @@ class SceneExtractor:
         chapter: Chapter,
         *,
         chunk_limit: Optional[int] = None,
+        book_slug: Optional[str] = None,
     ) -> List[RawScene]:
         chunks = self._chunk_chapter(chapter)
-        if chunk_limit is not None:
-            if chunk_limit <= 0:
-                return []
-            chunks = chunks[:chunk_limit]
+        if chunk_limit is not None and chunk_limit <= 0:
+            return []
+        existing_chunk_indexes = (
+            self._existing_processed_chunks(book_slug, chapter)
+            if book_slug
+            else set()
+        )
         raw_candidates: List[RawScene] = []
+        processed_chunks = 0
         for chunk in chunks:
+            if chunk_limit is not None and processed_chunks >= chunk_limit:
+                break
+            if chunk.index in existing_chunk_indexes:
+                logger.info(
+                    "Skipping chapter %s chunk %s; existing outputs detected",
+                    chapter.number,
+                    chunk.index,
+                )
+                continue
             prompt = self._build_chunk_prompt(chunk)
             try:
                 response = gemini_api.json_output(
@@ -272,6 +290,7 @@ class SceneExtractor:
                 continue
             scenes = self._parse_gemini_response(response, chapter, chunk)
             raw_candidates.extend(scenes)
+            processed_chunks += 1
         return self._coalesce_scenes(raw_candidates)
 
     def _chunk_chapter(self, chapter: Chapter) -> List[ChapterChunk]:
@@ -311,8 +330,8 @@ class SceneExtractor:
 
     def _build_chunk_prompt(self, chunk: ChapterChunk) -> str:
         instructions = (
-            "Scan the chapter excerpt and extract every descriptive scene that is visually rich, action-packed, "
-            "or atmospheric enough to inspire image or video generation. Focus on moments with concrete, visual details."
+            "Scan the chapter excerpt and extract EVERY descriptive scene that is visually rich, action-packed, "
+            "or atmospheric enough to inspire image or video generation. Focus on moments with concrete, visual details. Never include a scene that lacks concrete, visual details."
         )
         guidelines = (
             "- Use the provided numbered paragraphs to guide location markers.\n"
@@ -394,6 +413,30 @@ class SceneExtractor:
         for index, scene in enumerate(unique, start=1):
             scene.scene_id = index
         return unique
+
+    def _existing_processed_chunks(self, book_slug: str, chapter: Chapter) -> set[int]:
+        raw_dir = os.path.join(self.config.output_dir, book_slug, "raw")
+        processed: set[int] = set()
+        if not os.path.isdir(raw_dir):
+            return processed
+        for entry in os.scandir(raw_dir):
+            if not entry.is_file() or not entry.name.endswith(".json"):
+                continue
+            try:
+                with open(entry.path, "r", encoding="utf-8") as handle:
+                    payload = json.load(handle)
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.debug("Failed to read existing scene output %s: %s", entry.path, exc)
+                continue
+            if payload.get("chapter_number") != chapter.number:
+                continue
+            chunk_meta = payload.get("chunk_metadata")
+            if not isinstance(chunk_meta, dict):
+                continue
+            chunk_index = chunk_meta.get("chunk_index")
+            if isinstance(chunk_index, int):
+                processed.add(chunk_index)
+        return processed
 
     def _refine_chapter_scenes(
         self,
