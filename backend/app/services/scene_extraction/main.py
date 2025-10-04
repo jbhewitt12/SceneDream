@@ -4,7 +4,11 @@ import argparse
 import json
 from typing import Optional
 
-from scene_extraction import EXCESSION_EPUB_PATH, SceneExtractionConfig, SceneExtractor
+from app.services.scene_extraction.scene_extraction import (
+    EXCESSION_EPUB_PATH,
+    SceneExtractionConfig,
+    SceneExtractor,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
