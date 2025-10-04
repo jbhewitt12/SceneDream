@@ -131,6 +131,7 @@ class SceneExtractor:
         chapters = self._load_chapters(book_path)
         stats = {"book_slug": book_slug, "chapters": len(chapters), "scenes": 0}
         for chapter in chapters:
+            print(f"Starting chapter {chapter.number}: {chapter.title}")
             raw_scenes = self._extract_chapter_scenes(chapter, book_slug=book_slug)
             refined_map = self._refine_chapter_scenes(chapter, raw_scenes) if self.config.enable_refinement else {}
             stats["scenes"] += len(raw_scenes)
@@ -140,6 +141,9 @@ class SceneExtractor:
                 chapter=chapter,
                 raw_scenes=raw_scenes,
                 refinements=refined_map,
+            )
+            print(
+                f"Finished chapter {chapter.number}: {len(raw_scenes)} new scene(s) saved"
             )
         return stats
 
@@ -164,6 +168,7 @@ class SceneExtractor:
             return stats
         chunk_limit = max(max_chunks_per_chapter, 0)
         for chapter in selected:
+            print(f"Starting chapter {chapter.number}: {chapter.title}")
             limit_param: Optional[int]
             if chunk_limit == 0:
                 limit_param = None
@@ -192,6 +197,9 @@ class SceneExtractor:
                 chapter=chapter,
                 raw_scenes=raw_scenes,
                 refinements=refined_map,
+            )
+            print(
+                f"Finished chapter {chapter.number}: {len(raw_scenes)} new scene(s) saved"
             )
         return stats
 
@@ -276,7 +284,13 @@ class SceneExtractor:
                     chapter.number,
                     chunk.index,
                 )
+                print(
+                    f"  Chunk {chunk.index}: skipped (existing JSON found)"
+                )
                 continue
+            print(
+                f"  Chunk {chunk.index}: extracting paragraphs {chunk.start_paragraph}-{chunk.end_paragraph}"
+            )
             prompt = self._build_chunk_prompt(chunk)
             try:
                 response = gemini_api.json_output(
@@ -287,9 +301,13 @@ class SceneExtractor:
                 )
             except Exception as exc:
                 logger.error("Gemini extraction failed for chapter %s chunk %s: %s", chapter.number, chunk.index, exc)
+                print(
+                    f"  Chunk {chunk.index}: extraction failed ({exc}); continuing"
+                )
                 continue
             scenes = self._parse_gemini_response(response, chapter, chunk)
             raw_candidates.extend(scenes)
+            print(f"  Chunk {chunk.index}: extracted {len(scenes)} scene(s)")
             processed_chunks += 1
         return self._coalesce_scenes(raw_candidates)
 
