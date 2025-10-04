@@ -14,8 +14,8 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from ebooklib import epub
 
-import gemini_api
-from xai_api import XAIAPI
+from app.services.langchain import gemini_api
+from app.services.langchain.xai_api import XAIAPI
 
 
 logger = logging.getLogger(__name__)
