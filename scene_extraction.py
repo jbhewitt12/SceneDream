@@ -60,7 +60,7 @@ REFINEMENT_SCHEMA: Dict[str, object] = {
 
 @dataclass
 class SceneExtractionConfig:
-    gemini_model: str = "gemini-pro-latest"
+    gemini_model: str = "gemini-2.5-pro"
     gemini_temperature: float = 0.0
     max_chunk_chars: int = 12000
     chunk_overlap_paragraphs: int = 2
