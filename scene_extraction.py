@@ -60,7 +60,7 @@ REFINEMENT_SCHEMA: Dict[str, object] = {
 
 @dataclass
 class SceneExtractionConfig:
-    gemini_model: str = "gemini-2.5-pro-latest"
+    gemini_model: str = "gemini-2.5-pro"
     gemini_temperature: float = 0.0
     max_chunk_chars: int = 12000
     chunk_overlap_paragraphs: int = 2
@@ -315,7 +315,7 @@ class SceneExtractor:
         guidelines = (
             "- Use the provided numbered paragraphs to guide location markers.\n"
             "- A scene may span multiple paragraphs; reference them as ranges when needed.\n"
-            "- Copy excerpts verbatim from the text without paraphrasing.\n"
+            "- Copy excerpts verbatim from the text without paraphrasing. Copy the entire scene, even if it is a big chunk of text. The purpose is to capture all information from the scenethat can be used to create images or videos.\n"
             "- If no qualifying scenes exist, return an empty scenes array."
         )
         context_header = (
@@ -401,7 +401,11 @@ class SceneExtractor:
         if not scenes:
             return {}
         prompt = self._build_refinement_prompt(chapter, scenes)
-        client = self._get_xai_client()
+        try:
+            client = self._get_xai_client()
+        except Exception as exc:
+            logger.warning("Skipping refinement for chapter %s: %s", chapter.number, exc)
+            return {}
         try:
             response = client.call_with_json_output(
                 prompt=prompt,
@@ -556,7 +560,7 @@ class SceneExtractor:
         slug = self._slugify(text)
         return f"{chapter_number:02d}-{scene_id:03d}-{slug}.json"
 
-def _slugify(self, text: str) -> str:
+    def _slugify(self, text: str) -> str:
         normalized = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
         normalized = normalized.lower()
         tokens = normalized.split()
