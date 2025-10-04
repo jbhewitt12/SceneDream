@@ -4,4 +4,4 @@ langchain-google-genai==2.1.12
 langchain-xai==0.2.5
 ebooklib==0.19
 beautifulsoup4==4.12.3
-pyyaml==6.0.2
+pyyaml==6.0.3
