@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -19,6 +20,9 @@ from xai_api import XAIAPI
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+
+
+EXCESSION_EPUB_PATH = "books/Iain Banks/Excession/Excession - Iain M. Banks.epub"
 
 
 SCENE_EXTRACTION_SCHEMA_TEXT = """{
@@ -137,6 +141,54 @@ class SceneExtractor:
             )
         return stats
 
+    def extract_preview(
+        self,
+        book_path: str,
+        *,
+        max_chapters: int = 1,
+        max_chunks_per_chapter: int = 1,
+    ) -> Dict[str, object]:
+        book_slug = self._resolve_book_slug(book_path)
+        chapters = self._load_chapters(book_path)
+        limit = max(max_chapters, 0)
+        selected = chapters[:limit]
+        stats = {
+            "book_slug": book_slug,
+            "chapters": len(selected),
+            "scenes": 0,
+            "chapters_processed": [],
+        }
+        if not selected:
+            return stats
+        chunk_limit = max(max_chunks_per_chapter, 0)
+        for chapter in selected:
+            limit_param: Optional[int]
+            if chunk_limit == 0:
+                limit_param = None
+            else:
+                limit_param = chunk_limit
+            raw_scenes = self._extract_chapter_scenes(chapter, chunk_limit=limit_param)
+            refined_map = self._refine_chapter_scenes(chapter, raw_scenes)
+            stats["scenes"] += len(raw_scenes)
+            total_chunks = len(self._chunk_chapter(chapter))
+            chunks_considered = min(total_chunks, chunk_limit) if chunk_limit else total_chunks
+            stats["chapters_processed"].append(
+                {
+                    "chapter_number": chapter.number,
+                    "chapter_title": chapter.title,
+                    "chunks_considered": chunks_considered,
+                    "raw_scenes": len(raw_scenes),
+                }
+            )
+            self._persist_chapter_scenes(
+                book_slug=book_slug,
+                book_path=book_path,
+                chapter=chapter,
+                raw_scenes=raw_scenes,
+                refinements=refined_map,
+            )
+        return stats
+
     def _load_chapters(self, book_path: str) -> List[Chapter]:
         book = epub.read_epub(book_path)
         chapters: List[Chapter] = []
@@ -192,8 +244,17 @@ class SceneExtractor:
                     return self._normalize_whitespace(title)
         return None
 
-    def _extract_chapter_scenes(self, chapter: Chapter) -> List[RawScene]:
+    def _extract_chapter_scenes(
+        self,
+        chapter: Chapter,
+        *,
+        chunk_limit: Optional[int] = None,
+    ) -> List[RawScene]:
         chunks = self._chunk_chapter(chapter)
+        if chunk_limit is not None:
+            if chunk_limit <= 0:
+                return []
+            chunks = chunks[:chunk_limit]
         raw_candidates: List[RawScene] = []
         for chunk in chunks:
             prompt = self._build_chunk_prompt(chunk)
@@ -495,7 +556,7 @@ class SceneExtractor:
         slug = self._slugify(text)
         return f"{chapter_number:02d}-{scene_id:03d}-{slug}.json"
 
-    def _slugify(self, text: str) -> str:
+def _slugify(self, text: str) -> str:
         normalized = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
         normalized = normalized.lower()
         tokens = normalized.split()
@@ -511,6 +572,51 @@ class SceneExtractor:
         return " ".join(value.split())
 
 
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Scene extraction CLI entry point")
+    subparsers = parser.add_subparsers(dest="command")
+    subparsers.required = True
+
+    preview = subparsers.add_parser(
+        "preview",
+        help="Extract scenes for a limited number of chapters/chunks.",
+    )
+    preview.add_argument("--book", required=True, help="Path to the EPUB file.")
+    preview.add_argument("--chapters", type=int, default=1, help="Maximum chapters to process.")
+    preview.add_argument("--chunks", type=int, default=1, help="Maximum chunks per chapter to process.")
+    preview.set_defaults(func=_cmd_preview)
+
+    preview_excession = subparsers.add_parser(
+        "preview-excession",
+        help="Run the first chunk extraction for Excession by Iain M. Banks.",
+    )
+    preview_excession.set_defaults(
+        func=_cmd_preview,
+        book=EXCESSION_EPUB_PATH,
+        chapters=1,
+        chunks=1,
+    )
+
+    return parser
+
+
+def _cmd_preview(args: argparse.Namespace) -> int:
+    extractor = SceneExtractor()
+    stats = extractor.extract_preview(
+        args.book,
+        max_chapters=args.chapters,
+        max_chunks_per_chapter=args.chunks,
+    )
+    print(json.dumps(stats, indent=2, ensure_ascii=False))
+    return 0
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
 __all__ = [
     "SceneExtractor",
     "SceneExtractionConfig",
@@ -518,4 +624,9 @@ __all__ = [
     "ChapterChunk",
     "RawScene",
     "RefinedScene",
+    "main",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

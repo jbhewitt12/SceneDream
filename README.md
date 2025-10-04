@@ -14,3 +14,13 @@ stats = extractor.extract_book("books/Iain Banks/Excession/Excession - Iain M. B
 ```
 
 The extractor expects environment variables `GEMINI_API_KEY` and `XAI_API_KEY` to be present (already defined in `.env`). Adjust the config to change chunk sizing, model names, or output directory.
+
+### Preview Command
+
+To exercise only the first chapter/chunk of Excession, run:
+
+```
+python -m scene_extraction preview-excession
+```
+
+This CLI entry calls `SceneExtractor.extract_preview` with the Excession EPUB and persists outputs under `extracted_scenes/`. Ensure API keys are set before running.
