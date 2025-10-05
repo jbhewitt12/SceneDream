@@ -15,12 +15,12 @@ import ebooklib
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from ebooklib import epub
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from app.core.db import engine
+from app.repositories.scene_extraction import SceneExtractionRepository
 from app.services.langchain import gemini_api
 from app.services.langchain.xai_api import XAIAPI
-from models.scene_extraction import SceneExtraction
 
 
 logger = logging.getLogger(__name__)
@@ -440,16 +440,11 @@ class SceneExtractor:
         if not book_slug:
             return set()
         with Session(engine) as session:
-            result = session.exec(
-                select(SceneExtraction.chunk_index)
-                .where(
-                    SceneExtraction.book_slug == book_slug,
-                    SceneExtraction.chapter_number == chapter.number,
-                )
-                .distinct()
+            repository = SceneExtractionRepository(session)
+            return repository.chunk_indexes_for_chapter(
+                book_slug=book_slug,
+                chapter_number=chapter.number,
             )
-            rows = result.all()
-        return {index for index in rows if isinstance(index, int)}
 
     def _refine_chapter_scenes(
         self,
@@ -554,31 +549,28 @@ class SceneExtractor:
         if not raw_scenes:
             return
         with Session(engine) as session:
+            repository = SceneExtractionRepository(session)
             try:
                 for scene in raw_scenes:
                     if scene.scene_id is None:
                         continue
                     refinement = refinements.get(scene.scene_id)
                     raw_text = scene.raw_excerpt.strip()
+                    raw_word_count = self._word_count(raw_text)
+                    raw_char_count = self._char_count(raw_text)
                     refined_text = None
                     decision = None
                     rationale = None
+                    refined_word_count = None
+                    refined_char_count = None
                     if refinement:
                         decision = refinement.decision
                         rationale = refinement.rationale
                         if refinement.refined_excerpt:
                             refined_text = refinement.refined_excerpt.strip() or None
-                    refined_word_count = self._word_count(refined_text)
-                    refined_char_count = self._char_count(refined_text)
-                    record = session.exec(
-                        select(SceneExtraction)
-                        .where(
-                            SceneExtraction.book_slug == book_slug,
-                            SceneExtraction.chapter_number == scene.chapter_number,
-                            SceneExtraction.scene_number == scene.scene_id,
-                        )
-                    ).first()
-                    props = {
+                        refined_word_count = self._word_count(refined_text)
+                        refined_char_count = self._char_count(refined_text)
+                    props: dict[str, object] = {
                         "provisional_id": scene.provisional_id,
                         "chunk_paragraph_span": list(scene.chunk_span),
                         "location_marker_normalized": scene.location_marker.strip().lower(),
@@ -589,63 +581,74 @@ class SceneExtractor:
                             "has_refined_excerpt": bool(refined_text),
                         }
                     now = datetime.now(timezone.utc) if refinement and self.config.enable_refinement else None
+                    record = repository.get_by_identity(
+                        book_slug=book_slug,
+                        chapter_number=scene.chapter_number,
+                        scene_number=scene.scene_id,
+                    )
                     if record is None:
-                        record = SceneExtraction(
-                            book_slug=book_slug,
-                            source_book_path=book_path,
-                            chapter_number=scene.chapter_number,
-                            chapter_title=scene.chapter_title,
-                            chapter_source_name=chapter.source_name,
-                            scene_number=scene.scene_id,
-                            location_marker=scene.location_marker,
-                            raw=raw_text,
-                            refined=refined_text,
-                            refinement_decision=decision,
-                            refinement_rationale=rationale,
-                            chunk_index=scene.chunk_index,
-                            chunk_paragraph_start=scene.chunk_span[0],
-                            chunk_paragraph_end=scene.chunk_span[1],
-                            raw_word_count=self._word_count(raw_text),
-                            raw_char_count=self._char_count(raw_text),
-                            refined_word_count=refined_word_count,
-                            refined_char_count=refined_char_count,
-                            raw_signature=self._hash_signature(scene),
-                            extraction_model=self.config.gemini_model,
-                            extraction_temperature=self.config.gemini_temperature,
-                            refinement_model=self.config.xai_model if self.config.enable_refinement else None,
-                            refinement_temperature=self.config.xai_temperature if self.config.enable_refinement else None,
-                            refined_at=now,
-                            props=props,
-                        )
+                        payload = {
+                            "book_slug": book_slug,
+                            "source_book_path": book_path,
+                            "chapter_number": scene.chapter_number,
+                            "chapter_title": scene.chapter_title,
+                            "chapter_source_name": chapter.source_name,
+                            "scene_number": scene.scene_id,
+                            "location_marker": scene.location_marker,
+                            "raw": raw_text,
+                            "refined": refined_text,
+                            "refinement_decision": decision,
+                            "refinement_rationale": rationale,
+                            "chunk_index": scene.chunk_index,
+                            "chunk_paragraph_start": scene.chunk_span[0],
+                            "chunk_paragraph_end": scene.chunk_span[1],
+                            "raw_word_count": raw_word_count,
+                            "raw_char_count": raw_char_count,
+                            "refined_word_count": refined_word_count,
+                            "refined_char_count": refined_char_count,
+                            "raw_signature": self._hash_signature(scene),
+                            "extraction_model": self.config.gemini_model,
+                            "extraction_temperature": self.config.gemini_temperature,
+                            "refinement_model": self.config.xai_model if self.config.enable_refinement else None,
+                            "refinement_temperature": self.config.xai_temperature if self.config.enable_refinement else None,
+                            "refined_at": now,
+                            "props": props,
+                        }
+                        repository.create(data=payload, commit=False, refresh=False)
                     else:
-                        record.source_book_path = book_path
-                        record.chapter_title = scene.chapter_title
-                        record.chapter_source_name = chapter.source_name
-                        record.location_marker = scene.location_marker
-                        record.raw = raw_text
-                        record.chunk_index = scene.chunk_index
-                        record.chunk_paragraph_start = scene.chunk_span[0]
-                        record.chunk_paragraph_end = scene.chunk_span[1]
-                        record.raw_word_count = self._word_count(raw_text)
-                        record.raw_char_count = self._char_count(raw_text)
-                        record.raw_signature = self._hash_signature(scene)
-                        record.extraction_model = self.config.gemini_model
-                        record.extraction_temperature = self.config.gemini_temperature
-                        if self.config.enable_refinement:
-                            record.refinement_model = self.config.xai_model
-                            record.refinement_temperature = self.config.xai_temperature
                         existing_props = dict(record.props or {})
                         existing_props.update(props)
-                        record.props = existing_props
+                        update_payload = {
+                            "source_book_path": book_path,
+                            "chapter_title": scene.chapter_title,
+                            "chapter_source_name": chapter.source_name,
+                            "location_marker": scene.location_marker,
+                            "raw": raw_text,
+                            "chunk_index": scene.chunk_index,
+                            "chunk_paragraph_start": scene.chunk_span[0],
+                            "chunk_paragraph_end": scene.chunk_span[1],
+                            "raw_word_count": raw_word_count,
+                            "raw_char_count": raw_char_count,
+                            "raw_signature": self._hash_signature(scene),
+                            "extraction_model": self.config.gemini_model,
+                            "extraction_temperature": self.config.gemini_temperature,
+                            "props": existing_props,
+                        }
+                        if self.config.enable_refinement:
+                            update_payload["refinement_model"] = self.config.xai_model
+                            update_payload["refinement_temperature"] = self.config.xai_temperature
                         if refinement:
-                            record.refined = refined_text
-                            record.refinement_decision = decision
-                            record.refinement_rationale = rationale
-                            record.refined_word_count = refined_word_count
-                            record.refined_char_count = refined_char_count
-                            if now:
-                                record.refined_at = now
-                    session.add(record)
+                            update_payload.update(
+                                {
+                                    "refined": refined_text,
+                                    "refinement_decision": decision,
+                                    "refinement_rationale": rationale,
+                                    "refined_word_count": refined_word_count,
+                                    "refined_char_count": refined_char_count,
+                                    "refined_at": now,
+                                }
+                            )
+                        repository.update(record, data=update_payload, commit=False, refresh=False)
                 session.commit()
             except Exception:
                 session.rollback()
