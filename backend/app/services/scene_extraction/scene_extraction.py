@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
 import re
 import unicodedata
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -13,9 +15,12 @@ import ebooklib
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from ebooklib import epub
+from sqlmodel import Session, select
 
+from app.core.db import engine
 from app.services.langchain import gemini_api
 from app.services.langchain.xai_api import XAIAPI
+from models.scene_extraction import SceneExtraction
 
 
 logger = logging.getLogger(__name__)
@@ -68,7 +73,6 @@ class SceneExtractionConfig:
     xai_model: str = "grok-beta"
     xai_temperature: float = 0.2
     xai_max_tokens: int = 2048
-    output_dir: str = "extracted_scenes"
     book_slug: Optional[str] = None
     enable_refinement: bool = ENABLE_REFINEMENT
 
@@ -285,7 +289,7 @@ class SceneExtractor:
                     chunk.index,
                 )
                 print(
-                    f"  Chunk {chunk.index}: skipped (existing JSON found)"
+                    f"  Chunk {chunk.index}: skipped (existing records found)"
                 )
                 continue
             print(
@@ -433,28 +437,19 @@ class SceneExtractor:
         return unique
 
     def _existing_processed_chunks(self, book_slug: str, chapter: Chapter) -> set[int]:
-        raw_dir = os.path.join(self.config.output_dir, book_slug, "raw")
-        processed: set[int] = set()
-        if not os.path.isdir(raw_dir):
-            return processed
-        for entry in os.scandir(raw_dir):
-            if not entry.is_file() or not entry.name.endswith(".json"):
-                continue
-            try:
-                with open(entry.path, "r", encoding="utf-8") as handle:
-                    payload = json.load(handle)
-            except (OSError, json.JSONDecodeError) as exc:
-                logger.debug("Failed to read existing scene output %s: %s", entry.path, exc)
-                continue
-            if payload.get("chapter_number") != chapter.number:
-                continue
-            chunk_meta = payload.get("chunk_metadata")
-            if not isinstance(chunk_meta, dict):
-                continue
-            chunk_index = chunk_meta.get("chunk_index")
-            if isinstance(chunk_index, int):
-                processed.add(chunk_index)
-        return processed
+        if not book_slug:
+            return set()
+        with Session(engine) as session:
+            result = session.exec(
+                select(SceneExtraction.chunk_index)
+                .where(
+                    SceneExtraction.book_slug == book_slug,
+                    SceneExtraction.chapter_number == chapter.number,
+                )
+                .distinct()
+            )
+            rows = result.all()
+        return {index for index in rows if isinstance(index, int)}
 
     def _refine_chapter_scenes(
         self,
@@ -558,51 +553,120 @@ class SceneExtractor:
     ) -> None:
         if not raw_scenes:
             return
-        raw_dir = os.path.join(self.config.output_dir, book_slug, "raw")
-        refined_dir = os.path.join(self.config.output_dir, book_slug, "refined")
-        os.makedirs(raw_dir, exist_ok=True)
-        if self.config.enable_refinement:
-            os.makedirs(refined_dir, exist_ok=True)
-        for scene in raw_scenes:
-            if scene.scene_id is None:
-                continue
-            refinement = refinements.get(scene.scene_id)
-            slug_source = (refinement.refined_excerpt or scene.raw_excerpt) if refinement else scene.raw_excerpt
-            filename = self._scene_filename(scene.chapter_number, scene.scene_id, slug_source)
-            raw_payload = {
-                "book_slug": book_slug,
-                "source_book_path": book_path,
-                "chapter_number": scene.chapter_number,
-                "chapter_title": scene.chapter_title,
-                "scene_id": scene.scene_id,
-                "location_marker": scene.location_marker,
-                "raw_excerpt": scene.raw_excerpt,
-                "chunk_metadata": {
-                    "chunk_index": scene.chunk_index,
-                    "paragraph_span": list(scene.chunk_span),
-                },
-            }
-            raw_path = os.path.join(raw_dir, filename)
-            with open(raw_path, "w", encoding="utf-8") as handle:
-                json.dump(raw_payload, handle, ensure_ascii=False, indent=2)
-            if not self.config.enable_refinement:
-                continue
-            refined_payload = dict(raw_payload)
-            if refinement:
-                refined_payload["refinement"] = {
-                    "decision": refinement.decision,
-                    "refined_excerpt": refinement.refined_excerpt,
-                    "rationale": refinement.rationale,
-                }
-            else:
-                refined_payload["refinement"] = {
-                    "decision": "keep",
-                    "refined_excerpt": None,
-                    "rationale": "No refinement results available.",
-                }
-            refined_path = os.path.join(refined_dir, filename)
-            with open(refined_path, "w", encoding="utf-8") as handle:
-                json.dump(refined_payload, handle, ensure_ascii=False, indent=2)
+        with Session(engine) as session:
+            try:
+                for scene in raw_scenes:
+                    if scene.scene_id is None:
+                        continue
+                    refinement = refinements.get(scene.scene_id)
+                    raw_text = scene.raw_excerpt.strip()
+                    refined_text = None
+                    decision = None
+                    rationale = None
+                    if refinement:
+                        decision = refinement.decision
+                        rationale = refinement.rationale
+                        if refinement.refined_excerpt:
+                            refined_text = refinement.refined_excerpt.strip() or None
+                    refined_word_count = self._word_count(refined_text)
+                    refined_char_count = self._char_count(refined_text)
+                    record = session.exec(
+                        select(SceneExtraction)
+                        .where(
+                            SceneExtraction.book_slug == book_slug,
+                            SceneExtraction.chapter_number == scene.chapter_number,
+                            SceneExtraction.scene_number == scene.scene_id,
+                        )
+                    ).first()
+                    props = {
+                        "provisional_id": scene.provisional_id,
+                        "chunk_paragraph_span": list(scene.chunk_span),
+                        "location_marker_normalized": scene.location_marker.strip().lower(),
+                    }
+                    if refinement:
+                        props["refinement_summary"] = {
+                            "decision": decision,
+                            "has_refined_excerpt": bool(refined_text),
+                        }
+                    now = datetime.now(timezone.utc) if refinement and self.config.enable_refinement else None
+                    if record is None:
+                        record = SceneExtraction(
+                            book_slug=book_slug,
+                            source_book_path=book_path,
+                            chapter_number=scene.chapter_number,
+                            chapter_title=scene.chapter_title,
+                            chapter_source_name=chapter.source_name,
+                            scene_number=scene.scene_id,
+                            location_marker=scene.location_marker,
+                            raw=raw_text,
+                            refined=refined_text,
+                            refinement_decision=decision,
+                            refinement_rationale=rationale,
+                            chunk_index=scene.chunk_index,
+                            chunk_paragraph_start=scene.chunk_span[0],
+                            chunk_paragraph_end=scene.chunk_span[1],
+                            raw_word_count=self._word_count(raw_text),
+                            raw_char_count=self._char_count(raw_text),
+                            refined_word_count=refined_word_count,
+                            refined_char_count=refined_char_count,
+                            raw_signature=self._hash_signature(scene),
+                            extraction_model=self.config.gemini_model,
+                            extraction_temperature=self.config.gemini_temperature,
+                            refinement_model=self.config.xai_model if self.config.enable_refinement else None,
+                            refinement_temperature=self.config.xai_temperature if self.config.enable_refinement else None,
+                            refined_at=now,
+                            props=props,
+                        )
+                    else:
+                        record.source_book_path = book_path
+                        record.chapter_title = scene.chapter_title
+                        record.chapter_source_name = chapter.source_name
+                        record.location_marker = scene.location_marker
+                        record.raw = raw_text
+                        record.chunk_index = scene.chunk_index
+                        record.chunk_paragraph_start = scene.chunk_span[0]
+                        record.chunk_paragraph_end = scene.chunk_span[1]
+                        record.raw_word_count = self._word_count(raw_text)
+                        record.raw_char_count = self._char_count(raw_text)
+                        record.raw_signature = self._hash_signature(scene)
+                        record.extraction_model = self.config.gemini_model
+                        record.extraction_temperature = self.config.gemini_temperature
+                        if self.config.enable_refinement:
+                            record.refinement_model = self.config.xai_model
+                            record.refinement_temperature = self.config.xai_temperature
+                        existing_props = dict(record.props or {})
+                        existing_props.update(props)
+                        record.props = existing_props
+                        if refinement:
+                            record.refined = refined_text
+                            record.refinement_decision = decision
+                            record.refinement_rationale = rationale
+                            record.refined_word_count = refined_word_count
+                            record.refined_char_count = refined_char_count
+                            if now:
+                                record.refined_at = now
+                    session.add(record)
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    @staticmethod
+    def _word_count(value: Optional[str]) -> Optional[int]:
+        if not value:
+            return None
+        return len(value.split())
+
+    @staticmethod
+    def _char_count(value: Optional[str]) -> Optional[int]:
+        if value is None:
+            return None
+        return len(value)
+
+    def _hash_signature(self, scene: RawScene) -> str:
+        location, excerpt = scene.signature()
+        payload = f"{location}::{excerpt}".encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
 
     def _get_xai_client(self) -> XAIAPI:
         if self._xai_client is None:
@@ -623,10 +687,6 @@ class SceneExtractor:
         base = os.path.splitext(os.path.basename(book_path))[0]
         slug = self._slugify(base)
         return slug or "book"
-
-    def _scene_filename(self, chapter_number: int, scene_id: int, text: str) -> str:
-        slug = self._slugify(text)
-        return f"{chapter_number:02d}-{scene_id:03d}-{slug}.json"
 
     def _slugify(self, text: str) -> str:
         normalized = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
