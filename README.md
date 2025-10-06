@@ -1,3 +1,15 @@
+# SceneDream
+
+## Description
+
+SceneDream is a project that uses AI to extract scenes from books and generate images and videos inspired by them.
+
+It will be local development only for now.
+
+See plan.md for a rough outline of the plan.
+
+This project is built with the FastAPI Template, the details of which are below.
+
 # Full Stack FastAPI Template
 
 <a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3ATest" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test/badge.svg" alt="Test"></a>
