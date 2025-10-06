@@ -22,14 +22,14 @@
 - **overall_priority** – weighted rollup (default heuristic) representing how compelling the scene is for any generative pathway.
 
 Gemini should also return:
-- A paragraph justification summarizing high/low scores.
-- Recommended prompt angle(s): image vs video vs hybrid suggestions.
-- Flags for potential complications (e.g., heavy gore, IP-sensitive content).
+- A short justification summarizing high/low scores.
+- Flags for potential complications (e.g., heavy gore, sexual content, IP-sensitive content).
+- Tags of character names and aliases.
 
 ## Prompting Strategy with `gemini-2.5-flash`
 - System message: outline evaluator role, remind model of 1–10 scale anchors, require JSON.
 - User payload: scene text, chapter/paragraph metadata, previously stored model metadata, optional prior rankings for comparison.
-- Use `gemini_api.json_output` (temperature ~0.1) with a Pydantic schema capturing the criteria, `overall_priority`, `justification`, `recommendations`, `warnings`, and diagnostic metadata (`model_name`, `prompt_version`).
+- Use `gemini_api.json_output` (temperature ~0.1) with a Pydantic schema capturing the criteria, `overall_priority`, `justification`, `character_tags`, `warnings`, and diagnostic metadata (`model_name`, `prompt_version`).
 - Version prompt templates; store version string alongside results so later prompt tweaks are trackable.
 
 ## Pipeline Overview
@@ -46,8 +46,8 @@ Gemini should also return:
   - `model_name`, `model_vendor`, `prompt_version` (string).
   - `scores` JSON (keyed by criteria).
   - `overall_priority` (Float), `weight_config` JSON (for future custom weightings).
-  - `recommendations` JSON (`prefer_image`, `prefer_video`, rationale).
   - `warnings` JSON or Nullable Text.
+  - `character_tags` JSON or Nullable Text.
   - `raw_response` JSONB for full Gemini output.
   - `execution_time_ms`, `temperature`, `llm_request_id`, timestamps.
   - Unique constraint on (`scene_extraction_id`, `model_name`, `prompt_version`, `weight_config_hash`) to allow multiple models while preventing accidental duplicates.
@@ -63,7 +63,7 @@ Gemini should also return:
 - Log prompt, response tokens, and failures for auditing; retry transient Gemini errors with exponential backoff.
 - Validate score range (1–10) and enforce decimals to one decimal place.
 - Diff new rankings against previous ones to spot regressions when prompt versions change.
-- Add feature flag to disable ranking for scenes marked discarded during refinement.
+- Don't rank scenes marked discarded during refinement.
 - Capture per-run metadata (operator, git SHA) for reproducibility.
 
 ## Future-Proofing for Multiple LLMs
