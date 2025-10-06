@@ -55,6 +55,29 @@ class SceneExtractionRepository:
         )
         return list(self._session.exec(statement))
 
+    def list_unrefined(
+        self,
+        *,
+        book_slug: Optional[str] = None,
+        chapter_number: Optional[int] = None,
+        limit: Optional[int] = None,
+    ) -> list[SceneExtraction]:
+        statement = select(SceneExtraction).where(
+            SceneExtraction.refinement_decision.is_(None)
+        )
+        if book_slug:
+            statement = statement.where(SceneExtraction.book_slug == book_slug)
+        if chapter_number is not None:
+            statement = statement.where(SceneExtraction.chapter_number == chapter_number)
+        statement = statement.order_by(
+            SceneExtraction.book_slug,
+            SceneExtraction.chapter_number,
+            SceneExtraction.scene_number,
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
+        return list(self._session.exec(statement))
+
     def search(
         self,
         *,
