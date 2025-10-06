@@ -21,7 +21,7 @@ from sqlmodel import Session
 from app.core.db import engine
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.services.langchain import gemini_api
-from app.services.langchain.xai_api import XAIAPI
+from app.services.scene_extraction.scene_refinement import RefinedScene, SceneRefinementError, SceneRefiner
 
 
 logger = logging.getLogger(__name__)
@@ -46,25 +46,6 @@ SCENE_EXTRACTION_SCHEMA_TEXT = """{
   ]
 }"""
 
-REFINEMENT_SCHEMA: Dict[str, object] = {
-    "type": "object",
-    "properties": {
-        "scenes": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "scene_id": {"type": "integer"},
-                    "decision": {"type": "string", "enum": ["keep", "discard"]},
-                    "rationale": {"type": "string"},
-                },
-                "required": ["scene_id", "decision", "rationale"],
-            },
-        }
-    },
-    "required": ["scenes"],
-}
-
 
 @dataclass
 class SceneExtractionConfig:
@@ -72,9 +53,9 @@ class SceneExtractionConfig:
     gemini_temperature: float = 0.0
     max_chunk_chars: int = 12000
     chunk_overlap_paragraphs: int = 2
-    xai_model: str = "grok-beta"
-    xai_temperature: float = 0.2
-    xai_max_tokens: int = 2048
+    refinement_model: str = "gemini-2.5-flash"
+    refinement_temperature: float = 0.1
+    refinement_max_tokens: Optional[int] = None
     book_slug: Optional[str] = None
     enable_refinement: bool = ENABLE_REFINEMENT
 
@@ -122,18 +103,12 @@ class RawScene:
         return (self.location_marker.strip().lower(), self.raw_excerpt.strip())
 
 
-@dataclass
-class RefinedScene:
-    scene_id: int
-    decision: str
-    rationale: str
-
 
 class SceneExtractor:
     def __init__(self, config: Optional[SceneExtractionConfig] = None) -> None:
         self.config = config or SceneExtractionConfig()
         load_dotenv()
-        self._xai_client: Optional[XAIAPI] = None
+        self._refiner: Optional[SceneRefiner] = None
 
     def extract_book(self, book_path: Union[str, os.PathLike[str]]) -> Dict[str, object]:
         resolved_book_path = self._resolve_book_path(book_path)
@@ -456,6 +431,20 @@ class SceneExtractor:
                 chapter_number=chapter.number,
             )
 
+    def _get_refiner(self) -> SceneRefiner:
+        if not self.config.enable_refinement:
+            raise RuntimeError("Refinement is disabled in the current configuration.")
+        if self._refiner is None:
+            self._refiner = SceneRefiner(
+                model=self.config.refinement_model,
+                temperature=self.config.refinement_temperature,
+                max_tokens=self.config.refinement_max_tokens,
+            )
+        return self._refiner
+
+    def get_refiner(self) -> SceneRefiner:
+        return self._get_refiner()
+
     def _refine_chapter_scenes(
         self,
         chapter: Chapter,
@@ -463,90 +452,9 @@ class SceneExtractor:
     ) -> Dict[int, RefinedScene]:
         if not self.config.enable_refinement:
             return {}
-        if not scenes:
-            return {}
-        prompt = self._build_refinement_prompt(chapter, scenes)
-        try:
-            client = self._get_xai_client()
-        except Exception as exc:
-            logger.warning("Skipping refinement for chapter %s: %s", chapter.number, exc)
-            return {}
-        try:
-            response = client.call_with_json_output(
-                prompt=prompt,
-                schema=REFINEMENT_SCHEMA,
-                system_prompt=self._xai_system_instruction(),
-            )
-        except Exception as exc:
-            logger.error("Refinement failed for chapter %s: %s", chapter.number, exc)
-            return {}
-        payload = response.model_dump() if hasattr(response, "model_dump") else response
-        entries = payload.get("scenes") if isinstance(payload, dict) else None
-        refinements: Dict[int, RefinedScene] = {}
-        if isinstance(entries, list):
-            for item in entries:
-                if not isinstance(item, dict):
-                    continue
-                scene_id = item.get("scene_id")
-                if scene_id is None:
-                    continue
-                try:
-                    numeric_id = int(scene_id)
-                except (TypeError, ValueError):
-                    continue
-                decision = item.get("decision", "keep").lower()
-                rationale = str(item.get("rationale", "")).strip()
-                normalized_decision = (
-                    decision if decision in {"keep", "discard"} else "keep"
-                )
-                refinements[numeric_id] = RefinedScene(
-                    scene_id=numeric_id,
-                    decision=normalized_decision,
-                    rationale=rationale,
-                )
-        for scene in scenes:
-            if scene.scene_id is None:
-                continue
-            refinements.setdefault(
-                scene.scene_id,
-                RefinedScene(
-                    scene_id=scene.scene_id,
-                    decision="keep",
-                    rationale="No refinement returned; defaulting to keep.",
-                ),
-            )
-        return refinements
+        refiner = self._get_refiner()
+        return refiner.refine(chapter, scenes)
 
-    def _build_refinement_prompt(self, chapter: Chapter, scenes: List[RawScene]) -> str:
-        header = (
-            f"Review the extracted scenes from Chapter {chapter.number} ({chapter.title}).\n"
-            "For each scene, respond with a decision of keep or discard.\n"
-            "Keep only scenes that communicate unique, visually specific details that can inspire image or video generation.\n"
-            "Discard scenes that lack descriptive detail (e.g. 'A smile flickered around his lips, like a small flame in a high wind.'),\n"
-            "do not include anything original or unique (e.g. 'She sucked at the knuckle she'd hit against the field cylinder.'), or\n"
-            "omit concrete visual elements (e.g. 'The sound of another great tumble of falling rock split the skies.').\n"
-            "Provide a brief rationale for each decision.\n"
-            "Return structured JSON matching the provided schema."
-        )
-        scenes_text = []
-        for scene in scenes:
-            if scene.scene_id is None:
-                continue
-            scenes_text.append(
-                f"Scene {scene.scene_id} | {scene.location_marker}\n" f"{scene.raw_excerpt}\n---"
-            )
-        scene_body = "\n".join(scenes_text)
-        schema_hint = (
-            "Schema reminder (types shown as comments):\n"
-            "{\n  \"scenes\": [\n    {\n      \"scene_id\": \"integer\",\n      \"decision\": \"keep|discard\",\n      \"rationale\": \"string\"\n    }\n  ]\n}\n"
-        )
-        return f"{header}\n\n{schema_hint}\nScenes to review:\n\n{scene_body}"
-
-    def _xai_system_instruction(self) -> str:
-        return (
-            "You evaluate scene extractions for visual storytelling readiness. "
-            "Respond with JSON only, following the provided schema exactly."
-        )
 
     def _persist_chapter_scenes(
         self,
@@ -619,8 +527,8 @@ class SceneExtractor:
                             "raw_signature": self._hash_signature(scene),
                             "extraction_model": self.config.gemini_model,
                             "extraction_temperature": self.config.gemini_temperature,
-                            "refinement_model": self.config.xai_model if self.config.enable_refinement else None,
-                            "refinement_temperature": self.config.xai_temperature if self.config.enable_refinement else None,
+                            "refinement_model": self.config.refinement_model if self.config.enable_refinement else None,
+                            "refinement_temperature": self.config.refinement_temperature if self.config.enable_refinement else None,
                             "refined_at": now,
                             "provisional_id": scene.provisional_id,
                             "location_marker_normalized": scene.location_marker.strip().lower(),
@@ -666,8 +574,8 @@ class SceneExtractor:
                             "props": existing_props,
                         }
                         if self.config.enable_refinement:
-                            update_payload["refinement_model"] = self.config.xai_model
-                            update_payload["refinement_temperature"] = self.config.xai_temperature
+                            update_payload["refinement_model"] = self.config.refinement_model
+                            update_payload["refinement_temperature"] = self.config.refinement_temperature
                         if refinement:
                             update_payload.update(
                                 {
@@ -726,18 +634,6 @@ class SceneExtractor:
         payload = f"{location}::{excerpt}".encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
 
-    def _get_xai_client(self) -> XAIAPI:
-        if self._xai_client is None:
-            api_key = os.getenv("XAI_API_KEY")
-            if not api_key:
-                raise ValueError("XAI_API_KEY is required for scene refinement")
-            self._xai_client = XAIAPI(
-                api_key=api_key,
-                model=self.config.xai_model,
-                temperature=self.config.xai_temperature,
-                max_tokens=self.config.xai_max_tokens,
-            )
-        return self._xai_client
 
     def _resolve_book_slug(self, book_path: Union[str, os.PathLike[str], Path]) -> str:
         if self.config.book_slug:
@@ -803,6 +699,17 @@ def _build_parser() -> argparse.ArgumentParser:
         chapters=1,
         chunks=1,
     )
+    refine_pending = subparsers.add_parser(
+        "refine-pending",
+        help="Refine stored scenes that are missing refinement decisions.",
+    )
+    refine_pending.add_argument("--book", help="Optional book slug filter.")
+    refine_pending.add_argument("--chapter", type=int, help="Optional chapter number filter.")
+    refine_pending.add_argument("--limit", type=int, help="Maximum number of scenes to consider.")
+    refine_pending.add_argument("--model", help="Override the Gemini model used for refinement.")
+    refine_pending.add_argument("--temperature", type=float, help="Override the Gemini temperature.")
+    refine_pending.add_argument("--max-tokens", type=int, dest="max_tokens", help="Override the max tokens for refinement requests.")
+    refine_pending.set_defaults(func=_cmd_refine_pending)
 
     return parser
 
@@ -816,6 +723,123 @@ def _cmd_preview(args: argparse.Namespace) -> int:
     )
     print(json.dumps(stats, indent=2, ensure_ascii=False))
     return 0
+
+def _cmd_refine_pending(args: argparse.Namespace) -> int:
+    config = SceneExtractionConfig(enable_refinement=True)
+    if getattr(args, 'model', None):
+        config.refinement_model = args.model
+    if getattr(args, 'temperature', None) is not None:
+        config.refinement_temperature = args.temperature
+    if getattr(args, 'max_tokens', None) is not None:
+        config.refinement_max_tokens = args.max_tokens
+    extractor = SceneExtractor(config=config)
+    refiner = extractor.get_refiner()
+    limit = args.limit if args.limit and args.limit > 0 else None
+    with Session(engine) as session:
+        repository = SceneExtractionRepository(session)
+        records = repository.list_unrefined(
+            book_slug=args.book,
+            chapter_number=args.chapter,
+            limit=limit,
+        )
+        if not records:
+            print(
+                json.dumps(
+                    {
+                        "scenes_considered": 0,
+                        "scenes_refined": 0,
+                        "chapters_processed": 0,
+                        "message": "No pending scenes found.",
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        grouped: dict[tuple[str, int], list] = {}
+        for record in records:
+            key = (record.book_slug, record.chapter_number)
+            grouped.setdefault(key, []).append(record)
+        total_refined = 0
+        processed_chapters = 0
+        chapters_considered = len(grouped)
+        for (book_slug, chapter_number), chapter_records in grouped.items():
+            print(
+                f"Processing {book_slug or 'unknown'} chapter {chapter_number} ("
+                f"{len(chapter_records)} pending scene(s))"
+            )
+            primary = chapter_records[0]
+            chapter = Chapter(
+                number=chapter_number,
+                title=primary.chapter_title,
+                paragraphs=[],
+                source_name=primary.chapter_source_name
+                or primary.chapter_title
+                or f"chapter_{chapter_number}",
+            )
+            raw_scenes: List[RawScene] = []
+            for record in chapter_records:
+                raw_scenes.append(
+                    RawScene(
+                        chapter_number=record.chapter_number,
+                        chapter_title=record.chapter_title,
+                        provisional_id=record.provisional_id or record.scene_number,
+                        location_marker=record.location_marker,
+                        raw_excerpt=record.raw,
+                        chunk_index=record.chunk_index or 0,
+                        chunk_span=(
+                            record.chunk_paragraph_start or 0,
+                            record.chunk_paragraph_end or 0,
+                        ),
+                        scene_id=record.scene_number,
+                        paragraph_start=record.scene_paragraph_start,
+                        paragraph_end=record.scene_paragraph_end,
+                        word_start=record.scene_word_start,
+                        word_end=record.scene_word_end,
+                    )
+                )
+            try:
+                refinements = refiner.refine(chapter, raw_scenes, fail_on_error=True)
+            except SceneRefinementError as exc:
+                raise SystemExit(
+                    f"Refinement failed for {book_slug} chapter {chapter_number}: {exc}"
+                ) from exc
+            if not refinements:
+                raise SystemExit(
+                    f"Refinement returned no decisions for {book_slug} chapter {chapter_number}."
+                )
+            now = datetime.now(timezone.utc)
+            chapter_refined = 0
+            for record in chapter_records:
+                refinement = refinements.get(record.scene_number)
+                if refinement is None:
+                    continue
+                payload = {
+                    "refinement_decision": refinement.decision,
+                    "refinement_rationale": refinement.rationale,
+                    "refinement_model": config.refinement_model,
+                    "refinement_temperature": config.refinement_temperature,
+                    "refinement_has_refined_excerpt": False,
+                    "refined_at": now,
+                }
+                repository.update(record, data=payload, commit=False, refresh=False)
+                chapter_refined += 1
+            if chapter_refined:
+                total_refined += chapter_refined
+                processed_chapters += 1
+                print(f"  Applied refinement to {chapter_refined} scene(s).")
+        if total_refined:
+            session.commit()
+        summary = {
+            "scenes_considered": len(records),
+            "scenes_refined": total_refined,
+            "scenes_skipped": len(records) - total_refined,
+            "chapters_considered": chapters_considered,
+            "chapters_processed": processed_chapters,
+        }
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+    return 0
+
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
