@@ -553,13 +553,14 @@ class SceneExtractor:
     def _persist_chapter_scenes(
         self,
         book_slug: str,
-        book_path: str,
+        book_path: Union[str, os.PathLike[str]],
         chapter: Chapter,
         raw_scenes: List[RawScene],
         refinements: Dict[int, RefinedScene],
     ) -> None:
         if not raw_scenes:
             return
+        normalized_book_path = str(book_path)
         with Session(engine) as session:
             repository = SceneExtractionRepository(session)
             try:
@@ -605,7 +606,7 @@ class SceneExtractor:
                     if record is None:
                         payload = {
                             "book_slug": book_slug,
-                            "source_book_path": book_path,
+                            "source_book_path": normalized_book_path,
                             "chapter_number": scene.chapter_number,
                             "chapter_title": scene.chapter_title,
                             "chapter_source_name": chapter.source_name,
@@ -649,7 +650,7 @@ class SceneExtractor:
                             existing_props.pop(legacy_key, None)
                         existing_props.update(props)
                         update_payload = {
-                            "source_book_path": book_path,
+                            "source_book_path": normalized_book_path,
                             "chapter_title": scene.chapter_title,
                             "chapter_source_name": chapter.source_name,
                             "location_marker": scene.location_marker,
