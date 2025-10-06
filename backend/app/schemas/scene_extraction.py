@@ -32,12 +32,19 @@ class SceneExtractionRead(BaseModel):
     refined_word_count: int | None
     refined_char_count: int | None
     raw_signature: str | None
+    provisional_id: int | None
+    location_marker_normalized: str | None
+    scene_paragraph_start: int | None
+    scene_paragraph_end: int | None
+    scene_word_start: int | None
+    scene_word_end: int | None
     extraction_model: str | None
     extraction_temperature: float | None
     refinement_model: str | None
     refinement_temperature: float | None
     extracted_at: datetime
     refined_at: datetime | None
+    refinement_has_refined_excerpt: bool | None
     props: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(from_attributes=True)
@@ -67,4 +74,3 @@ class SceneExtractionFilterOptions(BaseModel):
     refinement_decisions: list[str]
     has_refined_options: list[bool]
     date_range: SceneExtractionDateRange
-

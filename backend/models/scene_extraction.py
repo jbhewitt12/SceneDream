@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Float, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -48,6 +48,12 @@ class SceneExtraction(SQLModel, table=True):
     refined_word_count: int | None = Field(default=None, ge=0)
     refined_char_count: int | None = Field(default=None, ge=0)
     raw_signature: str | None = Field(default=None, max_length=128)
+    provisional_id: int | None = Field(default=None, ge=0)
+    location_marker_normalized: str | None = Field(default=None, max_length=255)
+    scene_paragraph_start: int | None = Field(default=None, ge=0)
+    scene_paragraph_end: int | None = Field(default=None, ge=0)
+    scene_word_start: int | None = Field(default=None, ge=0)
+    scene_word_end: int | None = Field(default=None, ge=0)
     extraction_model: str | None = Field(default=None, max_length=255)
     extraction_temperature: float | None = Field(
         default=None,
@@ -66,6 +72,10 @@ class SceneExtraction(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
+    refinement_has_refined_excerpt: bool | None = Field(
+        default=None,
+        sa_column=Column(Boolean, nullable=True),
+    )
     props: dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False),
@@ -75,4 +85,3 @@ class SceneExtraction(SQLModel, table=True):
         """Helper to stamp the refinement timestamp when mutating refined text."""
 
         self.refined_at = datetime.now(timezone.utc)
-
