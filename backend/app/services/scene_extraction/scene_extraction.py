@@ -9,7 +9,8 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import ebooklib
 from bs4 import BeautifulSoup
@@ -27,7 +28,9 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
-EXCESSION_EPUB_PATH = "books/Iain Banks/Excession/Excession - Iain M. Banks.epub"
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+BOOKS_DIR = PROJECT_ROOT / "books"
+EXCESSION_EPUB_PATH = BOOKS_DIR / "Iain Banks" / "Excession" / "Excession - Iain M. Banks.epub"
 ENABLE_REFINEMENT = False
 
 
@@ -111,6 +114,10 @@ class RawScene:
     chunk_index: int
     chunk_span: Tuple[int, int]
     scene_id: Optional[int] = None
+    paragraph_start: Optional[int] = None
+    paragraph_end: Optional[int] = None
+    word_start: Optional[int] = None
+    word_end: Optional[int] = None
 
     def signature(self) -> Tuple[str, str]:
         return (self.location_marker.strip().lower(), self.raw_excerpt.strip())
@@ -130,9 +137,10 @@ class SceneExtractor:
         load_dotenv()
         self._xai_client: Optional[XAIAPI] = None
 
-    def extract_book(self, book_path: str) -> Dict[str, object]:
-        book_slug = self._resolve_book_slug(book_path)
-        chapters = self._load_chapters(book_path)
+    def extract_book(self, book_path: Union[str, os.PathLike[str]]) -> Dict[str, object]:
+        resolved_book_path = self._resolve_book_path(book_path)
+        book_slug = self._resolve_book_slug(resolved_book_path)
+        chapters = self._load_chapters(resolved_book_path)
         stats = {"book_slug": book_slug, "chapters": len(chapters), "scenes": 0}
         for chapter in chapters:
             print(f"Starting chapter {chapter.number}: {chapter.title}")
@@ -141,7 +149,7 @@ class SceneExtractor:
             stats["scenes"] += len(raw_scenes)
             self._persist_chapter_scenes(
                 book_slug=book_slug,
-                book_path=book_path,
+                book_path=str(resolved_book_path),
                 chapter=chapter,
                 raw_scenes=raw_scenes,
                 refinements=refined_map,
@@ -153,13 +161,14 @@ class SceneExtractor:
 
     def extract_preview(
         self,
-        book_path: str,
+        book_path: Union[str, os.PathLike[str]],
         *,
         max_chapters: int = 1,
         max_chunks_per_chapter: int = 1,
     ) -> Dict[str, object]:
-        book_slug = self._resolve_book_slug(book_path)
-        chapters = self._load_chapters(book_path)
+        resolved_book_path = self._resolve_book_path(book_path)
+        book_slug = self._resolve_book_slug(resolved_book_path)
+        chapters = self._load_chapters(resolved_book_path)
         limit = max(max_chapters, 0)
         selected = chapters[:limit]
         stats = {
@@ -207,8 +216,8 @@ class SceneExtractor:
             )
         return stats
 
-    def _load_chapters(self, book_path: str) -> List[Chapter]:
-        book = epub.read_epub(book_path)
+    def _load_chapters(self, book_path: Path) -> List[Chapter]:
+        book = epub.read_epub(str(book_path))
         chapters: List[Chapter] = []
         chapter_number = 1
         for spine_entry in book.spine:
@@ -407,6 +416,7 @@ class SceneExtractor:
                 provisional_id = int(provisional)
             except (TypeError, ValueError):
                 provisional_id = idx
+            paragraph_start, paragraph_end = self._parse_location_marker(location)
             parsed.append(
                 RawScene(
                     chapter_number=chapter.number,
@@ -416,6 +426,8 @@ class SceneExtractor:
                     raw_excerpt=excerpt,
                     chunk_index=chunk.index,
                     chunk_span=(chunk.start_paragraph, chunk.end_paragraph),
+                    paragraph_start=paragraph_start,
+                    paragraph_end=paragraph_end,
                 )
             )
         return parsed
@@ -570,16 +582,20 @@ class SceneExtractor:
                             refined_text = refinement.refined_excerpt.strip() or None
                         refined_word_count = self._word_count(refined_text)
                         refined_char_count = self._char_count(refined_text)
-                    props: dict[str, object] = {
-                        "provisional_id": scene.provisional_id,
-                        "chunk_paragraph_span": list(scene.chunk_span),
-                        "location_marker_normalized": scene.location_marker.strip().lower(),
-                    }
+                    refinement_has_excerpt = None
                     if refinement:
-                        props["refinement_summary"] = {
-                            "decision": decision,
-                            "has_refined_excerpt": bool(refined_text),
-                        }
+                        refinement_has_excerpt = bool(refined_text)
+                    props: dict[str, object] = {}
+                    paragraph_start = (
+                        scene.paragraph_start
+                        if scene.paragraph_start is not None
+                        else scene.chunk_span[0]
+                    )
+                    paragraph_end = (
+                        scene.paragraph_end
+                        if scene.paragraph_end is not None
+                        else scene.chunk_span[1]
+                    )
                     now = datetime.now(timezone.utc) if refinement and self.config.enable_refinement else None
                     record = repository.get_by_identity(
                         book_slug=book_slug,
@@ -612,11 +628,25 @@ class SceneExtractor:
                             "refinement_model": self.config.xai_model if self.config.enable_refinement else None,
                             "refinement_temperature": self.config.xai_temperature if self.config.enable_refinement else None,
                             "refined_at": now,
+                            "provisional_id": scene.provisional_id,
+                            "location_marker_normalized": scene.location_marker.strip().lower(),
+                            "scene_paragraph_start": paragraph_start,
+                            "scene_paragraph_end": paragraph_end,
+                            "scene_word_start": scene.word_start,
+                            "scene_word_end": scene.word_end,
+                            "refinement_has_refined_excerpt": refinement_has_excerpt,
                             "props": props,
                         }
                         repository.create(data=payload, commit=False, refresh=False)
                     else:
                         existing_props = dict(record.props or {})
+                        for legacy_key in (
+                            "provisional_id",
+                            "chunk_paragraph_span",
+                            "location_marker_normalized",
+                            "refinement_summary",
+                        ):
+                            existing_props.pop(legacy_key, None)
                         existing_props.update(props)
                         update_payload = {
                             "source_book_path": book_path,
@@ -632,6 +662,13 @@ class SceneExtractor:
                             "raw_signature": self._hash_signature(scene),
                             "extraction_model": self.config.gemini_model,
                             "extraction_temperature": self.config.gemini_temperature,
+                            "provisional_id": scene.provisional_id,
+                            "location_marker_normalized": scene.location_marker.strip().lower(),
+                            "scene_paragraph_start": paragraph_start,
+                            "scene_paragraph_end": paragraph_end,
+                            "scene_word_start": scene.word_start,
+                            "scene_word_end": scene.word_end,
+                            "refinement_has_refined_excerpt": refinement_has_excerpt,
                             "props": existing_props,
                         }
                         if self.config.enable_refinement:
@@ -653,6 +690,30 @@ class SceneExtractor:
             except Exception:
                 session.rollback()
                 raise
+
+    @staticmethod
+    def _parse_location_marker(location_marker: str) -> Tuple[Optional[int], Optional[int]]:
+        text = location_marker.strip()
+        if not text:
+            return None, None
+        lowered = text.lower()
+        paragraph_pattern = re.search(
+            r"para(?:graph)?s?\s+(\d+)(?:\s*(?:[-–]|to|through|and|&)\s*(\d+))?",
+            lowered,
+        )
+        if paragraph_pattern:
+            start = int(paragraph_pattern.group(1))
+            end_raw = paragraph_pattern.group(2)
+            end = int(end_raw) if end_raw else start
+            return start, end
+        if "para" not in lowered:
+            return None, None
+        numbers = [int(match) for match in re.findall(r"\d+", lowered)]
+        if numbers:
+            start = numbers[0]
+            end = numbers[1] if len(numbers) > 1 else start
+            return start, end
+        return None, None
 
     @staticmethod
     def _word_count(value: Optional[str]) -> Optional[int]:
@@ -684,12 +745,29 @@ class SceneExtractor:
             )
         return self._xai_client
 
-    def _resolve_book_slug(self, book_path: str) -> str:
+    def _resolve_book_slug(self, book_path: Union[str, os.PathLike[str], Path]) -> str:
         if self.config.book_slug:
             return self.config.book_slug
-        base = os.path.splitext(os.path.basename(book_path))[0]
+        path = Path(book_path)
+        base = path.stem or path.name
         slug = self._slugify(base)
         return slug or "book"
+
+    def _resolve_book_path(self, book_path: Union[str, os.PathLike[str], Path]) -> Path:
+        candidate = Path(book_path)
+        if candidate.is_absolute() and candidate.exists():
+            return candidate
+
+        cwd_candidate = (Path.cwd() / candidate).resolve()
+        if cwd_candidate.exists():
+            return cwd_candidate
+
+        repo_candidate = (PROJECT_ROOT / candidate).resolve()
+        if repo_candidate.exists():
+            return repo_candidate
+
+        # Fall back to the absolute variant so downstream callers raise a useful error.
+        return cwd_candidate
 
     def _slugify(self, text: str) -> str:
         normalized = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")

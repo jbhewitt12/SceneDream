@@ -1,3 +1,8 @@
+"""Scene extraction CLI entry point.
+
+To run: uv run python -m app.services.scene_extraction.main preview-excession <no. of chapters>
+"""
+
 from __future__ import annotations
 
 import argparse
