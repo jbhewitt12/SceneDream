@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, Column, DateTime, Float, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
+
+if TYPE_CHECKING:
+    from .scene_ranking import SceneRanking
 
 
 class SceneExtraction(SQLModel, table=True):
@@ -80,6 +83,7 @@ class SceneExtraction(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False),
     )
+    rankings: list["SceneRanking"] = Relationship(back_populates="scene_extraction")
 
     def touch_refined_timestamp(self) -> None:
         """Helper to stamp the refinement timestamp when mutating refined text."""
