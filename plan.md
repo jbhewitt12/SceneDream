@@ -7,58 +7,18 @@ I want to get books written by authors like Ian M. Banks in text format (like ep
 
 ## Files that already exist
 
-- requirements.txt already exists with these dependencies:
-```
-langchain==0.3.27
-langchain-community==0.3.30
-langchain-google-genai==2.1.12
-langchain-xai==0.2.5
-ebooklib==0.19
-```
-
-- .venv already exists and is activated.
-
-- a /Books folder already exists that contains subdirectories that contain the book files. Start with `Books/Iain Banks/Excession/Excession - Iain M. Banks.epub`
-
-- A .env file already exists with the following variables:
-```
-OPENAI_API_KEY
-XAI_API_KEY
-GEMINI_API_KEY
-```
-
-- gemini_api.py and xai_api.py already exist. Use them to make calls to the LLMs.
+The critical files are in the `backend/app/services/` directory.
 
 ## Steps
 
-1. Extract Scenes with LLM
+1. Scene extraction pipeline *(implemented)*
 
-- Ingest the full .epub text. Split it into chapters. For each chapter, load it into the latest Gemini 2.5 pro model (using gemini_api.py) with a prompt like: "Scan the chapter and extract every single descriptive scene that is visually rich, action-packed, or atmospheric—ideal for turning into images/videos. Focus on elements that would be great for images or videos. Output each scene verbatim. Ensure you copy all of the details of the scene. It's fine if it is a big chunk of text because it may be used to create multiple images/videos. Output each scene as a JSON object." The prompt will need to be further refined, and the model should output JSON.
-
-### JSON Schema for Scene Extraction
-
-Instruct the Gemini model to output a single valid JSON object conforming to this schema. No additional text should be included in the response.
-
-```json
-{
-  "chapter_title": "string",  // The title or identifier of the chapter (e.g., "Chapter 1: The Beginning")
-  "chapter_number": "integer",  // The sequential chapter number (starting from 1)
-  "scenes": [
-    {
-      "scene_id": "integer",  // Unique sequential ID for the scene within this chapter (starting from 1)
-      "location_marker": "string",  // A marker indicating the location in the chapter (e.g., "Paragraphs 15-22" or "Section 3, sentences 5-12")
-      "raw_excerpt": "string"  // The verbatim text excerpt from the book, including all descriptive details
-    }
-    // Additional scene objects as needed
-  ]
-}
-```
-
-- Chunk long chapters so each Gemini 2.5 Pro call (via gemini_api.py) stays within context limits, and include an explicit JSON schema in the prompt (e.g., keys for chapter, location marker, raw_excerpt). Ask for JSON-only output and capture chapter plus location/paragraph indices instead of page numbers.
-
-- Use a second LLM to refine (e.g., "Critique these extractions: Remove any that are too dialogue-heavy or abstract; enhance descriptions with sensory details from the text"). This iterates to ensure scenes are "image-ready" (vivid, concrete visuals). persist both the raw extraction and the refined version (or a diff note) so changes are auditable and reversible.
-
-- Save scenes under `extracted_scenes/<book_slug>/` using filenames like `{chapter}-{scene_id}-{slug}.json`. Generate collision-safe slugs, and store the same scene_id plus chapter metadata inside each JSON payload to keep filenames aligned with contents.
+- `backend/app/services/scene_extraction/scene_extraction.py` defines `SceneExtractor`, which reads EPUB chapters with BeautifulSoup, normalizes paragraph text, and chunks each chapter (~12k characters with paragraph overlap) so prompts can reference numbered paragraphs.
+- Each chunk is sent through `gemini_api.json_output(...)` (default `gemini-2.5-flash`, temperature 0.0) using the schema in `SCENE_EXTRACTION_SCHEMA_TEXT`; responses are deduplicated, sequential scene ids assigned, and stats returned by `extract_preview` / `extract_book`.
+- CLI entry points in `backend/app/services/scene_extraction/main.py` support previewing the first N chapters or running the full Excession book, with a `--refine` flag to enable downstream refinement.
+- When refinement is enabled, `XAIAPI` wraps Grok to evaluate each scene via `REFINEMENT_SCHEMA`, marking keep/discard decisions and optional refined excerpts while preserving the original extraction.
+- `_persist_chapter_scenes` stores results in the Postgres-backed `scene_extractions` table via `SceneExtractionRepository`, recording raw/refined text, word/char counts, chunk indices, model metadata, and a hash signature; existing chunk indexes are skipped to keep reruns idempotent.
+- FastAPI routes (`backend/app/api/routes/scene_extractions.py`) expose paginated listings, detail views, and filter metadata so the stored scenes can be reviewed without touching the CLI.
 
 2. Rank Scenes with LLM
 
