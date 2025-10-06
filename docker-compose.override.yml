@@ -103,6 +103,8 @@ services:
         - NODE_ENV=development
 
   playwright:
+    profiles:
+      - playwright
     build:
       context: ./frontend
       dockerfile: Dockerfile.playwright
