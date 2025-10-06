@@ -57,7 +57,6 @@ REFINEMENT_SCHEMA: Dict[str, object] = {
                     "scene_id": {"type": "integer"},
                     "decision": {"type": "string", "enum": ["keep", "discard"]},
                     "rationale": {"type": "string"},
-                    "refined_excerpt": {"type": ["string", "null"]},
                 },
                 "required": ["scene_id", "decision", "rationale"],
             },
@@ -127,7 +126,6 @@ class RawScene:
 class RefinedScene:
     scene_id: int
     decision: str
-    refined_excerpt: Optional[str]
     rationale: str
 
 
@@ -498,13 +496,12 @@ class SceneExtractor:
                     continue
                 decision = item.get("decision", "keep").lower()
                 rationale = str(item.get("rationale", "")).strip()
-                refined_excerpt = item.get("refined_excerpt")
-                if isinstance(refined_excerpt, str):
-                    refined_excerpt = refined_excerpt.strip() or None
+                normalized_decision = (
+                    decision if decision in {"keep", "discard"} else "keep"
+                )
                 refinements[numeric_id] = RefinedScene(
                     scene_id=numeric_id,
-                    decision=decision if decision in {"keep", "discard"} else "keep",
-                    refined_excerpt=refined_excerpt,
+                    decision=normalized_decision,
                     rationale=rationale,
                 )
         for scene in scenes:
@@ -515,8 +512,7 @@ class SceneExtractor:
                 RefinedScene(
                     scene_id=scene.scene_id,
                     decision="keep",
-                    refined_excerpt=None,
-                    rationale="No refinement returned; retaining original excerpt.",
+                    rationale="No refinement returned; defaulting to keep.",
                 ),
             )
         return refinements
@@ -524,10 +520,12 @@ class SceneExtractor:
     def _build_refinement_prompt(self, chapter: Chapter, scenes: List[RawScene]) -> str:
         header = (
             f"Review the extracted scenes from Chapter {chapter.number} ({chapter.title}).\n"
-            "For each scene decide whether it should be kept for image generation.\n"
-            "Discard scenes that are primarily dialogue, abstract, or lack concrete visuals.\n"
-            "When keeping a scene, enhance the excerpt by emphasizing sensory details already present in the text.\n"
-            "Do not invent details; stay faithful to the source.\n"
+            "For each scene, respond with a decision of keep or discard.\n"
+            "Keep only scenes that communicate unique, visually specific details that can inspire image or video generation.\n"
+            "Discard scenes that lack descriptive detail (e.g. 'A smile flickered around his lips, like a small flame in a high wind.'),\n"
+            "do not include anything original or unique (e.g. 'She sucked at the knuckle she'd hit against the field cylinder.'), or\n"
+            "omit concrete visual elements (e.g. 'The sound of another great tumble of falling rock split the skies.').\n"
+            "Provide a brief rationale for each decision.\n"
             "Return structured JSON matching the provided schema."
         )
         scenes_text = []
@@ -540,7 +538,7 @@ class SceneExtractor:
         scene_body = "\n".join(scenes_text)
         schema_hint = (
             "Schema reminder (types shown as comments):\n"
-            "{\n  \"scenes\": [\n    {\n      \"scene_id\": \"integer\",\n      \"decision\": \"keep|discard\",\n      \"rationale\": \"string\",\n      \"refined_excerpt\": \"string or null\"\n    }\n  ]\n}\n"
+            "{\n  \"scenes\": [\n    {\n      \"scene_id\": \"integer\",\n      \"decision\": \"keep|discard\",\n      \"rationale\": \"string\"\n    }\n  ]\n}\n"
         )
         return f"{header}\n\n{schema_hint}\nScenes to review:\n\n{scene_body}"
 
@@ -571,21 +569,16 @@ class SceneExtractor:
                     raw_text = scene.raw_excerpt.strip()
                     raw_word_count = self._word_count(raw_text)
                     raw_char_count = self._char_count(raw_text)
-                    refined_text = None
-                    decision = None
-                    rationale = None
-                    refined_word_count = None
-                    refined_char_count = None
+                    refined_text: Optional[str] = None
+                    decision: Optional[str] = None
+                    rationale: Optional[str] = None
+                    refined_word_count: Optional[int] = None
+                    refined_char_count: Optional[int] = None
+                    refinement_has_excerpt: Optional[bool] = None
                     if refinement:
                         decision = refinement.decision
                         rationale = refinement.rationale
-                        if refinement.refined_excerpt:
-                            refined_text = refinement.refined_excerpt.strip() or None
-                        refined_word_count = self._word_count(refined_text)
-                        refined_char_count = self._char_count(refined_text)
-                    refinement_has_excerpt = None
-                    if refinement:
-                        refinement_has_excerpt = bool(refined_text)
+                        refinement_has_excerpt = False
                     props: dict[str, object] = {}
                     paragraph_start = (
                         scene.paragraph_start
