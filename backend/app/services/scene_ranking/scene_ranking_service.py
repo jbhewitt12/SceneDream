@@ -39,13 +39,13 @@ SCORING_CRITERIA: tuple[str, ...] = (
 )
 
 DEFAULT_WEIGHT_CONFIG: dict[str, float] = {
-    "originality": 1.5,
-    "visual_style_potential": 1.1,
+    "originality": 1.2,
+    "visual_style_potential": 1.5,
     "image_prompt_fit": 0.5,
     "video_prompt_fit": 0.5,
-    "emotional_intensity": 0.9,
+    "emotional_intensity": 0.8,
     "worldbuilding_depth": 1.0,
-    "character_focus": 0.9,
+    "character_focus": 0.8,
     "action_dynamism": 0.8,
     "clarity_for_prompting": 1.2,
 }
