@@ -38,13 +38,13 @@ import {
   type SceneExtractionListParams,
   SceneExtractionService,
 } from "@/api/sceneExtractions"
+import { InputGroup } from "@/components/ui/input-group"
 import {
   PaginationItems,
   PaginationNextTrigger,
   PaginationPrevTrigger,
   PaginationRoot,
 } from "@/components/ui/pagination"
-import { InputGroup } from "@/components/ui/input-group"
 
 const extractedScenesSearchSchema = z.object({
   page: z.coerce.number().int().min(1).catch(1),
@@ -64,14 +64,7 @@ const extractedScenesSearchSchema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined))
     .catch(undefined),
-  decision: z
-    .string()
-    .trim()
-    .min(1)
-    .optional()
-    .or(z.literal("").transform(() => undefined))
-    .or(z.undefined())
-    .catch(undefined),
+  decision: z.string().trim().min(1).catch("keep"),
   has_refined: z
     .enum(["true", "false"])
     .transform((value) => value === "true")
@@ -139,6 +132,9 @@ const SceneExtractionFilters = ({
   }, [options?.chapters_by_book, search.book_slug])
 
   const decisionOptions = options?.refinement_decisions ?? []
+  const decisionValue = decisionOptions.length
+    ? search.decision ?? "keep"
+    : "all"
   const hasRefinedValue = search.has_refined ?? undefined
 
   const handleChange = (patch: Partial<ExtractedScenesSearch>) => {
@@ -152,7 +148,7 @@ const SceneExtractionFilters = ({
     onChange({
       book_slug: undefined,
       chapter_number: undefined,
-      decision: undefined,
+      decision: "keep",
       has_refined: undefined,
       search: undefined,
       start_date: undefined,
@@ -255,13 +251,13 @@ const SceneExtractionFilters = ({
           </Text>
           <NativeSelectRoot disabled={!decisionOptions.length} w="full">
             <NativeSelectField
-              value={search.decision ?? ""}
+              value={decisionValue}
               onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                const value = event.target.value || undefined
+                const value = event.target.value
                 handleChange({ decision: value })
               }}
             >
-              <option value="">
+              <option value="all">
                 {decisionOptions.length ? "All decisions" : "No decisions yet"}
               </option>
               {decisionOptions.map((decision) => (
@@ -361,8 +357,9 @@ const SceneExtractionFilters = ({
       </InputGroup>
       {options?.date_range && (
         <Text fontSize="xs" color="fg.muted">
-          Showing data captured between {formatDateTime(options.date_range.earliest)}
-          {" "}and {formatDateTime(options.date_range.latest)}
+          Showing data captured between{" "}
+          {formatDateTime(options.date_range.earliest)} and{" "}
+          {formatDateTime(options.date_range.latest)}
         </Text>
       )}
       {isFetching && (
@@ -471,10 +468,22 @@ const SceneExtractionItem = ({ scene }: { scene: SceneExtraction }) => {
                   {scene.refinement_decision}
                 </Badge>
               )}
-              <Badge fontSize="xs" px={2} py={0.5} variant="outline" borderRadius="full">
+              <Badge
+                fontSize="xs"
+                px={2}
+                py={0.5}
+                variant="outline"
+                borderRadius="full"
+              >
                 {scene.book_slug}
               </Badge>
-              <Badge fontSize="xs" px={2} py={0.5} variant="subtle" borderRadius="full">
+              <Badge
+                fontSize="xs"
+                px={2}
+                py={0.5}
+                variant="subtle"
+                borderRadius="full"
+              >
                 {formatDateTime(scene.extracted_at)}
               </Badge>
             </Flex>
@@ -610,7 +619,7 @@ function ExtractedScenesPage() {
       order: search.order,
       book_slug: search.book_slug,
       chapter_number: search.chapter_number,
-      decision: search.decision,
+      decision: search.decision === "all" ? undefined : search.decision,
       has_refined: search.has_refined,
       search: search.search,
       start_date: toIsoString(search.start_date ?? undefined),
