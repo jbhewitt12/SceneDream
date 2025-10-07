@@ -12,16 +12,31 @@
 # - Comments are provided for each function to explain usage, parameters, and return values,
 #   so a coding agent can easily understand and extend the code.
 
+import logging
 import os
-from typing import List, Dict, Type, Any
+from typing import Any, Dict, List, Type
+
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from langchain_core.pydantic_v1 import BaseModel
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool  # For defining tools if needed
+from pydantic import BaseModel
 
 DEFAULT_FLASH_MODEL = "gemini-flash-latest"
 DEFAULT_PRO_MODEL = "gemini-pro-latest"
+
+logger = logging.getLogger(__name__)
+
+
+def _coerce_content_to_text(payload: Any) -> str:
+    """Normalize Gemini message content into a plain string."""
+    if isinstance(payload, str):
+        return payload
+    if isinstance(payload, list):
+        parts = [str(item) for item in payload if isinstance(item, str)]
+        if parts:
+            return "".join(parts)
+    return str(payload)
 
 
 def _get_llm(model: str = DEFAULT_FLASH_MODEL, temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> ChatGoogleGenerativeAI:
@@ -192,7 +207,7 @@ def json_output(prompt: str, system_instruction: str = "Respond only with valid 
     )
     messages = [SystemMessage(content=system_instruction), HumanMessage(content=prompt)]
     response = llm.invoke(messages)
-    content = response.content.strip()
+    content = _coerce_content_to_text(response.content).strip()
     if content.startswith("```"):
         lines = content.splitlines()
         if lines:
@@ -202,5 +217,16 @@ def json_output(prompt: str, system_instruction: str = "Respond only with valid 
         content = "\n".join(lines).strip()
     try:
         return json.loads(content)
-    except json.JSONDecodeError:
-        raise ValueError("Failed to parse JSON from response: " + response.content)
+    except json.JSONDecodeError as exc:
+        metadata = getattr(response, "response_metadata", {}) or {}
+        finish_reason = metadata.get("finish_reason")
+        snippet = content[:500]
+        logger.debug(
+            "Gemini JSON decode failed. finish_reason=%s snippet=%r", finish_reason, snippet
+        )
+        if finish_reason == "MAX_TOKENS":
+            raise ValueError(
+                "Gemini response truncated before completing JSON (finish_reason=MAX_TOKENS). "
+                "Increase max_tokens or adjust the prompt for shorter output."
+            ) from exc
+        raise ValueError("Failed to parse JSON from response: " + snippet) from exc
