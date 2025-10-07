@@ -13,9 +13,9 @@
 import { Route as rootRoute } from './routes/__root'
 import { Route as LayoutImport } from './routes/_layout'
 import { Route as LayoutIndexImport } from './routes/_layout/index'
+import { Route as LayoutSceneRankingsImport } from './routes/_layout/scene-rankings'
 import { Route as LayoutItemsImport } from './routes/_layout/items'
 import { Route as LayoutExtractedScenesImport } from './routes/_layout/extracted-scenes'
-import { Route as LayoutSceneRankingsImport } from './routes/_layout/scene-rankings'
 
 // Create/Update Routes
 
@@ -29,6 +29,11 @@ const LayoutIndexRoute = LayoutIndexImport.update({
   getParentRoute: () => LayoutRoute,
 } as any)
 
+const LayoutSceneRankingsRoute = LayoutSceneRankingsImport.update({
+  path: '/scene-rankings',
+  getParentRoute: () => LayoutRoute,
+} as any)
+
 const LayoutItemsRoute = LayoutItemsImport.update({
   path: '/items',
   getParentRoute: () => LayoutRoute,
@@ -36,11 +41,6 @@ const LayoutItemsRoute = LayoutItemsImport.update({
 
 const LayoutExtractedScenesRoute = LayoutExtractedScenesImport.update({
   path: '/extracted-scenes',
-  getParentRoute: () => LayoutRoute,
-} as any)
-
-const LayoutSceneRankingsRoute = LayoutSceneRankingsImport.update({
-  path: '/scene-rankings',
   getParentRoute: () => LayoutRoute,
 } as any)
 
@@ -56,12 +56,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutExtractedScenesImport
       parentRoute: typeof LayoutImport
     }
-    '/_layout/scene-rankings': {
-      preLoaderRoute: typeof LayoutSceneRankingsImport
-      parentRoute: typeof LayoutImport
-    }
     '/_layout/items': {
       preLoaderRoute: typeof LayoutItemsImport
+      parentRoute: typeof LayoutImport
+    }
+    '/_layout/scene-rankings': {
+      preLoaderRoute: typeof LayoutSceneRankingsImport
       parentRoute: typeof LayoutImport
     }
     '/_layout/': {
@@ -76,8 +76,8 @@ declare module '@tanstack/react-router' {
 export const routeTree = rootRoute.addChildren([
   LayoutRoute.addChildren([
     LayoutExtractedScenesRoute,
-    LayoutSceneRankingsRoute,
     LayoutItemsRoute,
+    LayoutSceneRankingsRoute,
     LayoutIndexRoute,
   ]),
 ])
