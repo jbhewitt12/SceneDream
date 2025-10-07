@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, TYPE_CHECKING
+from textwrap import dedent
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -139,18 +140,34 @@ class SceneRefiner:
     def _build_refinement_prompt(self, chapter: "Chapter", scenes: List["RawScene"]) -> str:
         chapter_number = getattr(chapter, "number", "?")
         chapter_title = getattr(chapter, "title", "")
-        header = (
-            f"Review the extracted scenes from Chapter {chapter_number} ({chapter_title}).\n"
-            "For each scene, respond with a decision of keep or discard.\n"
-            "Keep only scenes that communicate unique, visually specific details that can inspire image or video generation. We only want scenes that have something interesting about them. Be selective.\n"
-            "Discard scenes that:\n"
-            "- lack descriptive detail (e.g. 'A smile flickered around his lips, like a small flame in a high wind.')\n"
-            "- do not include anything original or unique (e.g. 'She sucked at the knuckle she'd hit against the field cylinder.')\n"
-            "- omit concrete visual elements (e.g. 'The sound of another great tumble of falling rock split the skies.')\n"
-            "- are just descriptions of basic things (e.g. 'She reached out across the sand and pulled a straw sun-hat over her head.')\n"
-            "Provide a brief rationale for each decision.\n"
-            "Return structured JSON matching the provided schema."
-        )
+        header = dedent(
+            f"""
+            You are the visual storytelling gatekeeper reviewing extracted scenes from Chapter {chapter_number} ({chapter_title}).
+
+            GOAL
+            - Keep only excerpts that already read like a cinematic moment with enough unique, concrete visuals to guide image or video generation.
+            - If a scene feels borderline, choose `discard`.
+
+            KEEP WHEN THE EXCERPT OFFERS
+            - Multiple specific details about the setting, characters, objects, lighting, and motion that together form a coherent shot.
+            - Novel or striking imagery that could anchor a composition without needing additional explanation.
+            - Descriptions that let an artist infer the subject, the surrounding environment, and what is happening in the moment.
+            - All of the above elements at once: a defined focal subject, a clearly described backdrop, and a meaningful action or transformation.
+
+            DISCARD WHEN ANY ARE TRUE
+            - The text is a single beat, reaction, or short exchange without broader spatial context.
+            - The imagery hinges on one minor detail (e.g., a colour shift, a brief glance, a UI change) with no supporting description.
+            - The language is generic, low-stakes, or dependent on prior narrative knowledge to visualise.
+            - The moment centres on things like body-language beats, small talk, maintenance actions, or routine hospitality (e.g., turning, refilling a glass, belching) rather than showcasing the world.
+            - The excerpt is short, static, or lacks a sense of place, atmosphere, or composition even if the actions are clear.
+            - The passage is a transitional beat (e.g., travelling, glancing out a window, entering a room) that punts on describing the broader scene. Travel snippets where someone simply notices the surroundings should be discarded even if the technology sounds interesting.
+
+            OUTPUT REQUIREMENTS
+            - Evaluate each scene independently.
+            - Respond with JSON only, following the provided schema exactly.
+            - Provide a concise, specific rationale aligned with either `keep` or `discard`.
+            """
+        ).strip()
         scenes_text: List[str] = []
         for scene in scenes:
             scene_id = getattr(scene, "scene_id", None)
