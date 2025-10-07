@@ -801,10 +801,12 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
             try:
                 refinements = refiner.refine(chapter, raw_scenes, fail_on_error=True)
             except SceneRefinementError as exc:
+                session.rollback()
                 raise SystemExit(
                     f"Refinement failed for {book_slug} chapter {chapter_number}: {exc}"
                 ) from exc
             if not refinements:
+                session.rollback()
                 raise SystemExit(
                     f"Refinement returned no decisions for {book_slug} chapter {chapter_number}."
                 )
@@ -825,11 +827,12 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
                 repository.update(record, data=payload, commit=False, refresh=False)
                 chapter_refined += 1
             if chapter_refined:
+                session.commit()
                 total_refined += chapter_refined
                 processed_chapters += 1
                 print(f"  Applied refinement to {chapter_refined} scene(s).")
-        if total_refined:
-            session.commit()
+        if total_refined == 0:
+            session.rollback()
         summary = {
             "scenes_considered": len(records),
             "scenes_refined": total_refined,
