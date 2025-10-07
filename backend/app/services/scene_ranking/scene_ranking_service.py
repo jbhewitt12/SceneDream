@@ -135,7 +135,7 @@ class SceneRankingConfig:
     model_vendor: str = "google"
     prompt_version: str = "scene-ranking-v1"
     temperature: float = 0.1
-    max_output_tokens: int | None = 2048
+    max_output_tokens: int | None = None
     system_instruction: str = DEFAULT_SYSTEM_INSTRUCTION
     weight_config: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_WEIGHT_CONFIG)
