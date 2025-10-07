@@ -118,6 +118,14 @@ const toTitleCase = (value: string) =>
     )
     .join(" ")
 
+const truncateText = (value: string, maxLength = 300) => {
+  if (value.length <= maxLength) {
+    return value
+  }
+  const truncated = value.slice(0, maxLength).trimEnd()
+  return `${truncated}…`
+}
+
 const SceneRankingFilters = ({
   search,
   onChange,
@@ -129,6 +137,8 @@ const SceneRankingFilters = ({
   availableBooks: string[]
   isFetching: boolean
 }) => {
+  const includeScene = search.include_scene ?? true
+
   const handleChange = (patch: Partial<SceneRankingSearch>) => {
     onChange(patch)
   }
@@ -313,7 +323,7 @@ const SceneRankingFilters = ({
         </Text>
         <NativeSelectRoot w="full">
           <NativeSelectField
-            value={search.include_scene ? "true" : "false"}
+            value={includeScene ? "true" : "false"}
             onChange={(event) =>
               handleChange({ include_scene: event.target.value === "true" })
             }
@@ -502,6 +512,11 @@ const SceneSummary = ({ ranking }: { ranking: SceneRanking }) => {
 const SceneRankingItem = ({ ranking }: { ranking: SceneRanking }) => {
   const warnings = ranking.warnings ?? []
   const characterTags = ranking.character_tags ?? []
+  const scenePreviewSource =
+    ranking.scene?.refined ?? ranking.scene?.raw ?? ""
+  const scenePreview = scenePreviewSource
+    ? truncateText(scenePreviewSource.replace(/\s+/g, " ").trim(), 300)
+    : undefined
 
   return (
     <AccordionItem
@@ -533,6 +548,11 @@ const SceneRankingItem = ({ ranking }: { ranking: SceneRanking }) => {
             <Text fontSize="sm" color="fg.muted">
               {ranking.model_name} · {formatDateTime(ranking.created_at)}
             </Text>
+            {scenePreview && (
+              <Text fontSize="sm" color="fg.subtle" mt={2}>
+                {scenePreview}
+              </Text>
+            )}
           </Box>
         </Flex>
         <AccordionItemIndicator />
@@ -644,13 +664,14 @@ function SceneRankingsPage() {
     if (!search.book_slug) {
       return undefined
     }
+    const includeScene = search.include_scene ?? true
     return {
       book_slug: search.book_slug,
       limit: search.limit,
       model_name: search.model_name,
       prompt_version: search.prompt_version,
       weight_config_hash: search.weight_config_hash,
-      include_scene: search.include_scene,
+      include_scene: includeScene,
     }
   }, [search])
 
