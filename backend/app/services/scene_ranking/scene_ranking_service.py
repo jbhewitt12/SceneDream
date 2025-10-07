@@ -51,13 +51,13 @@ DEFAULT_WEIGHT_CONFIG: dict[str, float] = {
 }
 
 DEFAULT_SYSTEM_INSTRUCTION = (
-    "You score scenes from novels for their suitability as generative art prompts. "
+    "You score scenes from novels for their suitability to inspire generative image or video prompts. "
     "Respond with strictly valid JSON that matches the requested schema. "
     "All numeric scores must be decimal numbers between 1.0 and 10.0 with one decimal place."
 )
 
 CRITERIA_GUIDANCE = (
-    "originality: uniqueness of setting, tone, or scenario versus genre tropes.\n"
+    "originality: uniqueness of setting, tone, or scenario.\n"
     "visual_style_potential: richness of color, texture, and atmosphere cues.\n"
     "image_prompt_fit: how well the moment can become a single still image.\n"
     "video_prompt_fit: motion or progression that would excel in short video.\n"
