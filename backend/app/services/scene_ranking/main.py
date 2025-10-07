@@ -1,7 +1,7 @@
 """Scene ranking CLI entry point.
 
 Usage examples:
-    uv run python -m app.services.scene_ranking.main rank --book-slug preview-excession --limit 5
+    uv run python -m app.services.scene_ranking.main rank --book-slug excession-iain-m-banks
     uv run python -m app.services.scene_ranking.main rank --scene-id <uuid> --dry-run
 """
 
