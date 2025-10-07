@@ -173,7 +173,7 @@ const SceneRankingFilters = ({
           size="sm"
           gap={2}
           onClick={resetFilters}
-          isDisabled={availableBooks.length === 0}
+          disabled={availableBooks.length === 0}
         >
           <Icon as={FiRefreshCcw} />
           Reset
@@ -490,21 +490,6 @@ const SceneSummary = ({ ranking }: { ranking: SceneRanking }) => {
           {scene.refined ?? "—"}
         </Box>
       </Box>
-      <Box>
-        <Text fontSize="xs" color="fg.subtle" textTransform="uppercase" mb={2}>
-          Raw Excerpt
-        </Text>
-        <Box
-          p={3}
-          borderRadius="md"
-          borderWidth="1px"
-          bg="bg.muted"
-          whiteSpace="pre-wrap"
-          fontSize="sm"
-        >
-          {scene.raw}
-        </Box>
-      </Box>
     </Stack>
   )
 }
@@ -559,6 +544,23 @@ const SceneRankingItem = ({ ranking }: { ranking: SceneRanking }) => {
       </AccordionItemTrigger>
       <AccordionItemContent px={4} pb={4}>
         <Stack gap={6} pt={2}>
+          {ranking.scene?.raw && (
+            <Box>
+              <Text fontSize="xs" color="fg.subtle" textTransform="uppercase" mb={2}>
+                Raw Excerpt
+              </Text>
+              <Box
+                p={3}
+                borderRadius="md"
+                borderWidth="1px"
+                bg="bg.muted"
+                whiteSpace="pre-wrap"
+                fontSize="sm"
+              >
+                {ranking.scene.raw}
+              </Box>
+            </Box>
+          )}
           <Stack gap={2}>
             <Heading size="sm">Ranking Overview</Heading>
             <RankingMetadata ranking={ranking} />
