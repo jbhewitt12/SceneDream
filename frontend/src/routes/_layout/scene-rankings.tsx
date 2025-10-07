@@ -23,7 +23,7 @@ import {
   SimpleGrid,
   Spinner,
   Stack,
-  Tag,
+  TagRoot,
   TagLabel,
   Text,
   VStack,
@@ -571,9 +571,9 @@ const SceneRankingItem = ({ ranking }: { ranking: SceneRanking }) => {
               </Heading>
               <HStack gap={2} wrap="wrap">
                 {warnings.map((warning) => (
-                  <Tag key={warning} colorScheme="red" variant="subtle">
+                  <TagRoot key={warning} colorScheme="red" variant="subtle">
                     <TagLabel>{warning}</TagLabel>
-                  </Tag>
+                  </TagRoot>
                 ))}
               </HStack>
             </Stack>
@@ -583,9 +583,9 @@ const SceneRankingItem = ({ ranking }: { ranking: SceneRanking }) => {
               <Heading size="sm">Character Tags</Heading>
               <HStack gap={2} wrap="wrap">
                 {characterTags.map((tag) => (
-                  <Tag key={tag} colorScheme="green" variant="subtle">
+                  <TagRoot key={tag} colorScheme="green" variant="subtle">
                     <TagLabel>{tag}</TagLabel>
-                  </Tag>
+                  </TagRoot>
                 ))}
               </HStack>
             </Stack>
