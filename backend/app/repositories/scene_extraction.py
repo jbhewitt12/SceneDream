@@ -61,10 +61,11 @@ class SceneExtractionRepository:
         book_slug: Optional[str] = None,
         chapter_number: Optional[int] = None,
         limit: Optional[int] = None,
+        include_refined: bool = False,
     ) -> list[SceneExtraction]:
-        statement = select(SceneExtraction).where(
-            SceneExtraction.refinement_decision.is_(None)
-        )
+        statement = select(SceneExtraction)
+        if not include_refined:
+            statement = statement.where(SceneExtraction.refinement_decision.is_(None))
         if book_slug:
             statement = statement.where(SceneExtraction.book_slug == book_slug)
         if chapter_number is not None:

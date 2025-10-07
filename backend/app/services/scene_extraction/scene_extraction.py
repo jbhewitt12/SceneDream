@@ -10,7 +10,7 @@ import unicodedata
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import ebooklib
 from bs4 import BeautifulSoup
@@ -32,6 +32,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 BOOKS_DIR = PROJECT_ROOT / "books"
 EXCESSION_EPUB_PATH = BOOKS_DIR / "Iain Banks" / "Excession" / "Excession - Iain M. Banks.epub"
 ENABLE_REFINEMENT = True
+REFINEMENT_BATCH_SIZE = 5
 
 
 SCENE_EXTRACTION_SCHEMA_TEXT = """{
@@ -101,6 +102,12 @@ class RawScene:
 
     def signature(self) -> Tuple[str, str]:
         return (self.location_marker.strip().lower(), self.raw_excerpt.strip())
+
+
+def _batched_scenes(scenes: Sequence[RawScene], batch_size: int) -> Iterable[List[RawScene]]:
+    size = max(1, batch_size)
+    for start in range(0, len(scenes), size):
+        yield list(scenes[start : start + size])
 
 
 
@@ -709,6 +716,11 @@ def _build_parser() -> argparse.ArgumentParser:
     refine_pending.add_argument("--model", help="Override the Gemini model used for refinement.")
     refine_pending.add_argument("--temperature", type=float, help="Override the Gemini temperature.")
     refine_pending.add_argument("--max-tokens", type=int, dest="max_tokens", help="Override the max tokens for refinement requests.")
+    refine_pending.add_argument(
+        "--override",
+        action="store_true",
+        help="Re-run refinement even for scenes that already have decisions.",
+    )
     refine_pending.set_defaults(func=_cmd_refine_pending)
 
     return parser
@@ -741,6 +753,7 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
             book_slug=args.book,
             chapter_number=args.chapter,
             limit=limit,
+            include_refined=bool(getattr(args, "override", False)),
         )
         if not records:
             print(
@@ -749,7 +762,7 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
                         "scenes_considered": 0,
                         "scenes_refined": 0,
                         "chapters_processed": 0,
-                        "message": "No pending scenes found.",
+                        "message": "No scenes found for refinement.",
                     },
                     indent=2,
                     ensure_ascii=False,
@@ -798,14 +811,27 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
                         word_end=record.scene_word_end,
                     )
                 )
-            try:
-                refinements = refiner.refine(chapter, raw_scenes, fail_on_error=True)
-            except SceneRefinementError as exc:
-                session.rollback()
-                raise SystemExit(
-                    f"Refinement failed for {book_slug} chapter {chapter_number}: {exc}"
-                ) from exc
-            if not refinements:
+            refinements: Dict[int, RefinedScene] = {}
+            batches = list(_batched_scenes(raw_scenes, REFINEMENT_BATCH_SIZE))
+            for batch in batches:
+                try:
+                    batch_refinements = refiner.refine(chapter, batch, fail_on_error=True)
+                except SceneRefinementError as exc:
+                    session.rollback()
+                    raise SystemExit(
+                        "Refinement failed for "
+                        f"{book_slug} chapter {chapter_number} (batch starting at scene"
+                        f" {getattr(batch[0], 'scene_id', '?')}): {exc}"
+                    ) from exc
+                if not batch_refinements:
+                    session.rollback()
+                    raise SystemExit(
+                        "Refinement returned no decisions for "
+                        f"{book_slug} chapter {chapter_number} (batch starting at scene "
+                        f"{getattr(batch[0], 'scene_id', '?')})."
+                    )
+                refinements.update(batch_refinements)
+            if raw_scenes and not refinements:
                 session.rollback()
                 raise SystemExit(
                     f"Refinement returned no decisions for {book_slug} chapter {chapter_number}."
