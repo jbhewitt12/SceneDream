@@ -1,6 +1,12 @@
 """
 Run this to test the scene refinement model.
 
+We want refinement to be pretty ruthless in its decision-making.
+
+Prompt to improve:
+    Read plan.md. Look at backend/app/services/scene_extraction/scene_refinement_tester.py and the examples there. Update the backend/app/services/scene_extraction/scene_refinement.py prompt using best prompting 
+    practices to maximise the number of correct labels done using the backend/app/services/scene_extraction/scene_refinement_tester.py. Iterate the prompt over multiple rounds of testing.
+
 To run: uv run python -m app.services.scene_extraction.scene_refinement_tester
 """
 
