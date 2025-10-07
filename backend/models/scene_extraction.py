@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, Column, DateTime, Float, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
@@ -26,6 +27,8 @@ class SceneExtraction(SQLModel, table=True):
             name="uq_scene_extraction_chapter_scene",
         ),
     )
+
+    __allow_unmapped__ = True
 
     id: uuid.UUID = Field(
         default_factory=uuid.uuid4,
@@ -83,7 +86,9 @@ class SceneExtraction(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False),
     )
-    rankings: list["SceneRanking"] = Relationship(back_populates="scene_extraction")
+    rankings: list["SceneRanking"] = Relationship(
+        sa_relationship=relationship("SceneRanking", back_populates="scene_extraction")
+    )
 
     def touch_refined_timestamp(self) -> None:
         """Helper to stamp the refinement timestamp when mutating refined text."""
