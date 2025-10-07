@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ConfigDict
 from sqlalchemy import Column, DateTime, Float, Integer, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
@@ -30,6 +31,8 @@ class SceneRanking(SQLModel, table=True):
             name="uq_scene_ranking_unique_run",
         ),
     )
+
+    __allow_unmapped__ = True
 
     id: uuid.UUID = Field(
         default_factory=uuid.uuid4,
@@ -89,4 +92,6 @@ class SceneRanking(SQLModel, table=True):
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
-    scene_extraction: "SceneExtraction" | None = Relationship(back_populates="rankings")
+    scene_extraction: "SceneExtraction" | None = Relationship(
+        sa_relationship=relationship("SceneExtraction", back_populates="rankings")
+    )
