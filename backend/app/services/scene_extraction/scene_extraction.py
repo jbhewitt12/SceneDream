@@ -31,7 +31,7 @@ logger.addHandler(logging.NullHandler())
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 BOOKS_DIR = PROJECT_ROOT / "books"
 EXCESSION_EPUB_PATH = BOOKS_DIR / "Iain Banks" / "Excession" / "Excession - Iain M. Banks.epub"
-ENABLE_REFINEMENT = False
+ENABLE_REFINEMENT = True
 
 
 SCENE_EXTRACTION_SCHEMA_TEXT = """{

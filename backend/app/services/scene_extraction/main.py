@@ -1,6 +1,8 @@
 """Scene extraction CLI entry point.
 
 To run: uv run python -m app.services.scene_extraction.main preview-excession <no. of chapters>
+
+To run extraction + refinement: uv run python -m app.services.scene_extraction.main extract-excession --refine
 """
 
 from __future__ import annotations
