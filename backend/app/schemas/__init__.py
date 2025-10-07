@@ -6,11 +6,19 @@ from .scene_extraction import (
     SceneExtractionListResponse,
     SceneExtractionRead,
 )
+from .scene_ranking import (
+    SceneRankingListResponse,
+    SceneRankingRead,
+    SceneRankingSceneSummary,
+)
 
 __all__ = [
     "SceneExtractionDateRange",
     "SceneExtractionFilterOptions",
     "SceneExtractionListResponse",
     "SceneExtractionRead",
+    "SceneRankingListResponse",
+    "SceneRankingRead",
+    "SceneRankingSceneSummary",
 ]
 
