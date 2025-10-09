@@ -11,7 +11,6 @@ const items: Array<{ icon: IconType; title: string; path: string }> = [
   { icon: FiFilm, title: "Extracted Scenes", path: "/extracted-scenes" },
   { icon: FiTrendingUp, title: "Scene Rankings", path: "/scene-rankings" },
   { icon: FiFilm, title: "Prompt Gallery", path: "/prompt-gallery" },
-  { icon: FiBriefcase, title: "Items", path: "/items" },
 ]
 
 const SidebarItems = ({ onClose }: SidebarItemsProps) => {

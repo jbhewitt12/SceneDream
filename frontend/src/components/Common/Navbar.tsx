@@ -1,15 +1,10 @@
-import { Flex, Image, useBreakpointValue } from "@chakra-ui/react"
+import { Button, Flex, HStack, Text } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 
-import Logo from "/assets/images/fastapi-logo.svg"
-
 function Navbar() {
-  const display = useBreakpointValue({ base: "none", md: "flex" })
-
   return (
     <Flex
-      display={display}
-      justify="space-between"
+      justify="center"
       position="sticky"
       color="white"
       align="center"
@@ -18,10 +13,20 @@ function Navbar() {
       top={0}
       p={4}
     >
-      <Link to="/extracted-scenes">
-        <Image src={Logo} alt="Logo" w="180px" maxW="2xs" px={2} />
+      <Link to="/extracted-scenes" style={{ position: "absolute", left: 16 }}>
+        <Text fontWeight="bold">SceneDream</Text>
       </Link>
-      <Flex gap={2} alignItems="center" />
+      <HStack gap={1} alignItems="center">
+        <Link to="/extracted-scenes">
+          <Button size="sm" variant="ghost">Extracted Scenes</Button>
+        </Link>
+        <Link to="/scene-rankings">
+          <Button size="sm" variant="ghost">Scene Rankings</Button>
+        </Link>
+        <Link to="/prompt-gallery">
+          <Button size="sm" variant="ghost">Prompt Gallery</Button>
+        </Link>
+      </HStack>
     </Flex>
   )
 }
