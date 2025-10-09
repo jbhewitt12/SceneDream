@@ -53,6 +53,8 @@ services:
       db:
         condition: service_healthy
         restart: true
+    volumes:
+      - ./img:/app/img
     command: bash scripts/prestart.sh
     env_file:
       - .env
@@ -87,6 +89,8 @@ services:
         restart: true
       prestart:
         condition: service_completed_successfully
+    volumes:
+      - ./img:/app/img
     env_file:
       - .env
     environment:
