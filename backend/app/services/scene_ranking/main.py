@@ -62,7 +62,7 @@ def _build_parser() -> argparse.ArgumentParser:
     rank.add_argument(
         "--model-name",
         type=str,
-        help="Override the default model name (e.g., gemini-2.5-flash).",
+        help="Override the default model name (e.g., gemini-2.5-pro).",
     )
     rank.add_argument(
         "--prompt-version",

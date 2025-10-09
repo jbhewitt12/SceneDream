@@ -273,7 +273,7 @@ const SceneRankingFilters = ({
             Model Name
           </Text>
           <Input
-            placeholder="gemini-2.5-flash"
+            placeholder="gemini-2.5-pro"
             value={search.model_name ?? ""}
             onChange={(event) => {
               const value = event.target.value

@@ -10,9 +10,9 @@
 - Ensure the workflow remains modular so each stage can evolve independently.
 
 ## Pipeline Overview
-1. **Scene extraction (existing):** Maintain the current `gemini-2.5-flash` pass that stores raw excerpts, chunk spans, and metadata in `scene_extractions`.
+1. **Scene extraction (existing):** Maintain the current `gemini-2.5-pro` pass that stores raw excerpts, chunk spans, and metadata in `scene_extractions`.
 2. **Candidate detection:** Run lightweight NER/regex on the persisted excerpt to seed a list of probable character mentions and known aliases.
-3. **LLM tagging:** Use `gemini-2.5-flash` with a dedicated prompt and JSON schema to classify candidates, add descriptors, and suggest canonical hints.
+3. **LLM tagging:** Use `gemini-2.5-pro` with a dedicated prompt and JSON schema to classify candidates, add descriptors, and suggest canonical hints.
 4. **Character resolver:** Embed names/descriptors, match to existing characters, and create or merge records as needed; persist matches and diagnostics.
 5. **Asynchronous orchestration:** Trigger the tagging/resolver flow via a worker queue so long scenes do not block scene extraction.
 
@@ -27,7 +27,7 @@
 - Store the candidate list in a transient payload passed to the tagging stage.
 
 ### Stage 3: LLM Tagging
-- Prompt `gemini-2.5-flash` with the raw excerpt, candidate list, and known aliases.
+- Prompt `gemini-2.5-pro` with the raw excerpt, candidate list, and known aliases.
 - Request JSON objects with fields such as `name`, `canonical_hint`, `aliases`, `visual_descriptors`, `role`, `confidence`, and `character_span` (paragraph/offset indices).
 - Persist the raw LLM response in `SceneExtraction.props['character_tagging']` for auditing.
 
