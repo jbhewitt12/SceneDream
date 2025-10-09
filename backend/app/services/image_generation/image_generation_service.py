@@ -1,0 +1,707 @@
+"""Service for generating images from structured prompts using DALL·E 3."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import logging
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable
+from uuid import UUID
+
+from sqlmodel import Session
+
+from app.repositories.generated_image import GeneratedImageRepository
+from app.repositories.image_prompt import ImagePromptRepository
+from app.repositories.scene_extraction import SceneExtractionRepository
+from app.repositories.scene_ranking import SceneRankingRepository
+from app.services.image_generation import dalle_image_api
+from models.generated_image import GeneratedImage
+from models.image_prompt import ImagePrompt
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+
+
+class ImageGenerationServiceError(RuntimeError):
+    """Raised when image generation fails under strict settings."""
+
+
+@dataclass(slots=True)
+class ImageGenerationConfig:
+    """Runtime configuration for image generation."""
+
+    provider: str = "openai"
+    model: str = "dall-e-3"
+    quality: str = "standard"
+    preferred_style: str | None = None
+    aspect_ratio: str | None = None
+    response_format: str = "b64_json"
+    concurrency: int = 3
+    dry_run: bool = False
+    overwrite: bool = False
+    api_key: str | None = None
+    storage_base: str = "img/generated"
+
+    def copy_with(self, **overrides: Any) -> ImageGenerationConfig:
+        """Create a copy with overridden fields."""
+        data = {
+            "provider": self.provider,
+            "model": self.model,
+            "quality": self.quality,
+            "preferred_style": self.preferred_style,
+            "aspect_ratio": self.aspect_ratio,
+            "response_format": self.response_format,
+            "concurrency": self.concurrency,
+            "dry_run": self.dry_run,
+            "overwrite": self.overwrite,
+            "api_key": self.api_key,
+            "storage_base": self.storage_base,
+        }
+        data.update({k: v for k, v in overrides.items() if v is not None})
+        return ImageGenerationConfig(**data)
+
+
+@dataclass(slots=True)
+class GenerationTask:
+    """Represents a single image generation task."""
+
+    prompt: ImagePrompt
+    variant_index: int
+    size: str
+    quality: str
+    style: str
+    aspect_ratio: str | None
+    storage_path: str
+    file_name: str
+
+
+@dataclass(slots=True)
+class GenerationResult:
+    """Result of an image generation attempt."""
+
+    task: GenerationTask
+    generated_image_id: UUID | None = None
+    error: str | None = None
+    skipped: bool = False
+
+
+def map_aspect_ratio_to_size(aspect_ratio: str | None) -> str:
+    """
+    Map aspect ratio to DALL·E 3 size.
+
+    Args:
+        aspect_ratio: Aspect ratio string (1:1, 9:16, 16:9) or None
+
+    Returns:
+        Size string for DALL·E 3 API (1024x1024, 1024x1792, or 1792x1024)
+    """
+    mapping = {
+        "1:1": "1024x1024",
+        "9:16": "1024x1792",
+        "16:9": "1792x1024",
+    }
+    return mapping.get(aspect_ratio or "", "1024x1024")
+
+
+def derive_style_from_tags(style_tags: list[str] | None, preferred: str | None = None) -> str:
+    """
+    Derive DALL·E 3 style from prompt style tags.
+
+    Args:
+        style_tags: List of style tags from the image prompt
+        preferred: Preferred style override
+
+    Returns:
+        Style string for DALL·E 3 API ("vivid" or "natural")
+    """
+    if preferred:
+        return preferred
+
+    if style_tags:
+        for tag in style_tags:
+            if "natural" in tag.lower():
+                return "natural"
+
+    return "vivid"
+
+
+def compute_file_checksum(file_path: Path) -> str:
+    """
+    Compute SHA256 checksum of a file.
+
+    Args:
+        file_path: Path to the file
+
+    Returns:
+        Hexadecimal SHA256 checksum string
+    """
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+
+class ImageGenerationService:
+    """Generate images from prompts using DALL·E 3 with idempotency and concurrency control."""
+
+    def __init__(
+        self,
+        session: Session,
+        config: ImageGenerationConfig | None = None,
+        api_key: str | None = None,
+    ) -> None:
+        self._session = session
+        self._config = config or ImageGenerationConfig()
+        self._api_key = api_key or self._config.api_key or os.getenv("OPENAI_API_KEY", "")
+        self._image_repo = GeneratedImageRepository(session)
+        self._prompt_repo = ImagePromptRepository(session)
+        self._scene_repo = SceneExtractionRepository(session)
+        self._ranking_repo = SceneRankingRepository(session)
+
+    async def generate_for_selection(
+        self,
+        *,
+        book_slug: str | None = None,
+        chapter_range: tuple[int, int] | None = None,
+        scene_ids: list[UUID] | None = None,
+        prompt_ids: list[UUID] | None = None,
+        top_scenes: int | None = None,
+        limit: int | None = None,
+        overwrite: bool = False,
+        quality: str = "standard",
+        preferred_style: str | None = None,
+        aspect_ratio: str | None = None,
+        provider: str = "openai",
+        model: str = "dall-e-3",
+        response_format: str = "b64_json",
+        concurrency: int = 3,
+        dry_run: bool = False,
+    ) -> list[UUID]:
+        """
+        Generate images for a selection of prompts.
+
+        Args:
+            book_slug: Filter prompts by book slug
+            chapter_range: Filter by chapter range (inclusive start, exclusive end)
+            scene_ids: Filter by specific scene extraction IDs
+            prompt_ids: Filter by specific image prompt IDs
+            top_scenes: Generate for top N scenes by ranking (skips scenes with existing images)
+            limit: Maximum number of images to generate
+            overwrite: If True, regenerate even if image exists
+            quality: Image quality ("standard" or "hd")
+            preferred_style: Preferred style override ("vivid" or "natural")
+            aspect_ratio: Preferred aspect ratio ("1:1", "9:16", or "16:9")
+            provider: Image generation provider (default: "openai")
+            model: Model to use (default: "dall-e-3")
+            response_format: Response format ("b64_json" or "url")
+            concurrency: Number of concurrent generation tasks
+            dry_run: If True, plan tasks without executing them
+
+        Returns:
+            List of generated image IDs (or empty list in dry-run mode)
+        """
+        config = self._config.copy_with(
+            provider=provider,
+            model=model,
+            quality=quality,
+            preferred_style=preferred_style,
+            aspect_ratio=aspect_ratio,
+            response_format=response_format,
+            concurrency=concurrency,
+            dry_run=dry_run,
+            overwrite=overwrite,
+        )
+
+        # Fetch prompts based on filters
+        prompts = await self._fetch_prompts(
+            book_slug=book_slug,
+            chapter_range=chapter_range,
+            scene_ids=scene_ids,
+            prompt_ids=prompt_ids,
+            top_scenes=top_scenes,
+            limit=limit,
+        )
+
+        if not prompts:
+            logger.info("No prompts found matching the selection criteria")
+            return []
+
+        # Build generation tasks
+        tasks = self._build_tasks(prompts, config)
+
+        if config.dry_run:
+            self._log_dry_run(tasks, config)
+            return []
+
+        # Execute tasks with concurrency control
+        results = await self._execute_tasks(tasks, config)
+
+        # Collect successful generation IDs
+        generated_ids = [
+            r.generated_image_id
+            for r in results
+            if r.generated_image_id is not None
+        ]
+
+        logger.info(
+            "Generated %d images (%d skipped, %d errors)",
+            len(generated_ids),
+            sum(1 for r in results if r.skipped),
+            sum(1 for r in results if r.error),
+        )
+
+        return generated_ids
+
+    async def _fetch_prompts(
+        self,
+        *,
+        book_slug: str | None,
+        chapter_range: tuple[int, int] | None,
+        scene_ids: list[UUID] | None,
+        prompt_ids: list[UUID] | None,
+        top_scenes: int | None,
+        limit: int | None,
+    ) -> list[ImagePrompt]:
+        """Fetch prompts based on selection criteria."""
+        # Handle top_scenes mode first (priority over other filters)
+        if top_scenes is not None and book_slug:
+            return await self._fetch_prompts_for_top_scenes(
+                book_slug=book_slug,
+                top_scenes_count=top_scenes,
+            )
+
+        if prompt_ids:
+            # Direct prompt ID lookup
+            prompts = []
+            for prompt_id in prompt_ids:
+                prompt = self._prompt_repo.get(prompt_id)
+                if prompt:
+                    prompts.append(prompt)
+            if limit:
+                prompts = prompts[:limit]
+            return prompts
+
+        if scene_ids:
+            # Fetch prompts for specific scenes
+            prompts = []
+            for scene_id in scene_ids:
+                scene_prompts = self._prompt_repo.list_for_scene(
+                    scene_id,
+                    include_scene=True,
+                )
+                prompts.extend(scene_prompts)
+            if limit:
+                prompts = prompts[:limit]
+            return prompts
+
+        if book_slug:
+            # Fetch prompts for book/chapters
+            prompts = self._prompt_repo.list_for_book(
+                book_slug=book_slug,
+                include_scene=True,
+            )
+
+            # Apply chapter range filter if specified
+            if chapter_range:
+                start_chapter, end_chapter = chapter_range
+                prompts = [
+                    p for p in prompts
+                    if p.scene_extraction
+                    and start_chapter <= p.scene_extraction.chapter_number < end_chapter
+                ]
+
+            if limit:
+                prompts = prompts[:limit]
+            return prompts
+
+        return []
+
+    async def _fetch_prompts_for_top_scenes(
+        self,
+        *,
+        book_slug: str,
+        top_scenes_count: int,
+    ) -> list[ImagePrompt]:
+        """
+        Fetch prompts for top-ranked scenes, skipping scenes with existing images.
+
+        Args:
+            book_slug: Book slug to filter by
+            top_scenes_count: Number of top scenes to process
+
+        Returns:
+            List of prompts for scenes without existing images
+        """
+        # Fetch many more rankings than needed to account for scenes with existing images
+        # We'll fetch 5x the requested amount to have a good buffer
+        fetch_limit = top_scenes_count * 5
+
+        logger.info(
+            "Fetching top %d rankings for book '%s' (will filter to %d scenes without images)",
+            fetch_limit,
+            book_slug,
+            top_scenes_count,
+        )
+
+        # Get top-ranked scenes
+        rankings = self._ranking_repo.list_top_rankings_for_book(
+            book_slug=book_slug,
+            limit=fetch_limit,
+            include_scene=True,
+        )
+
+        if not rankings:
+            logger.warning("No rankings found for book '%s'", book_slug)
+            return []
+
+        logger.info("Found %d rankings for book '%s'", len(rankings), book_slug)
+
+        # Filter to scenes without existing images
+        scenes_without_images: list[UUID] = []
+        for ranking in rankings:
+            scene_id = ranking.scene_extraction_id
+
+            # Check if this scene already has generated images
+            existing_images = self._image_repo.list_for_scene(
+                scene_id,
+                limit=1,
+            )
+
+            if not existing_images:
+                scenes_without_images.append(scene_id)
+                logger.debug(
+                    "Scene %s (priority=%.3f) has no generated images",
+                    scene_id,
+                    ranking.overall_priority,
+                )
+
+                # Stop once we have enough scenes
+                if len(scenes_without_images) >= top_scenes_count:
+                    break
+            else:
+                logger.debug(
+                    "Skipping scene %s (priority=%.3f) - already has %d generated image(s)",
+                    scene_id,
+                    ranking.overall_priority,
+                    len(existing_images),
+                )
+
+        logger.info(
+            "Found %d scenes without images out of %d top-ranked scenes",
+            len(scenes_without_images),
+            len(rankings),
+        )
+
+        if not scenes_without_images:
+            logger.warning("All top-ranked scenes already have generated images")
+            return []
+
+        # Fetch prompts for these scenes
+        prompts: list[ImagePrompt] = []
+        for scene_id in scenes_without_images:
+            scene_prompts = self._prompt_repo.list_for_scene(
+                scene_id,
+                include_scene=True,
+            )
+            if scene_prompts:
+                # Take the first prompt for each scene (could make this configurable)
+                prompts.append(scene_prompts[0])
+                logger.debug(
+                    "Selected prompt %s for scene %s (%d prompts available)",
+                    scene_prompts[0].id,
+                    scene_id,
+                    len(scene_prompts),
+                )
+            else:
+                logger.warning("No prompts found for scene %s", scene_id)
+
+        logger.info("Selected %d prompts from %d scenes", len(prompts), len(scenes_without_images))
+
+        return prompts
+
+    def _build_tasks(
+        self,
+        prompts: list[ImagePrompt],
+        config: ImageGenerationConfig,
+    ) -> list[GenerationTask]:
+        """Build generation tasks from prompts."""
+        tasks: list[GenerationTask] = []
+
+        for prompt in prompts:
+            if not prompt.scene_extraction:
+                logger.warning(
+                    "Prompt %s has no scene_extraction; skipping",
+                    prompt.id,
+                )
+                continue
+
+            scene = prompt.scene_extraction
+
+            # Determine aspect ratio, size, and style
+            prompt_aspect = prompt.attributes.get("aspect_ratio") if prompt.attributes else None
+            aspect_ratio = config.aspect_ratio or prompt_aspect
+            size = map_aspect_ratio_to_size(aspect_ratio)
+            style = derive_style_from_tags(prompt.style_tags, config.preferred_style)
+
+            # Build storage path and filename
+            storage_path = f"{config.storage_base}/{scene.book_slug}/chapter-{scene.chapter_number}"
+            file_name = f"scene-{scene.scene_number}-v0.png"
+
+            # Check for idempotency (unless overwrite is enabled)
+            if not config.overwrite:
+                existing = self._image_repo.find_existing_by_params(
+                    image_prompt_id=prompt.id,
+                    variant_index=0,
+                    provider=config.provider,
+                    model=config.model,
+                    size=size,
+                    quality=config.quality,
+                    style=style,
+                )
+                if existing:
+                    logger.debug(
+                        "Skipping prompt %s (image already exists: %s)",
+                        prompt.id,
+                        existing.id,
+                    )
+                    continue
+
+            tasks.append(
+                GenerationTask(
+                    prompt=prompt,
+                    variant_index=0,
+                    size=size,
+                    quality=config.quality,
+                    style=style,
+                    aspect_ratio=aspect_ratio,
+                    storage_path=storage_path,
+                    file_name=file_name,
+                )
+            )
+
+        return tasks
+
+    def _log_dry_run(
+        self,
+        tasks: list[GenerationTask],
+        config: ImageGenerationConfig,
+    ) -> None:
+        """Log planned operations in dry-run mode."""
+        logger.info("=== DRY RUN MODE ===")
+        logger.info("Planned generation tasks: %d", len(tasks))
+        logger.info("Provider: %s", config.provider)
+        logger.info("Model: %s", config.model)
+        logger.info("Quality: %s", config.quality)
+        logger.info("Response format: %s", config.response_format)
+        logger.info("Concurrency: %d", config.concurrency)
+
+        for i, task in enumerate(tasks[:10]):  # Show first 10
+            logger.info(
+                "Task %d: prompt=%s, size=%s, style=%s, path=%s/%s",
+                i + 1,
+                task.prompt.id,
+                task.size,
+                task.style,
+                task.storage_path,
+                task.file_name,
+            )
+
+        if len(tasks) > 10:
+            logger.info("... and %d more tasks", len(tasks) - 10)
+
+    async def _execute_tasks(
+        self,
+        tasks: list[GenerationTask],
+        config: ImageGenerationConfig,
+    ) -> list[GenerationResult]:
+        """Execute generation tasks with bounded concurrency."""
+        semaphore = asyncio.Semaphore(config.concurrency)
+        results: list[GenerationResult] = []
+
+        async def bounded_generate(task: GenerationTask) -> GenerationResult:
+            async with semaphore:
+                return await self._generate_single(task, config)
+
+        # Execute all tasks concurrently (bounded by semaphore)
+        results = await asyncio.gather(
+            *[bounded_generate(task) for task in tasks],
+            return_exceptions=False,
+        )
+
+        return results
+
+    async def _generate_single(
+        self,
+        task: GenerationTask,
+        config: ImageGenerationConfig,
+    ) -> GenerationResult:
+        """Generate a single image from a task."""
+        try:
+            # Check idempotency again (in case of race conditions)
+            if not config.overwrite:
+                existing = self._image_repo.find_existing_by_params(
+                    image_prompt_id=task.prompt.id,
+                    variant_index=task.variant_index,
+                    provider=config.provider,
+                    model=config.model,
+                    size=task.size,
+                    quality=task.quality,
+                    style=task.style,
+                )
+                if existing:
+                    return GenerationResult(task=task, skipped=True)
+
+            # Log the prompt being used
+            logger.info(
+                "Generating image with prompt (ID: %s):\n%s",
+                task.prompt.id,
+                task.prompt.prompt_text,
+            )
+
+            # Call DALL·E API (runs in thread pool to avoid blocking)
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: dalle_image_api.generate_images(
+                    prompt=task.prompt.prompt_text,
+                    api_key=self._api_key,
+                    model=config.model,
+                    size=task.size,
+                    quality=task.quality,
+                    style=task.style,
+                    n=1,
+                    response_format=config.response_format,
+                ),
+            )
+
+            if not results:
+                raise ImageGenerationServiceError("API returned no results")
+
+            # Save image to disk
+            storage_dir = _PROJECT_ROOT / task.storage_path
+            storage_dir.mkdir(parents=True, exist_ok=True)
+            file_path = storage_dir / task.file_name
+
+            if config.response_format == "b64_json":
+                success = await loop.run_in_executor(
+                    None,
+                    lambda: dalle_image_api.save_image_from_b64(results[0], str(file_path)),
+                )
+            else:  # url format
+                success = await loop.run_in_executor(
+                    None,
+                    lambda: dalle_image_api.save_image_from_url(results[0], str(file_path)),
+                )
+
+            if not success:
+                raise ImageGenerationServiceError("Failed to save image to disk")
+
+            # Compute file metadata
+            file_size = file_path.stat().st_size
+            checksum = await loop.run_in_executor(
+                None,
+                lambda: compute_file_checksum(file_path),
+            )
+
+            # Parse dimensions from size string
+            width, height = map(int, task.size.split("x"))
+
+            # Create database record
+            assert task.prompt.scene_extraction is not None
+            image_data = {
+                "scene_extraction_id": task.prompt.scene_extraction_id,
+                "image_prompt_id": task.prompt.id,
+                "book_slug": task.prompt.scene_extraction.book_slug,
+                "chapter_number": task.prompt.scene_extraction.chapter_number,
+                "variant_index": task.variant_index,
+                "provider": config.provider,
+                "model": config.model,
+                "size": task.size,
+                "quality": task.quality,
+                "style": task.style,
+                "aspect_ratio": task.aspect_ratio,
+                "response_format": config.response_format,
+                "storage_path": task.storage_path,
+                "file_name": task.file_name,
+                "width": width,
+                "height": height,
+                "bytes_approx": file_size,
+                "checksum_sha256": checksum,
+                "request_id": None,  # Could extract from API response if available
+            }
+
+            generated_image = self._image_repo.create(
+                data=image_data,
+                commit=True,
+                refresh=True,
+            )
+
+            logger.info(
+                "Generated image %s for prompt %s (%s, %s)",
+                generated_image.id,
+                task.prompt.id,
+                task.size,
+                task.style,
+            )
+
+            return GenerationResult(
+                task=task,
+                generated_image_id=generated_image.id,
+            )
+
+        except Exception as exc:
+            error_msg = f"Failed to generate image: {exc}"
+            logger.error(
+                "Error generating image for prompt %s: %s",
+                task.prompt.id,
+                exc,
+            )
+
+            # Try to create a failed record
+            try:
+                assert task.prompt.scene_extraction is not None
+                failed_data = {
+                    "scene_extraction_id": task.prompt.scene_extraction_id,
+                    "image_prompt_id": task.prompt.id,
+                    "book_slug": task.prompt.scene_extraction.book_slug,
+                    "chapter_number": task.prompt.scene_extraction.chapter_number,
+                    "variant_index": task.variant_index,
+                    "provider": config.provider,
+                    "model": config.model,
+                    "size": task.size,
+                    "quality": task.quality,
+                    "style": task.style,
+                    "aspect_ratio": task.aspect_ratio,
+                    "response_format": config.response_format,
+                    "storage_path": task.storage_path,
+                    "file_name": task.file_name,
+                    "error": error_msg,
+                }
+                failed_image = self._image_repo.create(
+                    data=failed_data,
+                    commit=True,
+                    refresh=True,
+                )
+                logger.info("Created failed image record: %s", failed_image.id)
+            except Exception as db_exc:
+                logger.error("Failed to create error record: %s", db_exc)
+
+            return GenerationResult(task=task, error=error_msg)
+
+
+__all__ = [
+    "ImageGenerationService",
+    "ImageGenerationConfig",
+    "ImageGenerationServiceError",
+    "GenerationTask",
+    "GenerationResult",
+    "map_aspect_ratio_to_size",
+    "derive_style_from_tags",
+    "compute_file_checksum",
+]

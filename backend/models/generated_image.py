@@ -80,8 +80,7 @@ class GeneratedImage(SQLModel, table=True):
     request_id: str | None = Field(default=None, max_length=255)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        sa_column=Column(DateTime(timezone=True), nullable=False),
-        index=True,
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
     )
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),

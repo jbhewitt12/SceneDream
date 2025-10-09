@@ -29,6 +29,9 @@ function Navbar() {
         <Link to="/prompt-gallery">
           <Button size="sm" variant="ghost" className="main-link">Prompt Gallery</Button>
         </Link>
+        <Link to="/generated-images">
+          <Button size="sm" variant="ghost" className="main-link">Generated Images</Button>
+        </Link>
       </HStack>
     </Flex>
   )
