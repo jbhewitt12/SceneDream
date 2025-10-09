@@ -410,13 +410,12 @@ class ImageGenerationService:
                 include_scene=True,
             )
             if scene_prompts:
-                # Take the first prompt for each scene (could make this configurable)
-                prompts.append(scene_prompts[0])
+                # Take all prompts for each scene
+                prompts.extend(scene_prompts)
                 logger.debug(
-                    "Selected prompt %s for scene %s (%d prompts available)",
-                    scene_prompts[0].id,
-                    scene_id,
+                    "Selected %d prompt(s) for scene %s",
                     len(scene_prompts),
+                    scene_id,
                 )
             else:
                 logger.warning("No prompts found for scene %s", scene_id)
@@ -433,6 +432,9 @@ class ImageGenerationService:
         """Build generation tasks from prompts."""
         tasks: list[GenerationTask] = []
 
+        # Track variant indices per scene
+        scene_variant_counters: dict[UUID, int] = {}
+
         for prompt in prompts:
             if not prompt.scene_extraction:
                 logger.warning(
@@ -442,6 +444,7 @@ class ImageGenerationService:
                 continue
 
             scene = prompt.scene_extraction
+            scene_id = scene.id
 
             # Determine aspect ratio, size, and style
             prompt_aspect = prompt.attributes.get("aspect_ratio") if prompt.attributes else None
@@ -449,15 +452,20 @@ class ImageGenerationService:
             size = map_aspect_ratio_to_size(aspect_ratio)
             style = derive_style_from_tags(prompt.style_tags, config.preferred_style)
 
+            # Get or initialize variant index for this scene
+            if scene_id not in scene_variant_counters:
+                scene_variant_counters[scene_id] = 0
+            variant_index = scene_variant_counters[scene_id]
+
             # Build storage path and filename
             storage_path = f"{config.storage_base}/{scene.book_slug}/chapter-{scene.chapter_number}"
-            file_name = f"scene-{scene.scene_number}-v0.png"
+            file_name = f"scene-{scene.scene_number}-v{variant_index}.png"
 
             # Check for idempotency (unless overwrite is enabled)
             if not config.overwrite:
                 existing = self._image_repo.find_existing_by_params(
                     image_prompt_id=prompt.id,
-                    variant_index=0,
+                    variant_index=variant_index,
                     provider=config.provider,
                     model=config.model,
                     size=size,
@@ -475,7 +483,7 @@ class ImageGenerationService:
             tasks.append(
                 GenerationTask(
                     prompt=prompt,
-                    variant_index=0,
+                    variant_index=variant_index,
                     size=size,
                     quality=config.quality,
                     style=style,
@@ -484,6 +492,9 @@ class ImageGenerationService:
                     file_name=file_name,
                 )
             )
+
+            # Increment variant counter for this scene
+            scene_variant_counters[scene_id] += 1
 
         return tasks
 
