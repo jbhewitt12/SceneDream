@@ -15,6 +15,7 @@ import {
   GeneratedImageApi,
   type GeneratedImageWithContext,
 } from "@/api/generatedImages"
+import { OpenAPI } from "@/client"
 import {
   DialogBody,
   DialogCloseTrigger,
@@ -103,7 +104,7 @@ const GeneratedImageModal = ({
     return null
   }
 
-  const fullPath = `/${currentImage.image.storage_path}${currentImage.image.file_name}`
+  const fullPath = `${OpenAPI.BASE}/${currentImage.image.storage_path}/${currentImage.image.file_name}`
   const hasMultipleImages = sceneImages.length > 1
 
   return (
