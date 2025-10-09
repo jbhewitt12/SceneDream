@@ -12,8 +12,8 @@ import {
   Text,
   useClipboard,
 } from "@chakra-ui/react"
-import { useMemo } from "react"
-import { FiCopy, FiMaximize2 } from "react-icons/fi"
+import { useMemo, useState } from "react"
+import { FiCopy } from "react-icons/fi"
 
 import type { ImagePrompt } from "@/api/imagePrompts"
 import useCustomToast from "@/hooks/useCustomToast"
@@ -45,27 +45,16 @@ const formatAttributeValue = (value: unknown): string | null => {
   return null
 }
 
-const createPreview = (text: string, maxLength = 280) => {
-  const condensed = text.replace(/\s+/g, " ").trim()
-  if (condensed.length <= maxLength) {
-    return condensed
-  }
-  return `${condensed.slice(0, maxLength).trimEnd()}…`
-}
+// Preview truncation removed per new design requirements
 
 type PromptCardProps = {
   prompt: ImagePrompt
-  onViewFull?: (prompt: ImagePrompt) => void
 }
 
-const PromptCard = ({ prompt, onViewFull }: PromptCardProps) => {
+const PromptCard = ({ prompt }: PromptCardProps) => {
   const { showSuccessToast } = useCustomToast()
   const clipboard = useClipboard(prompt.prompt_text)
-
-  const preview = useMemo(
-    () => createPreview(prompt.prompt_text),
-    [prompt.prompt_text],
-  )
+  const [expanded, setExpanded] = useState(false)
 
   const attributes = useMemo(() => {
     if (!prompt.attributes || typeof prompt.attributes !== "object") {
@@ -108,6 +97,9 @@ const PromptCard = ({ prompt, onViewFull }: PromptCardProps) => {
       flexDirection="column"
       gap={4}
       minH="260px"
+      cursor="pointer"
+      onClick={() => setExpanded((prev) => !prev)}
+      aria-expanded={expanded}
     >
       <Stack gap={2}>
         <Flex align="center" justify="space-between">
@@ -118,7 +110,7 @@ const PromptCard = ({ prompt, onViewFull }: PromptCardProps) => {
             #{prompt.variant_index + 1}
           </Badge>
         </Flex>
-        {prompt.style_tags && prompt.style_tags.length > 0 && (
+        {expanded && prompt.style_tags && prompt.style_tags.length > 0 && (
           <HStack gap={2} wrap="wrap">
             {prompt.style_tags.slice(0, 6).map((tag) => (
               <TagRoot key={tag} colorScheme="blue" variant="subtle">
@@ -131,14 +123,13 @@ const PromptCard = ({ prompt, onViewFull }: PromptCardProps) => {
           fontFamily="mono"
           fontSize="xs"
           whiteSpace="pre-wrap"
-          noOfLines={3}
           color="fg.muted"
         >
-          {preview}
+          {prompt.prompt_text}
         </Text>
       </Stack>
 
-      {attributes.length > 0 && (
+      {expanded && attributes.length > 0 && (
         <SimpleGrid columns={{ base: 1, md: 2 }} spacing={2} fontSize="xs">
           {attributes.map(({ key, value }) => (
             <Flex key={key} direction="column" gap={1}>
@@ -157,19 +148,16 @@ const PromptCard = ({ prompt, onViewFull }: PromptCardProps) => {
           <Badge colorScheme="gray">{prompt.prompt_version}</Badge>
         </HStack>
         <HStack gap={2}>
-          <Button size="sm" leftIcon={<Icon as={FiCopy} />} onClick={handleCopy}>
+          <Button
+            size="sm"
+            leftIcon={<Icon as={FiCopy} />}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleCopy()
+            }}
+          >
             Copy
           </Button>
-          {onViewFull && (
-            <Button
-              size="sm"
-              variant="outline"
-              leftIcon={<Icon as={FiMaximize2} />}
-              onClick={() => onViewFull(prompt)}
-            >
-              View full
-            </Button>
-          )}
         </HStack>
       </Flex>
     </Box>
