@@ -1,6 +1,6 @@
 import { Box, Flex, Icon, Text } from "@chakra-ui/react"
 import { Link as RouterLink } from "@tanstack/react-router"
-import { FiBriefcase, FiFilm, FiTrendingUp } from "react-icons/fi"
+import { FiBriefcase, FiFilm, FiImage, FiTrendingUp } from "react-icons/fi"
 import type { IconType } from "react-icons/lib"
 
 interface SidebarItemsProps {
@@ -11,6 +11,7 @@ const items: Array<{ icon: IconType; title: string; path: string }> = [
   { icon: FiFilm, title: "Extracted Scenes", path: "/extracted-scenes" },
   { icon: FiTrendingUp, title: "Scene Rankings", path: "/scene-rankings" },
   { icon: FiFilm, title: "Prompt Gallery", path: "/prompt-gallery" },
+  { icon: FiImage, title: "Generated Images", path: "/generated-images" },
 ]
 
 const SidebarItems = ({ onClose }: SidebarItemsProps) => {

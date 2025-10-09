@@ -16,6 +16,17 @@ from .image_prompt import (
     ImagePromptRead,
     ImagePromptSceneSummary,
 )
+from .generated_image import (
+    GeneratedImageBase,
+    GeneratedImageCreate,
+    GeneratedImageGenerateRequest,
+    GeneratedImageGenerateResponse,
+    GeneratedImageListResponse,
+    GeneratedImageRead,
+    GeneratedImageWithContext,
+    ImagePromptSummary,
+    SceneSummary,
+)
 
 __all__ = [
     "SceneExtractionDateRange",
@@ -28,5 +39,14 @@ __all__ = [
     "ImagePromptListResponse",
     "ImagePromptRead",
     "ImagePromptSceneSummary",
+    "GeneratedImageBase",
+    "GeneratedImageCreate",
+    "GeneratedImageGenerateRequest",
+    "GeneratedImageGenerateResponse",
+    "GeneratedImageListResponse",
+    "GeneratedImageRead",
+    "GeneratedImageWithContext",
+    "ImagePromptSummary",
+    "SceneSummary",
 ]
 
