@@ -26,16 +26,17 @@ function Logo({ size = "md" }: LogoProps) {
           w={8}
           h={8}
           rounded="md"
-          bgGradient="to-r" gradientFrom="#00C6FF" gradientTo="#0072FF"
-          shadow="md"
+          bgGradient="to-br" gradientFrom="#00e5ff" gradientTo="#7f5af0"
+          overflow="hidden"
+          boxShadow="0 0 24px 2px #00e5ff33"
         >
           <Icon as={FiAperture} boxSize={s.icon} color="white" />
         </Flex>
         <Heading
           size={s.text}
           bgGradient="to-r"
-          gradientFrom="#00C6FF"
-          gradientTo="#7F00FF"
+          gradientFrom="#00e5ff"
+          gradientTo="#7f5af0"
           bgClip="text"
         >
           SceneDream

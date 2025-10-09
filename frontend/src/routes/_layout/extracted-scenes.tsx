@@ -163,8 +163,9 @@ const SceneExtractionFilters = ({
       p={4}
       borderWidth="1px"
       borderRadius="lg"
-      bg="bg.surface"
-      shadow="sm"
+      bg="rgba(255,255,255,0.04)"
+      backdropFilter="blur(8px) saturate(140%)"
+      shadow="md"
     >
       <Flex align="center" justify="space-between">
         <HStack gap={2}>
@@ -670,7 +671,13 @@ function ExtractedScenesPage() {
     <Container maxW="7xl" py={8}>
       <Stack gap={6}>
         <Flex align="center" justify="space-between">
-          <Heading size="lg">Extracted Scenes</Heading>
+          <Heading
+            size="lg"
+            bgGradient="linear(to-r, ui.main, #7f5af0)"
+            bgClip="text"
+          >
+            Extracted Scenes
+          </Heading>
           <Badge
             colorScheme="purple"
             fontSize="sm"
