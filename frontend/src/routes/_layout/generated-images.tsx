@@ -267,7 +267,7 @@ function GeneratedImagesGalleryPage() {
   )
 
   const imagesQuery = useGeneratedImagesData(search)
-  const images = imagesQuery.data?.data ?? []
+  const images = (imagesQuery.data?.data ?? []).filter((image) => !image.error)
 
   const pageSize = search.page_size
   const hasNextPage = images.length === pageSize
