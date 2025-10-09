@@ -13,6 +13,7 @@ from sqlalchemy.orm import relationship
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
+    from .generated_image import GeneratedImage
     from .scene_extraction import SceneExtraction
 
 
@@ -92,4 +93,7 @@ class ImagePrompt(SQLModel, table=True):
 
     scene_extraction: "SceneExtraction" | None = Relationship(
         sa_relationship=relationship("SceneExtraction", back_populates="image_prompts")
+    )
+    generated_images: list["GeneratedImage"] = Relationship(
+        sa_relationship=relationship("GeneratedImage", back_populates="image_prompt")
     )
