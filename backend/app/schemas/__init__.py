@@ -11,6 +11,11 @@ from .scene_ranking import (
     SceneRankingRead,
     SceneRankingSceneSummary,
 )
+from .image_prompt import (
+    ImagePromptListResponse,
+    ImagePromptRead,
+    ImagePromptSceneSummary,
+)
 
 __all__ = [
     "SceneExtractionDateRange",
@@ -20,5 +25,8 @@ __all__ = [
     "SceneRankingListResponse",
     "SceneRankingRead",
     "SceneRankingSceneSummary",
+    "ImagePromptListResponse",
+    "ImagePromptRead",
+    "ImagePromptSceneSummary",
 ]
 
