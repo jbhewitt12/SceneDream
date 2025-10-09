@@ -35,6 +35,7 @@ class ImagePromptRepository:
         prompt_version: str | None = None,
         newest_first: bool = True,
         limit: int | None = None,
+        include_scene: bool = False,
     ) -> list[ImagePrompt]:
         statement = select(ImagePrompt).where(
             ImagePrompt.scene_extraction_id == scene_extraction_id
@@ -49,9 +50,29 @@ class ImagePromptRepository:
             else ImagePrompt.created_at.asc()
         )
         statement = statement.order_by(ordering, ImagePrompt.variant_index.asc())
+        if include_scene:
+            statement = statement.options(joinedload(ImagePrompt.scene_extraction))
         if limit is not None:
             statement = statement.limit(limit)
         return list(self._session.exec(statement))
+
+    def has_any_for_scene(
+        self,
+        scene_extraction_id: UUID,
+        *,
+        model_name: str | None = None,
+        prompt_version: str | None = None,
+    ) -> bool:
+        """Return True if any prompts exist for the scene, optionally filtered."""
+        statement = select(ImagePrompt.id).where(
+            ImagePrompt.scene_extraction_id == scene_extraction_id
+        )
+        if model_name:
+            statement = statement.where(ImagePrompt.model_name == model_name)
+        if prompt_version:
+            statement = statement.where(ImagePrompt.prompt_version == prompt_version)
+        statement = statement.limit(1)
+        return self._session.exec(statement).first() is not None
 
     def list_for_book(
         self,
