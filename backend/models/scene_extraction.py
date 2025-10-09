@@ -12,6 +12,7 @@ from sqlalchemy.orm import relationship
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
+    from .image_prompt import ImagePrompt
     from .scene_ranking import SceneRanking
 
 
@@ -88,6 +89,9 @@ class SceneExtraction(SQLModel, table=True):
     )
     rankings: list["SceneRanking"] = Relationship(
         sa_relationship=relationship("SceneRanking", back_populates="scene_extraction")
+    )
+    image_prompts: list["ImagePrompt"] = Relationship(
+        sa_relationship=relationship("ImagePrompt", back_populates="scene_extraction")
     )
 
     def touch_refined_timestamp(self) -> None:
