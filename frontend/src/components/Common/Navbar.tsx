@@ -1,21 +1,23 @@
-import { Button, Flex, HStack, Text } from "@chakra-ui/react"
+import { Button, Flex, HStack } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
+import Logo from "@/components/Common/Logo"
 
 function Navbar() {
   return (
     <Flex
       justify="center"
       position="sticky"
-      color="white"
       align="center"
-      bg="bg.muted"
+      bg="white"
+      borderBottomWidth="1px"
       w="100%"
       top={0}
-      p={4}
+      px={4}
+      py={3}
     >
-      <Link to="/extracted-scenes" style={{ position: "absolute", left: 16 }}>
-        <Text fontWeight="bold">SceneDream</Text>
-      </Link>
+      <Flex position="absolute" left={4}>
+        <Logo size="sm" />
+      </Flex>
       <HStack gap={1} alignItems="center">
         <Link to="/extracted-scenes">
           <Button size="sm" variant="ghost">Extracted Scenes</Button>
