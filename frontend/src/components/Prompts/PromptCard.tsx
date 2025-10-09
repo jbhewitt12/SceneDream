@@ -7,17 +7,16 @@ import {
   Icon,
   SimpleGrid,
   Stack,
-  Tag,
   TagLabel,
+  TagRoot,
   Text,
-  Tooltip,
   useClipboard,
-  useToast,
 } from "@chakra-ui/react"
 import { useMemo } from "react"
 import { FiCopy, FiMaximize2 } from "react-icons/fi"
 
 import type { ImagePrompt } from "@/api/imagePrompts"
+import useCustomToast from "@/hooks/useCustomToast"
 
 const DISPLAY_ATTRIBUTE_KEYS = [
   "composition",
@@ -60,7 +59,7 @@ type PromptCardProps = {
 }
 
 const PromptCard = ({ prompt, onViewFull }: PromptCardProps) => {
-  const toast = useToast()
+  const { showSuccessToast } = useCustomToast()
   const clipboard = useClipboard(prompt.prompt_text)
 
   const preview = useMemo(
@@ -90,13 +89,9 @@ const PromptCard = ({ prompt, onViewFull }: PromptCardProps) => {
 
   const handleCopy = () => {
     clipboard.onCopy()
-    toast({
-      description: clipboard.hasCopied
-        ? "Prompt already copied"
-        : "Prompt copied to clipboard",
-      status: "success",
-      duration: 2000,
-    })
+    showSuccessToast(
+      clipboard.hasCopied ? "Prompt already copied" : "Prompt copied to clipboard",
+    )
   }
 
   const variantLabel = `Variant ${prompt.variant_index + 1}`
@@ -119,16 +114,16 @@ const PromptCard = ({ prompt, onViewFull }: PromptCardProps) => {
           <Text fontWeight="bold" noOfLines={2} fontSize="sm">
             {title}
           </Text>
-          <Tooltip label={variantLabel} placement="top">
-            <Badge colorScheme="purple">#{prompt.variant_index + 1}</Badge>
-          </Tooltip>
+          <Badge colorScheme="purple" title={variantLabel}>
+            #{prompt.variant_index + 1}
+          </Badge>
         </Flex>
         {prompt.style_tags && prompt.style_tags.length > 0 && (
           <HStack gap={2} wrap="wrap">
             {prompt.style_tags.slice(0, 6).map((tag) => (
-              <Tag key={tag} size="sm" variant="subtle" colorScheme="blue">
+              <TagRoot key={tag} colorScheme="blue" variant="subtle">
                 <TagLabel>{tag}</TagLabel>
-              </Tag>
+              </TagRoot>
             ))}
           </HStack>
         )}

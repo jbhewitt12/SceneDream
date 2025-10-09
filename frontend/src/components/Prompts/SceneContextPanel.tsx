@@ -2,8 +2,8 @@ import {
   Badge,
   Box,
   Button,
-  Collapse,
-  Divider,
+  Collapsible,
+  Separator,
   Flex,
   Heading,
   Icon,
@@ -64,9 +64,10 @@ const SceneContextPanel = ({ scene, contextWindow }: SceneContextPanelProps) => 
           {open ? "Hide" : "Show"}
         </Button>
       </Flex>
-      <Collapse in={open} animateOpacity>
-        <Divider />
-        <Stack px={4} py={4} gap={3} fontSize="sm">
+      <Collapsible.Root open={open}>
+        <Collapsible.Content>
+          <Separator />
+          <Stack px={4} py={4} gap={3} fontSize="sm">
           {scene ? (
             <SimpleGrid columns={{ base: 1, md: 2 }} gap={3}>
               <Stack spacing={1}>
@@ -99,7 +100,7 @@ const SceneContextPanel = ({ scene, contextWindow }: SceneContextPanelProps) => 
           ) : (
             <Text>No scene metadata provided.</Text>
           )}
-          <Divider />
+          <Separator />
           <SimpleGrid columns={{ base: 1, md: 3 }} gap={3}>
             <Stack spacing={1}>
               <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
@@ -137,8 +138,9 @@ const SceneContextPanel = ({ scene, contextWindow }: SceneContextPanelProps) => 
               </SimpleGrid>
             </Stack>
           )}
-        </Stack>
-      </Collapse>
+          </Stack>
+        </Collapsible.Content>
+      </Collapsible.Root>
     </Box>
   )
 }
