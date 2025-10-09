@@ -37,3 +37,39 @@ The critical files are in the `backend/app/services/` directory.
 - LLM-aggressive: Chain refinements—generate initial prompt, then use another LLM to critique ("Does this prompt avoid ambiguities? Suggest improvements for better output fidelity to the book"). Iterate 2-3 times per scene.
 
 - Make an `image_prompts` folder organized into subdirectories by book. Once a prompt is generated and refined save each prompt as a JSON file. For each prompt, we will start the file name with the chapter number, then a dash and then an integer that is the same as the scene it matches and then a short description of the prompt. The integer will be unique and effectively be the ID of the prompt. The JSON should be structured so that there will be many alternates of the prompt potentially in the file.
+
+4. Generate images from prompts
+
+- Use the structured prompts produced in step 3 to create images via the helper in `backend/app/services/image_generation/dalle_image_api.py`.
+
+- Input sources:
+  - Preferred: read prompt variants from the database via `ImagePromptRepository` (created by `backend/app/services/image_prompt_generation/image_prompt_generation_service.py`).
+
+- Model and parameters:
+  - Default to DALL·E 3 (`model="dall-e-3"`, `n=1`).
+  - Map `attributes.aspect_ratio` from the prompt to a DALL·E size:
+    - "1:1" → `1024x1024`; "9:16" → `1024x1792`; "16:9" → `1792x1024`.
+    - Fallback to `1024x1024` if missing or unrecognized.
+  - Choose `style` based on `style_tags` when available (e.g., tags like "natural" → `style="natural"`, otherwise `"vivid"`).
+  - Use `quality="standard"` for drafts; allow `quality="hd"` for final renders.
+
+- Storage and naming:
+  - Save images to `img/generated/<book_slug>/chapter-<N>/scene-<sceneNumber>-v<variant>.png`.
+
+- Database storage:
+  - Create a new SQLModel `GeneratedImage` (table name: `generated_images`) to persist each rendered output and its metadata.
+  - Suggested fields: id, sceneExtractionId (FK), imagePromptId (FK), bookSlug, chapterNumber, variantIndex, provider (e.g., "openai"), model (e.g., "dall-e-3"), size, quality, style, aspectRatio, responseFormat, storagePath, fileName, width, height, bytesApprox, checksumSha256, requestId, createdAt, updatedAt, error (nullable).
+  - Add a repository `GeneratedImageRepository` with helpers like `create`, `bulk_create`, `list_for_scene`, `list_for_book`, `get_latest_for_prompt`, and `mark_failed`.
+  - After saving each image, insert a record with the resolved `storagePath` and all generation parameters; on failures, capture error details.
+
+- Execution flow (CLI or script outline):
+  - Select scenes: either top-N ranked or all with prompts for a book.
+  - For each scene variant, call `generate_images(prompt_text, api_key, size=..., quality=..., style=..., response_format="b64_json")`.
+  - Decode and write the image via `save_image_from_b64(...)` (or `save_image_from_url(...)` if using `response_format="url"`).
+  - Log successes/failures and skip already-rendered outputs unless an overwrite flag is provided.
+  - Persist a `generated_images` record per output with metadata and the absolute or project-relative image path.
+
+- Configuration:
+  - Read the OpenAI API key from environment ( `OPENAI_API_KEY` exists in the environment variables).
+  - Provide a dry-run mode that lists which prompts would be rendered and their resolved parameters without making API calls.
+
