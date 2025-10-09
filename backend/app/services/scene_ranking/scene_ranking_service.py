@@ -131,7 +131,7 @@ class _RankingResponse(BaseModel):
 
 @dataclass(slots=True)
 class SceneRankingConfig:
-    model_name: str = "gemini-2.5-flash"
+    model_name: str = "gemini-2.5-pro"
     model_vendor: str = "google"
     prompt_version: str = "scene-ranking-v1"
     temperature: float = 0.1

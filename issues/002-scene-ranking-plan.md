@@ -2,7 +2,7 @@
 
 ## Context
 - Step 1 established `SceneExtractor` and persistence in `scene_extractions`, giving us normalized excerpts plus Gemini metadata.
-- We now need a repeatable way to evaluate each stored scene for downstream prompt generation, beginning with Gemini `gemini-2.5-flash` but keeping the door open for additional LLMs.
+- We now need a repeatable way to evaluate each stored scene for downstream prompt generation, beginning with Gemini `gemini-2.5-pro` but keeping the door open for additional LLMs.
 
 ## Objectives
 - Score every scene on qualities that influence AI image/video prompt quality and store those scores with justifications.
@@ -26,7 +26,7 @@ Gemini should also return:
 - Flags for potential complications (e.g., heavy gore, sexual content, IP-sensitive content).
 - Tags of character names and aliases.
 
-## Prompting Strategy with `gemini-2.5-flash`
+## Prompting Strategy with `gemini-2.5-pro`
 - System message: outline evaluator role, remind model of 1–10 scale anchors, require JSON.
 - User payload: scene text, chapter/paragraph metadata, previously stored model metadata, optional prior rankings for comparison.
 - Use `gemini_api.json_output` (temperature ~0.1) with a Pydantic schema capturing the criteria, `overall_priority`, `justification`, `character_tags`, `warnings`, and diagnostic metadata (`model_name`, `prompt_version`).
@@ -34,7 +34,7 @@ Gemini should also return:
 
 ## Pipeline Overview
 1. **Fetch scenes:** Query `scene_extractions` filtered by chapter/book, optionally skip already-ranked combos.
-2. **Compose ranking job:** Bundle scene excerpt, minimal metadata, target model (`gemini-2.5-flash`), and prompt version.
+2. **Compose ranking job:** Bundle scene excerpt, minimal metadata, target model (`gemini-2.5-pro`), and prompt version.
 3. **LLM call:** Invoke Gemini, parse JSON, validate score ranges, coerce numeric types.
 4. **Persist:** Insert into `scene_rankings` with raw response payload and derived rollups.
 5. **Post-processing:** Compute normalized overall scores, maintain leaderboards per book, expose via API/UI.
@@ -74,6 +74,6 @@ Gemini should also return:
 ## Next Actions
 1. Finalize prompt template, schema, and weighting heuristic for Gemini rankings; document prompt version `v1`.
 2. Implement `SceneRanking` SqlModel + Alembic migration, repository, and Pydantic response schemas.
-3. Build `SceneRankingService` with batching, validation, and CLI harness; wire to `gemini_api.json_output` using `gemini-2.5-flash`.
+3. Build `SceneRankingService` with batching, validation, and CLI harness; wire to `gemini_api.json_output` using `gemini-2.5-pro`.
 4. Add API endpoints (list by scene/book, fetch history) and basic tests for repository/service logic.
 5. Seed a pilot run on a small chapter, review stored rankings, adjust weights/criteria before scaling book-wide.
