@@ -65,10 +65,10 @@ const PromptList = ({
         shadow="sm"
         px={2}
       >
-        <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4} p={2}>
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} p={2}>
           {prompts.map((prompt) => (
             <Box key={prompt.id} minW={0}>
-              <PromptCard prompt={prompt} onViewFull={onViewPrompt} />
+              <PromptCard prompt={prompt} />
             </Box>
           ))}
         </SimpleGrid>

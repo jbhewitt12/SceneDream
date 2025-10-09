@@ -14,22 +14,21 @@ import {
   SimpleGrid,
   Stack,
   Text,
-  useDisclosure,
 } from "@chakra-ui/react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo } from "react"
 import { FiFilter, FiRefreshCcw, FiZap } from "react-icons/fi"
 import { z } from "zod"
 
-import { ImagePromptApi, type ImagePrompt } from "@/api/imagePrompts"
+import { ImagePromptApi } from "@/api/imagePrompts"
 import { ImagePromptGenerationApi } from "@/api/imagePromptGeneration"
 import {
   type SceneExtractionFilterOptions,
   SceneExtractionService,
 } from "@/api/sceneExtractions"
 // Removed InputGroup for selects; using NativeSelect components instead
-import { PromptDetailDrawer, PromptList } from "@/components/Prompts"
+import { PromptList } from "@/components/Prompts"
 import useCustomToast from "@/hooks/useCustomToast"
 
 const promptGallerySearchSchema = z.object({
@@ -298,14 +297,6 @@ function PromptGalleryPage() {
   const promptQuery = usePromptGalleryData(search)
   const prompts = promptQuery.data?.data ?? []
 
-  const [selectedPrompt, setSelectedPrompt] = useState<ImagePrompt | null>(null)
-  const detailDisclosure = useDisclosure()
-
-  const handleViewPrompt = (prompt: ImagePrompt) => {
-    setSelectedPrompt(prompt)
-    detailDisclosure.onOpen()
-  }
-
   const pageSize = search.page_size
   const hasNextPage = prompts.length === pageSize
 
@@ -364,7 +355,6 @@ function PromptGalleryPage() {
           onPageChange: (page) => handleSearchUpdate({ page }),
         }}
         height="calc(100vh - 320px)"
-        onViewPrompt={handleViewPrompt}
         emptyState={
           search.book_slug ? (
             <Text>No prompts yet for this selection.</Text>
@@ -372,14 +362,6 @@ function PromptGalleryPage() {
             <Text>Select a book to browse prompts.</Text>
           )
         }
-      />
-      <PromptDetailDrawer
-        prompt={selectedPrompt}
-        isOpen={detailDisclosure.isOpen}
-        onClose={() => {
-          detailDisclosure.onClose()
-          setSelectedPrompt(null)
-        }}
       />
     </Container>
   )

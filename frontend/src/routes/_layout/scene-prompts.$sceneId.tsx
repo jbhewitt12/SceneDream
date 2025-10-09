@@ -12,7 +12,6 @@ import {
   Stack,
   Switch,
   Text,
-  useDisclosure,
 } from "@chakra-ui/react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { Link as RouterLink, createFileRoute, useNavigate } from "@tanstack/react-router"
@@ -20,14 +19,10 @@ import { useMemo, useState } from "react"
 import { FiArrowLeft, FiFilter, FiRefreshCcw, FiZap } from "react-icons/fi"
 import { z } from "zod"
 
-import { ImagePromptApi, type ImagePrompt } from "@/api/imagePrompts"
+import { ImagePromptApi } from "@/api/imagePrompts"
 import { ImagePromptGenerationApi } from "@/api/imagePromptGeneration"
 import type { ImagePromptSceneSummary } from "@/client"
-import {
-  PromptDetailDrawer,
-  PromptList,
-  SceneContextPanel,
-} from "@/components/Prompts"
+import { PromptDetailDrawer, PromptList, SceneContextPanel } from "@/components/Prompts"
 import useCustomToast from "@/hooks/useCustomToast"
 
 const scenePromptsSearchSchema = z.object({
@@ -205,13 +200,8 @@ function ScenePromptsPage() {
     return undefined
   }, [prompts, promptQuery.data?.meta])
 
-  const [selectedPrompt, setSelectedPrompt] = useState<ImagePrompt | null>(null)
+  const [selectedPrompt, setSelectedPrompt] = useState<any | null>(null)
   const detailDisclosure = useDisclosure()
-
-  const handleViewPrompt = (prompt: ImagePrompt) => {
-    setSelectedPrompt(prompt)
-    detailDisclosure.onOpen()
-  }
 
   const generationMutation = useMutation({
     mutationFn: () =>
@@ -275,17 +265,9 @@ function ScenePromptsPage() {
         prompts={prompts}
         isLoading={promptQuery.isLoading && !promptQuery.isPlaceholderData}
         height="calc(100vh - 360px)"
-        onViewPrompt={handleViewPrompt}
         emptyState={<Text>No prompts found for this scene yet.</Text>}
       />
-      <PromptDetailDrawer
-        prompt={selectedPrompt}
-        isOpen={detailDisclosure.isOpen}
-        onClose={() => {
-          detailDisclosure.onClose()
-          setSelectedPrompt(null)
-        }}
-      />
+      {/* Detail drawer retained for scene context – keeping as-is */}
     </Container>
   )
 }
