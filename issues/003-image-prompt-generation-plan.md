@@ -11,7 +11,7 @@
 
 - Model: `gemini-2.5-pro` (vendor: google).
 - For each scene, include: the scene’s extracted raw text plus surrounding chapter context: 3 paragraphs before and 1 paragraph after. Do not store copyrighted chapter text; store only spans/metadata. Load paragraphs from the original EPUB via `source_book_path` in `scene_extractions`.
-- For each scene, generate X variants (configurable) that intentionally explore different styles/aspects (e.g., camera angle, subject focus, composition, lighting, palette, mood). Each variant should be distinct and should take some artistic license.
+- For each scene, generate X variants (configurable) that intentionally explore different styles/aspects (e.g., camera angle, subject focus, composition, lighting, palette, mood). Each variant should be distinct and should take artistic license inspired by the scene.
 - Use `backend/app/services/image_prompt_generation/dalle3_sci_fi_prompting_cheatsheet.md` content verbatim as an embedded guideline section in the LLM prompt.
 
 ---
@@ -33,6 +33,7 @@
   - `negative_prompt` Text | None — optional negatives (kept flexible for future generators, don't use this for the first version)
   - `style_tags` JSONB list[str] | None — tags like ["cinematic", "neon", "brutalist"]
   - `attributes` JSONB dict — structured details (composition, camera, lens, aspect_ratio, lighting, palette, references, etc.)
+  - `notes` Text | None — optional curator notes; not populated by LLM initially
   - `context_window` JSONB dict — metadata only: {"chapter_number", "paragraph_span": [start, end], "paragraphs_before": 3, "paragraphs_after": 1}; do not store raw copyrighted text
   - `raw_response` JSONB — full LLM response for provenance/debug
   - `temperature` float | None, `max_output_tokens` int | None
@@ -86,11 +87,13 @@ Create `backend/app/services/image_prompt_generation/image_prompt_generation_ser
 - Include the scene’s raw excerpt verbatim.
 - Include the surrounding context paragraphs (3 before, 1 after) to anchor composition details.
 - Instruct the model to output strict JSON with exactly `variants_count` elements, each with fields:
+ - Instruct the model to output strict JSON with exactly `variants_count` elements, each with fields:
   - `title: string`
   - `prompt_text: string` (fully ready to paste into image generators)
   - `style_tags: string[]` (e.g., ["cinematic", "high-contrast", "ultra-wide"])
   - `attributes: object` (e.g., { camera: "35mm", lens: "anamorphic", composition: "rule-of-thirds", lighting: "rim light", palette: "teal & orange", aspect_ratio: "16:9", references: ["Syd Mead"] })
-  - `notes: string | null` (brief variant intent like angle/focus/subject)
+
+Note: do not request a `notes` field from the LLM; keep `notes` null in the DB for optional human curation later.
 
 4) LLM invocation
 - Use `app.services.langchain.gemini_api.json_output(...)` with `model_name = config.model_name` and `temperature = config.temperature`.
