@@ -2,17 +2,19 @@ import {
   Box,
   Button,
   Container,
-  Divider,
+  Separator,
   Flex,
   HStack,
   Heading,
   Icon,
   Input,
+  NativeSelectField,
+  NativeSelectIndicator,
+  NativeSelectRoot,
   SimpleGrid,
   Stack,
   Text,
   useDisclosure,
-  useToast,
 } from "@chakra-ui/react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
@@ -26,8 +28,9 @@ import {
   type SceneExtractionFilterOptions,
   SceneExtractionService,
 } from "@/api/sceneExtractions"
-import { InputGroup } from "@/components/ui/input-group"
+// Removed InputGroup for selects; using NativeSelect components instead
 import { PromptDetailDrawer, PromptList } from "@/components/Prompts"
+import useCustomToast from "@/hooks/useCustomToast"
 
 const promptGallerySearchSchema = z.object({
   book_slug: z
@@ -135,9 +138,8 @@ const PromptGalleryFilters = ({
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Book
           </Text>
-          <InputGroup>
-            <Input
-              as="select"
+          <NativeSelectRoot disabled={disabled || isFetching} w="full">
+            <NativeSelectField
               value={search.book_slug ?? ""}
               onChange={(event) =>
                 handleChange({
@@ -145,7 +147,6 @@ const PromptGalleryFilters = ({
                   chapter_number: undefined,
                 })
               }
-              disabled={disabled || isFetching}
             >
               <option value="">Select book</option>
               {books.map((book) => (
@@ -153,17 +154,17 @@ const PromptGalleryFilters = ({
                   {book}
                 </option>
               ))}
-            </Input>
-          </InputGroup>
+            </NativeSelectField>
+            <NativeSelectIndicator />
+          </NativeSelectRoot>
         </Stack>
         <Stack spacing={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Chapter
           </Text>
-          <InputGroup>
-            <Input
-              as="select"
-              value={search.chapter_number ?? ""}
+          <NativeSelectRoot disabled={!chapters.length} w="full">
+            <NativeSelectField
+              value={search.chapter_number?.toString() ?? ""}
               onChange={(event) =>
                 handleChange({
                   chapter_number: event.target.value
@@ -171,7 +172,6 @@ const PromptGalleryFilters = ({
                     : undefined,
                 })
               }
-              disabled={!chapters.length}
             >
               <option value="">All chapters</option>
               {chapters.map((chapter) => (
@@ -179,8 +179,9 @@ const PromptGalleryFilters = ({
                   Chapter {chapter}
                 </option>
               ))}
-            </Input>
-          </InputGroup>
+            </NativeSelectField>
+            <NativeSelectIndicator />
+          </NativeSelectRoot>
         </Stack>
         <Stack spacing={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
@@ -264,7 +265,7 @@ export const Route = createFileRoute("/_layout/prompt-gallery")({
 function PromptGalleryPage() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
-  const toast = useToast()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
 
   const filtersQuery = useQuery({
     queryKey: ["scene-extractions", "filters"],
@@ -316,19 +317,12 @@ function PromptGalleryPage() {
         promptVersion: search.prompt_version ?? undefined,
       }),
     onSuccess: () => {
-      toast({
-        status: "success",
-        description: "Prompt generation request sent.",
-      })
+      showSuccessToast("Prompt generation request sent.")
     },
     onError: (error) => {
-      toast({
-        status: "error",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Unable to trigger prompt generation",
-      })
+      showErrorToast(
+        error instanceof Error ? error.message : "Unable to trigger prompt generation",
+      )
     },
   })
 
@@ -359,7 +353,7 @@ function PromptGalleryPage() {
           isFetching={filtersQuery.isFetching}
         />
       </Box>
-      <Divider />
+      <Separator />
       <PromptList
         prompts={prompts}
         isLoading={promptQuery.isLoading && !promptQuery.isPlaceholderData}

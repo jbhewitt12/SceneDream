@@ -2,7 +2,7 @@ import {
   Box,
   Button,
   Container,
-  Divider,
+  Separator,
   Flex,
   HStack,
   Heading,
@@ -13,7 +13,6 @@ import {
   Switch,
   Text,
   useDisclosure,
-  useToast,
 } from "@chakra-ui/react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { Link as RouterLink, createFileRoute, useNavigate } from "@tanstack/react-router"
@@ -29,6 +28,7 @@ import {
   PromptList,
   SceneContextPanel,
 } from "@/components/Prompts"
+import useCustomToast from "@/hooks/useCustomToast"
 
 const scenePromptsSearchSchema = z.object({
   model_name: z
@@ -144,9 +144,9 @@ const ScenePromptFilters = ({
             Newest first
           </Text>
           <Switch
-            isChecked={search.newest_first}
-            onCheckedChange={(event) =>
-              handleChange({ newest_first: event.checked })
+            checked={search.newest_first}
+            onChange={(event) =>
+              handleChange({ newest_first: (event.target as HTMLInputElement).checked })
             }
           />
         </Stack>
@@ -164,7 +164,7 @@ function ScenePromptsPage() {
   const { sceneId } = Route.useParams()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
-  const toast = useToast()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
 
   const handleSearchUpdate = (updates: Partial<ScenePromptsSearch>) => {
     navigate({
@@ -221,19 +221,12 @@ function ScenePromptsPage() {
         promptVersion: search.prompt_version ?? undefined,
       }),
     onSuccess: () => {
-      toast({
-        status: "success",
-        description: "Prompt generation triggered for scene.",
-      })
+      showSuccessToast("Prompt generation triggered for scene.")
     },
     onError: (error) => {
-      toast({
-        status: "error",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Unable to trigger prompts for this scene",
-      })
+      showErrorToast(
+        error instanceof Error ? error.message : "Unable to trigger prompts for this scene",
+      )
     },
   })
 
@@ -277,7 +270,7 @@ function ScenePromptsPage() {
         />
       )}
       <ScenePromptFilters search={search} onChange={handleSearchUpdate} />
-      <Divider />
+      <Separator />
       <PromptList
         prompts={prompts}
         isLoading={promptQuery.isLoading && !promptQuery.isPlaceholderData}
