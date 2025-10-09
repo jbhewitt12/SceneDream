@@ -8,7 +8,8 @@ function Navbar() {
       justify="center"
       position="sticky"
       align="center"
-      bg="white"
+      bg="rgba(10, 18, 26, 0.6)"
+      backdropFilter="saturate(140%) blur(10px)"
       borderBottomWidth="1px"
       w="100%"
       top={0}
@@ -20,13 +21,13 @@ function Navbar() {
       </Flex>
       <HStack gap={1} alignItems="center">
         <Link to="/extracted-scenes">
-          <Button size="sm" variant="ghost">Extracted Scenes</Button>
+          <Button size="sm" variant="ghost" className="main-link">Extracted Scenes</Button>
         </Link>
         <Link to="/scene-rankings">
-          <Button size="sm" variant="ghost">Scene Rankings</Button>
+          <Button size="sm" variant="ghost" className="main-link">Scene Rankings</Button>
         </Link>
         <Link to="/prompt-gallery">
-          <Button size="sm" variant="ghost">Prompt Gallery</Button>
+          <Button size="sm" variant="ghost" className="main-link">Prompt Gallery</Button>
         </Link>
       </HStack>
     </Flex>

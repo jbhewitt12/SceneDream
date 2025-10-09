@@ -119,8 +119,9 @@ const PromptGalleryFilters = ({
       p={4}
       borderWidth="1px"
       borderRadius="lg"
-      bg="bg.surface"
-      shadow="sm"
+      bg="rgba(255,255,255,0.04)"
+      backdropFilter="blur(8px) saturate(140%)"
+      shadow="md"
     >
       <Flex align="center" justify="space-between">
         <HStack gap={2}>
@@ -325,7 +326,13 @@ function PromptGalleryPage() {
   return (
     <Container maxW="full" py={4} display="flex" flexDirection="column" gap={4}>
       <Flex align="center" justify="space-between">
-        <Heading size="lg">Prompt gallery</Heading>
+        <Heading
+          size="lg"
+          bgGradient="linear(to-r, ui.main, #7f5af0)"
+          bgClip="text"
+        >
+          Prompt Gallery
+        </Heading>
         <Button
           leftIcon={<Icon as={FiZap} />}
           colorScheme="purple"

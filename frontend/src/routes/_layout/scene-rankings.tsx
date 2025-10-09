@@ -160,8 +160,9 @@ const SceneRankingFilters = ({
       p={4}
       borderWidth="1px"
       borderRadius="lg"
-      bg="bg.surface"
-      shadow="sm"
+      bg="rgba(255,255,255,0.04)"
+      backdropFilter="blur(8px) saturate(140%)"
+      shadow="md"
     >
       <Flex align="center" justify="space-between">
         <HStack gap={2}>
@@ -534,7 +535,7 @@ const SceneRankingItem = ({ ranking }: { ranking: SceneRanking }) => {
               {ranking.model_name} · {formatDateTime(ranking.created_at)}
             </Text>
             {scenePreview && (
-              <Text fontSize="sm" color="fg.subtle" mt={2}>
+              <Text fontSize="sm" color="fg.muted" mt={2}>
                 {scenePreview}
               </Text>
             )}
@@ -702,8 +703,14 @@ function SceneRankingsPage() {
       <Stack gap={6}>
         <Flex align="center" justify="space-between">
           <HStack gap={3}>
-            <Icon as={FiTrendingUp} boxSize={6} />
-            <Heading size="lg">Scene Rankings</Heading>
+            <Icon as={FiTrendingUp} boxSize={6} color="ui.main" />
+            <Heading
+              size="lg"
+              bgGradient="linear(to-r, ui.main, #7f5af0)"
+              bgClip="text"
+            >
+              Scene Rankings
+            </Heading>
           </HStack>
           <Badge
             colorScheme="purple"
