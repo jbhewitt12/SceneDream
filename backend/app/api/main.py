@@ -4,6 +4,7 @@ from app.api.routes import (
     items,
     login,
     private,
+    image_prompts,
     scene_extractions,
     scene_rankings,
     users,
@@ -16,6 +17,7 @@ api_router.include_router(login.router)
 api_router.include_router(users.router)
 api_router.include_router(utils.router)
 api_router.include_router(items.router)
+api_router.include_router(image_prompts.router)
 api_router.include_router(scene_extractions.router)
 api_router.include_router(scene_rankings.router)
 
