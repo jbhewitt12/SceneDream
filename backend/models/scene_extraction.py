@@ -12,6 +12,7 @@ from sqlalchemy.orm import relationship
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
+    from .generated_image import GeneratedImage
     from .image_prompt import ImagePrompt
     from .scene_ranking import SceneRanking
 
@@ -92,6 +93,11 @@ class SceneExtraction(SQLModel, table=True):
     )
     image_prompts: list["ImagePrompt"] = Relationship(
         sa_relationship=relationship("ImagePrompt", back_populates="scene_extraction")
+    )
+    generated_images: list["GeneratedImage"] = Relationship(
+        sa_relationship=relationship(
+            "GeneratedImage", back_populates="scene_extraction"
+        )
     )
 
     def touch_refined_timestamp(self) -> None:
