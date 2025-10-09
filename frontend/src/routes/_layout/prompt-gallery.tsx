@@ -1,0 +1,392 @@
+import {
+  Box,
+  Button,
+  Container,
+  Divider,
+  Flex,
+  HStack,
+  Heading,
+  Icon,
+  Input,
+  SimpleGrid,
+  Stack,
+  Text,
+  useDisclosure,
+  useToast,
+} from "@chakra-ui/react"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { createFileRoute, useNavigate } from "@tanstack/react-router"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { FiFilter, FiRefreshCcw, FiZap } from "react-icons/fi"
+import { z } from "zod"
+
+import { ImagePromptApi, type ImagePrompt } from "@/api/imagePrompts"
+import { ImagePromptGenerationApi } from "@/api/imagePromptGeneration"
+import {
+  type SceneExtractionFilterOptions,
+  SceneExtractionService,
+} from "@/api/sceneExtractions"
+import { InputGroup } from "@/components/ui/input-group"
+import { PromptDetailDrawer, PromptList } from "@/components/Prompts"
+
+const promptGallerySearchSchema = z.object({
+  book_slug: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .or(z.literal("").transform(() => undefined))
+    .catch(undefined),
+  chapter_number: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .or(z.literal("").transform(() => undefined))
+    .catch(undefined),
+  model_name: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .or(z.literal("").transform(() => undefined))
+    .catch(undefined),
+  prompt_version: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .or(z.literal("").transform(() => undefined))
+    .catch(undefined),
+  style_tag: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .or(z.literal("").transform(() => undefined))
+    .catch(undefined),
+  page: z.coerce.number().int().min(1).catch(1),
+  page_size: z.coerce.number().int().min(1).max(48).catch(24),
+  include_scene: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .catch(true),
+})
+
+type PromptGallerySearch = z.infer<typeof promptGallerySearchSchema>
+
+type FilterUpdater = (updates: Partial<PromptGallerySearch>) => void
+
+const PromptGalleryFilters = ({
+  search,
+  onChange,
+  options,
+  isFetching,
+}: {
+  search: PromptGallerySearch
+  onChange: FilterUpdater
+  options: SceneExtractionFilterOptions | undefined
+  isFetching: boolean
+}) => {
+  const books = options?.books ?? []
+  const chapters = search.book_slug
+    ? options?.chapters_by_book?.[search.book_slug] ?? []
+    : []
+
+  const disabled = !books.length
+
+  const handleChange = (updates: Partial<PromptGallerySearch>) => {
+    onChange({
+      ...updates,
+      page: 1,
+    })
+  }
+
+  const resetFilters = () => {
+    handleChange({
+      chapter_number: undefined,
+      model_name: undefined,
+      prompt_version: undefined,
+      style_tag: undefined,
+    })
+  }
+
+  return (
+    <Stack
+      gap={4}
+      p={4}
+      borderWidth="1px"
+      borderRadius="lg"
+      bg="bg.surface"
+      shadow="sm"
+    >
+      <Flex align="center" justify="space-between">
+        <HStack gap={2}>
+          <Icon as={FiFilter} />
+          <Heading size="sm">Filters</Heading>
+        </HStack>
+        <Button size="sm" variant="ghost" gap={2} onClick={resetFilters}>
+          <Icon as={FiRefreshCcw} />
+          Reset
+        </Button>
+      </Flex>
+      <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
+        <Stack spacing={1}>
+          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
+            Book
+          </Text>
+          <InputGroup>
+            <Input
+              as="select"
+              value={search.book_slug ?? ""}
+              onChange={(event) =>
+                handleChange({
+                  book_slug: event.target.value || undefined,
+                  chapter_number: undefined,
+                })
+              }
+              disabled={disabled || isFetching}
+            >
+              <option value="">Select book</option>
+              {books.map((book) => (
+                <option key={book} value={book}>
+                  {book}
+                </option>
+              ))}
+            </Input>
+          </InputGroup>
+        </Stack>
+        <Stack spacing={1}>
+          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
+            Chapter
+          </Text>
+          <InputGroup>
+            <Input
+              as="select"
+              value={search.chapter_number ?? ""}
+              onChange={(event) =>
+                handleChange({
+                  chapter_number: event.target.value
+                    ? Number.parseInt(event.target.value, 10)
+                    : undefined,
+                })
+              }
+              disabled={!chapters.length}
+            >
+              <option value="">All chapters</option>
+              {chapters.map((chapter) => (
+                <option key={chapter} value={chapter}>
+                  Chapter {chapter}
+                </option>
+              ))}
+            </Input>
+          </InputGroup>
+        </Stack>
+        <Stack spacing={1}>
+          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
+            Style tag
+          </Text>
+          <Input
+            placeholder="e.g. cinematic"
+            value={search.style_tag ?? ""}
+            onChange={(event) =>
+              handleChange({
+                style_tag: event.target.value.trim() || undefined,
+              })
+            }
+            disabled={disabled}
+          />
+        </Stack>
+        <Stack spacing={1}>
+          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
+            Model
+          </Text>
+          <Input
+            placeholder="gemini-2.5-pro"
+            value={search.model_name ?? ""}
+            onChange={(event) =>
+              handleChange({
+                model_name: event.target.value.trim() || undefined,
+              })
+            }
+            disabled={disabled}
+          />
+        </Stack>
+        <Stack spacing={1}>
+          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
+            Prompt version
+          </Text>
+          <Input
+            placeholder="image-prompts-v1"
+            value={search.prompt_version ?? ""}
+            onChange={(event) =>
+              handleChange({
+                prompt_version: event.target.value.trim() || undefined,
+              })
+            }
+            disabled={disabled}
+          />
+        </Stack>
+      </SimpleGrid>
+    </Stack>
+  )
+}
+
+const usePromptGalleryData = (search: PromptGallerySearch) => {
+  const queryEnabled = Boolean(search.book_slug)
+
+  const query = useQuery({
+    queryKey: ["image-prompts", "book", search],
+    queryFn: () =>
+      ImagePromptApi.listForBook({
+        bookSlug: search.book_slug!,
+        chapterNumber: search.chapter_number ?? undefined,
+        modelName: search.model_name ?? undefined,
+        promptVersion: search.prompt_version ?? undefined,
+        styleTag: search.style_tag ?? undefined,
+        page: search.page,
+        pageSize: search.page_size,
+        includeScene: search.include_scene,
+      }),
+    enabled: queryEnabled,
+    placeholderData: (previousData) => previousData,
+    keepPreviousData: true,
+  })
+
+  return query
+}
+
+export const Route = createFileRoute("/_layout/prompt-gallery")({
+  component: PromptGalleryPage,
+  validateSearch: (search) => promptGallerySearchSchema.parse(search),
+})
+
+function PromptGalleryPage() {
+  const search = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
+  const toast = useToast()
+
+  const filtersQuery = useQuery({
+    queryKey: ["scene-extractions", "filters"],
+    queryFn: () => SceneExtractionService.filters(),
+  })
+
+  useEffect(() => {
+    if (!search.book_slug && filtersQuery.data?.books?.length) {
+      navigate({
+        search: (prev) => ({
+          ...prev,
+          book_slug: filtersQuery.data?.books?.[0],
+        }),
+      })
+    }
+  }, [filtersQuery.data?.books, navigate, search.book_slug])
+
+  const handleSearchUpdate = useCallback(
+    (updates: Partial<PromptGallerySearch>) => {
+      navigate({
+        search: (prev) => ({
+          ...prev,
+          ...updates,
+        }),
+      })
+    },
+    [navigate],
+  )
+
+  const promptQuery = usePromptGalleryData(search)
+  const prompts = promptQuery.data?.data ?? []
+
+  const [selectedPrompt, setSelectedPrompt] = useState<ImagePrompt | null>(null)
+  const detailDisclosure = useDisclosure()
+
+  const handleViewPrompt = (prompt: ImagePrompt) => {
+    setSelectedPrompt(prompt)
+    detailDisclosure.onOpen()
+  }
+
+  const pageSize = search.page_size
+  const hasNextPage = prompts.length === pageSize
+
+  const generationMutation = useMutation({
+    mutationFn: () =>
+      ImagePromptGenerationApi.triggerForBook({
+        bookSlug: search.book_slug!,
+        modelName: search.model_name ?? undefined,
+        promptVersion: search.prompt_version ?? undefined,
+      }),
+    onSuccess: () => {
+      toast({
+        status: "success",
+        description: "Prompt generation request sent.",
+      })
+    },
+    onError: (error) => {
+      toast({
+        status: "error",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to trigger prompt generation",
+      })
+    },
+  })
+
+  const disableGenerate =
+    !search.book_slug ||
+    generationMutation.isPending ||
+    filtersQuery.isLoading
+
+  return (
+    <Container maxW="full" py={4} display="flex" flexDirection="column" gap={4}>
+      <Flex align="center" justify="space-between">
+        <Heading size="lg">Prompt gallery</Heading>
+        <Button
+          leftIcon={<Icon as={FiZap} />}
+          colorScheme="purple"
+          onClick={() => generationMutation.mutate()}
+          isLoading={generationMutation.isPending}
+          disabled={disableGenerate}
+        >
+          Generate prompts
+        </Button>
+      </Flex>
+      <Box position="sticky" top={0} zIndex={1} bg="bg.canvas">
+        <PromptGalleryFilters
+          search={search}
+          onChange={handleSearchUpdate}
+          options={filtersQuery.data}
+          isFetching={filtersQuery.isFetching}
+        />
+      </Box>
+      <Divider />
+      <PromptList
+        prompts={prompts}
+        isLoading={promptQuery.isLoading && !promptQuery.isPlaceholderData}
+        pagination={{
+          page: search.page,
+          pageSize,
+          hasNextPage,
+          onPageChange: (page) => handleSearchUpdate({ page }),
+        }}
+        height="calc(100vh - 320px)"
+        onViewPrompt={handleViewPrompt}
+        emptyState={
+          search.book_slug ? (
+            <Text>No prompts yet for this selection.</Text>
+          ) : (
+            <Text>Select a book to browse prompts.</Text>
+          )
+        }
+      />
+      <PromptDetailDrawer
+        prompt={selectedPrompt}
+        isOpen={detailDisclosure.isOpen}
+        onClose={() => {
+          detailDisclosure.onClose()
+          setSelectedPrompt(null)
+        }}
+      />
+    </Container>
+  )
+}

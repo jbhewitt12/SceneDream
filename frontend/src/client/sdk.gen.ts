@@ -4,47 +4,171 @@ import type { CancelablePromise } from "./core/CancelablePromise"
 import { OpenAPI } from "./core/OpenAPI"
 import { request as __request } from "./core/request"
 import type {
-  ItemsCreateItemData,
-  ItemsCreateItemResponse,
-  ItemsDeleteItemData,
-  ItemsDeleteItemResponse,
-  ItemsReadItemData,
-  ItemsReadItemResponse,
+  ImagePromptsListPromptsForSceneData,
+  ImagePromptsListPromptsForSceneResponse,
+  ImagePromptsListPromptsForBookData,
+  ImagePromptsListPromptsForBookResponse,
+  ImagePromptsGetImagePromptData,
+  ImagePromptsGetImagePromptResponse,
   ItemsReadItemsData,
   ItemsReadItemsResponse,
+  ItemsCreateItemData,
+  ItemsCreateItemResponse,
+  ItemsReadItemData,
+  ItemsReadItemResponse,
   ItemsUpdateItemData,
   ItemsUpdateItemResponse,
+  ItemsDeleteItemData,
+  ItemsDeleteItemResponse,
   LoginLoginAccessTokenData,
   LoginLoginAccessTokenResponse,
+  LoginTestTokenResponse,
   LoginRecoverPasswordData,
-  LoginRecoverPasswordHtmlContentData,
-  LoginRecoverPasswordHtmlContentResponse,
   LoginRecoverPasswordResponse,
   LoginResetPasswordData,
   LoginResetPasswordResponse,
-  LoginTestTokenResponse,
-  UsersCreateUserData,
-  UsersCreateUserResponse,
-  UsersDeleteUserData,
-  UsersDeleteUserMeResponse,
-  UsersDeleteUserResponse,
-  UsersReadUserByIdData,
-  UsersReadUserByIdResponse,
-  UsersReadUserMeResponse,
+  LoginRecoverPasswordHtmlContentData,
+  LoginRecoverPasswordHtmlContentResponse,
+  PrivateCreateUserData,
+  PrivateCreateUserResponse,
+  SceneExtractionsListSceneExtractionsData,
+  SceneExtractionsListSceneExtractionsResponse,
+  SceneExtractionsGetFilterOptionsResponse,
+  SceneExtractionsGetSceneExtractionData,
+  SceneExtractionsGetSceneExtractionResponse,
+  SceneRankingsListTopSceneRankingsData,
+  SceneRankingsListTopSceneRankingsResponse,
+  SceneRankingsListSceneRankingHistoryData,
+  SceneRankingsListSceneRankingHistoryResponse,
+  SceneRankingsGetSceneRankingData,
+  SceneRankingsGetSceneRankingResponse,
   UsersReadUsersData,
   UsersReadUsersResponse,
-  UsersRegisterUserData,
-  UsersRegisterUserResponse,
-  UsersUpdatePasswordMeData,
-  UsersUpdatePasswordMeResponse,
-  UsersUpdateUserData,
+  UsersCreateUserData,
+  UsersCreateUserResponse,
+  UsersReadUserMeResponse,
+  UsersDeleteUserMeResponse,
   UsersUpdateUserMeData,
   UsersUpdateUserMeResponse,
+  UsersUpdatePasswordMeData,
+  UsersUpdatePasswordMeResponse,
+  UsersRegisterUserData,
+  UsersRegisterUserResponse,
+  UsersReadUserByIdData,
+  UsersReadUserByIdResponse,
+  UsersUpdateUserData,
   UsersUpdateUserResponse,
-  UtilsHealthCheckResponse,
+  UsersDeleteUserData,
+  UsersDeleteUserResponse,
   UtilsTestEmailData,
   UtilsTestEmailResponse,
+  UtilsHealthCheckResponse,
 } from "./types.gen"
+
+export class ImagePromptsService {
+  /**
+   * List Prompts For Scene
+   * Return image prompts for a specific scene.
+   * @param data The data for the request.
+   * @param data.sceneId
+   * @param data.limit
+   * @param data.newestFirst
+   * @param data.modelName
+   * @param data.promptVersion
+   * @param data.includeScene
+   * @returns ImagePromptListResponse Successful Response
+   * @throws ApiError
+   */
+  public static listPromptsForScene(
+    data: ImagePromptsListPromptsForSceneData,
+  ): CancelablePromise<ImagePromptsListPromptsForSceneResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/image-prompts/scene/{scene_id}",
+      path: {
+        scene_id: data.sceneId,
+      },
+      query: {
+        limit: data.limit,
+        newest_first: data.newestFirst,
+        model_name: data.modelName,
+        prompt_version: data.promptVersion,
+        include_scene: data.includeScene,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List Prompts For Book
+   * List prompts across a book with optional filters and pagination.
+   * @param data The data for the request.
+   * @param data.bookSlug
+   * @param data.chapterNumber
+   * @param data.modelName
+   * @param data.promptVersion
+   * @param data.styleTag
+   * @param data.newestFirst
+   * @param data.limit
+   * @param data.offset
+   * @param data.includeScene
+   * @returns ImagePromptListResponse Successful Response
+   * @throws ApiError
+   */
+  public static listPromptsForBook(
+    data: ImagePromptsListPromptsForBookData,
+  ): CancelablePromise<ImagePromptsListPromptsForBookResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/image-prompts/book/{book_slug}",
+      path: {
+        book_slug: data.bookSlug,
+      },
+      query: {
+        chapter_number: data.chapterNumber,
+        model_name: data.modelName,
+        prompt_version: data.promptVersion,
+        style_tag: data.styleTag,
+        newest_first: data.newestFirst,
+        limit: data.limit,
+        offset: data.offset,
+        include_scene: data.includeScene,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Image Prompt
+   * Fetch a single image prompt by identifier.
+   * @param data The data for the request.
+   * @param data.promptId
+   * @param data.includeScene
+   * @returns ImagePromptRead Successful Response
+   * @throws ApiError
+   */
+  public static getImagePrompt(
+    data: ImagePromptsGetImagePromptData,
+  ): CancelablePromise<ImagePromptsGetImagePromptResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/image-prompts/{prompt_id}",
+      path: {
+        prompt_id: data.promptId,
+      },
+      query: {
+        include_scene: data.includeScene,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+}
 
 export class ItemsService {
   /**
@@ -264,6 +388,202 @@ export class LoginService {
       url: "/api/v1/password-recovery-html-content/{email}",
       path: {
         email: data.email,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+}
+
+export class PrivateService {
+  /**
+   * Create User
+   * Create a new user.
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns UserPublic Successful Response
+   * @throws ApiError
+   */
+  public static createUser(
+    data: PrivateCreateUserData,
+  ): CancelablePromise<PrivateCreateUserResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/private/users/",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+}
+
+export class SceneExtractionsService {
+  /**
+   * List Scene Extractions
+   * Return a paginated list of scene extractions with optional filters.
+   * @param data The data for the request.
+   * @param data.page
+   * @param data.pageSize
+   * @param data.bookSlug
+   * @param data.chapterNumber
+   * @param data.decision
+   * @param data.hasRefined
+   * @param data.search
+   * @param data.startDate
+   * @param data.endDate
+   * @param data.order
+   * @returns SceneExtractionListResponse Successful Response
+   * @throws ApiError
+   */
+  public static listSceneExtractions(
+    data: SceneExtractionsListSceneExtractionsData = {},
+  ): CancelablePromise<SceneExtractionsListSceneExtractionsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/scene-extractions/",
+      query: {
+        page: data.page,
+        page_size: data.pageSize,
+        book_slug: data.bookSlug,
+        chapter_number: data.chapterNumber,
+        decision: data.decision,
+        has_refined: data.hasRefined,
+        search: data.search,
+        start_date: data.startDate,
+        end_date: data.endDate,
+        order: data.order,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Filter Options
+   * Expose the available filter options for scene extractions.
+   * @returns SceneExtractionFilterOptions Successful Response
+   * @throws ApiError
+   */
+  public static getFilterOptions(): CancelablePromise<SceneExtractionsGetFilterOptionsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/scene-extractions/filters",
+    })
+  }
+
+  /**
+   * Get Scene Extraction
+   * Fetch a single scene extraction by its identifier.
+   * @param data The data for the request.
+   * @param data.sceneId
+   * @returns SceneExtractionRead Successful Response
+   * @throws ApiError
+   */
+  public static getSceneExtraction(
+    data: SceneExtractionsGetSceneExtractionData,
+  ): CancelablePromise<SceneExtractionsGetSceneExtractionResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/scene-extractions/{scene_id}",
+      path: {
+        scene_id: data.sceneId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+}
+
+export class SceneRankingsService {
+  /**
+   * List Top Scene Rankings
+   * Return the highest ranked scenes for a book with optional filters.
+   * @param data The data for the request.
+   * @param data.bookSlug
+   * @param data.limit
+   * @param data.modelName
+   * @param data.promptVersion
+   * @param data.weightConfigHash
+   * @param data.includeScene
+   * @returns SceneRankingListResponse Successful Response
+   * @throws ApiError
+   */
+  public static listTopSceneRankings(
+    data: SceneRankingsListTopSceneRankingsData,
+  ): CancelablePromise<SceneRankingsListTopSceneRankingsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/scene-rankings/top",
+      query: {
+        book_slug: data.bookSlug,
+        limit: data.limit,
+        model_name: data.modelName,
+        prompt_version: data.promptVersion,
+        weight_config_hash: data.weightConfigHash,
+        include_scene: data.includeScene,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List Scene Ranking History
+   * Return ranking history for a specific scene.
+   * @param data The data for the request.
+   * @param data.sceneId
+   * @param data.limit
+   * @param data.newestFirst
+   * @param data.includeScene
+   * @returns SceneRankingListResponse Successful Response
+   * @throws ApiError
+   */
+  public static listSceneRankingHistory(
+    data: SceneRankingsListSceneRankingHistoryData,
+  ): CancelablePromise<SceneRankingsListSceneRankingHistoryResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/scene-rankings/scene/{scene_id}",
+      path: {
+        scene_id: data.sceneId,
+      },
+      query: {
+        limit: data.limit,
+        newest_first: data.newestFirst,
+        include_scene: data.includeScene,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Scene Ranking
+   * Fetch a single scene ranking by identifier.
+   * @param data The data for the request.
+   * @param data.rankingId
+   * @param data.includeScene
+   * @returns SceneRankingRead Successful Response
+   * @throws ApiError
+   */
+  public static getSceneRanking(
+    data: SceneRankingsGetSceneRankingData,
+  ): CancelablePromise<SceneRankingsGetSceneRankingResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/scene-rankings/{ranking_id}",
+      path: {
+        ranking_id: data.rankingId,
+      },
+      query: {
+        include_scene: data.includeScene,
       },
       errors: {
         422: "Validation Error",
