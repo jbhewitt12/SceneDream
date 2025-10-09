@@ -59,6 +59,7 @@ def list_prompts_for_scene(
         prompt_version=prompt_version,
         newest_first=newest_first,
         limit=limit,
+        include_scene=include_scene,
     )
     data = [_serialize_prompt(record, include_scene=include_scene) for record in prompts]
     meta: dict[str, object] = {

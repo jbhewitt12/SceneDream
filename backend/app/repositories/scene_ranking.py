@@ -115,6 +115,37 @@ class SceneRankingRepository:
         statement = statement.limit(limit)
         return list(self._session.exec(statement))
 
+    def list_top_rankings(
+        self,
+        *,
+        limit: int = 10,
+        model_name: str | None = None,
+        prompt_version: str | None = None,
+        weight_config_hash: str | None = None,
+        include_scene: bool = False,
+    ) -> list[SceneRanking]:
+        """Return globally top rankings across all books by overall_priority."""
+        statement = (
+            select(SceneRanking)
+            .join(SceneExtraction, SceneRanking.scene_extraction_id == SceneExtraction.id)
+            .order_by(
+                SceneRanking.overall_priority.desc(),
+                SceneRanking.created_at.desc(),
+            )
+        )
+        if model_name:
+            statement = statement.where(SceneRanking.model_name == model_name)
+        if prompt_version:
+            statement = statement.where(SceneRanking.prompt_version == prompt_version)
+        if weight_config_hash:
+            statement = statement.where(
+                SceneRanking.weight_config_hash == weight_config_hash
+            )
+        if include_scene:
+            statement = statement.options(joinedload(SceneRanking.scene_extraction))
+        statement = statement.limit(limit)
+        return list(self._session.exec(statement))
+
     def create(
         self,
         *,
