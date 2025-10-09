@@ -14,7 +14,7 @@ The critical files are in the `backend/app/services/` directory.
 1. Scene extraction pipeline *(implemented)*
 
 - `backend/app/services/scene_extraction/scene_extraction.py` defines `SceneExtractor`, which reads EPUB chapters with BeautifulSoup, normalizes paragraph text, and chunks each chapter (~12k characters with paragraph overlap) so prompts can reference numbered paragraphs.
-- Each chunk is sent through `gemini_api.json_output(...)` (default `gemini-2.5-flash`, temperature 0.0) using the schema in `SCENE_EXTRACTION_SCHEMA_TEXT`; responses are deduplicated, sequential scene ids assigned, and stats returned by `extract_preview` / `extract_book`.
+- Each chunk is sent through `gemini_api.json_output(...)` (default `gemini-2.5-pro`, temperature 0.0) using the schema in `SCENE_EXTRACTION_SCHEMA_TEXT`; responses are deduplicated, sequential scene ids assigned, and stats returned by `extract_preview` / `extract_book`.
 - CLI entry points in `backend/app/services/scene_extraction/main.py` support previewing the first N chapters or running the full Excession book, with a `--refine` flag to enable downstream refinement.
 - When refinement is enabled, `XAIAPI` wraps Grok to evaluate each scene via `REFINEMENT_SCHEMA`, marking keep/discard decisions and optional refined excerpts while preserving the original extraction.
 - `_persist_chapter_scenes` stores results in the Postgres-backed `scene_extractions` table via `SceneExtractionRepository`, recording raw/refined text, word/char counts, chunk indices, model metadata, and a hash signature; existing chunk indexes are skipped to keep reruns idempotent.
