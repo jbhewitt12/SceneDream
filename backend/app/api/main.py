@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.routes import (
+    generated_images,
     items,
     login,
     private,
@@ -20,6 +21,7 @@ api_router.include_router(items.router)
 api_router.include_router(image_prompts.router)
 api_router.include_router(scene_extractions.router)
 api_router.include_router(scene_rankings.router)
+api_router.include_router(generated_images.router)
 
 
 if settings.ENVIRONMENT == "local":
