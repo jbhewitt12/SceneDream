@@ -126,8 +126,6 @@ Acceptance criteria:
 - `GET /image-prompts/scene/{scene_id}` → list prompts for a scene; query params: `limit`, `newest_first`, `model_name?`, `prompt_version?`, `include_scene?`
 - `GET /image-prompts/{prompt_id}` → fetch a single prompt
 - `GET /image-prompts/book/{book_slug}` → list prompts across a book (filters: `chapter_number?`, `model_name?`, `prompt_version?`, `style_tag?`, pagination)
-- `POST /image-prompts/generate/scene/{scene_id}` → trigger generation; body: `{ variantsCount?, promptVersion?, temperature?, overwrite? }`
-- Optional: `POST /image-prompts/generate/book` → batch by book and filters
 
 3) Wire router in `app/api/main.py` and export via `app/api/__init__.py` like others.
 
