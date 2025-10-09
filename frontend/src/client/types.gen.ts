@@ -13,6 +13,63 @@ export type HTTPValidationError = {
   detail?: Array<ValidationError>
 }
 
+/**
+ * Collection response for image prompts with optional metadata.
+ */
+export type ImagePromptListResponse = {
+  data: Array<ImagePromptRead>
+  meta?: {
+    [key: string]: unknown
+  }
+}
+
+/**
+ * Detailed representation of an image prompt variant.
+ */
+export type ImagePromptRead = {
+  id: string
+  scene_extraction_id: string
+  model_vendor: string
+  model_name: string
+  prompt_version: string
+  variant_index: number
+  title: string | null
+  prompt_text: string
+  negative_prompt: string | null
+  style_tags: Array<string> | null
+  attributes: {
+    [key: string]: unknown
+  }
+  notes: string | null
+  context_window: {
+    [key: string]: unknown
+  }
+  raw_response: {
+    [key: string]: unknown
+  }
+  temperature: number | null
+  max_output_tokens: number | null
+  llm_request_id: string | null
+  execution_time_ms: number | null
+  created_at: string
+  updated_at: string
+  scene?: ImagePromptSceneSummary | null
+}
+
+/**
+ * High-level information about a scene for prompt context.
+ */
+export type ImagePromptSceneSummary = {
+  id: string
+  book_slug: string
+  chapter_number: number
+  chapter_title: string
+  scene_number: number
+  location_marker: string
+  refined?: string | null
+  raw: string
+}
+
 export type ItemCreate = {
   title: string
   description?: string | null
@@ -42,6 +99,142 @@ export type Message = {
 export type NewPassword = {
   token: string
   new_password: string
+}
+
+export type PrivateUserCreate = {
+  email: string
+  password: string
+  full_name: string
+  is_verified?: boolean
+}
+
+/**
+ * Bounds for extraction timestamps.
+ */
+export type SceneExtractionDateRange = {
+  earliest: string | null
+  latest: string | null
+}
+
+/**
+ * Available filter options for scene extractions.
+ */
+export type SceneExtractionFilterOptions = {
+  books: Array<string>
+  chapters_by_book: {
+    [key: string]: Array<number>
+  }
+  refinement_decisions: Array<string>
+  has_refined_options: Array<boolean>
+  date_range: SceneExtractionDateRange
+}
+
+/**
+ * Paginated scene extraction response.
+ */
+export type SceneExtractionListResponse = {
+  data: Array<SceneExtractionRead>
+  total: number
+  page: number
+  page_size: number
+}
+
+/**
+ * Detailed representation of a scene extraction record.
+ */
+export type SceneExtractionRead = {
+  id: string
+  book_slug: string
+  source_book_path: string
+  chapter_number: number
+  chapter_title: string
+  chapter_source_name: string | null
+  scene_number: number
+  location_marker: string
+  raw: string
+  refined: string | null
+  refinement_decision: string | null
+  refinement_rationale: string | null
+  chunk_index: number
+  chunk_paragraph_start: number
+  chunk_paragraph_end: number
+  raw_word_count: number | null
+  raw_char_count: number | null
+  refined_word_count: number | null
+  refined_char_count: number | null
+  raw_signature: string | null
+  provisional_id: number | null
+  location_marker_normalized: string | null
+  scene_paragraph_start: number | null
+  scene_paragraph_end: number | null
+  scene_word_start: number | null
+  scene_word_end: number | null
+  extraction_model: string | null
+  extraction_temperature: number | null
+  refinement_model: string | null
+  refinement_temperature: number | null
+  extracted_at: string
+  refined_at: string | null
+  refinement_has_refined_excerpt: boolean | null
+  props?: {
+    [key: string]: unknown
+  }
+}
+
+/**
+ * Collection response for scene rankings with optional metadata.
+ */
+export type SceneRankingListResponse = {
+  data: Array<SceneRankingRead>
+  meta?: {
+    [key: string]: unknown
+  }
+}
+
+/**
+ * Detailed representation of a scene ranking record.
+ */
+export type SceneRankingRead = {
+  id: string
+  scene_extraction_id: string
+  model_vendor: string
+  model_name: string
+  prompt_version: string
+  justification: string | null
+  scores: {
+    [key: string]: number
+  }
+  overall_priority: number
+  weight_config: {
+    [key: string]: number
+  }
+  weight_config_hash: string
+  warnings: Array<string> | null
+  character_tags: Array<string> | null
+  raw_response: {
+    [key: string]: unknown
+  }
+  execution_time_ms: number | null
+  temperature: number | null
+  llm_request_id: string | null
+  created_at: string
+  updated_at: string
+  scene?: SceneRankingSceneSummary | null
+}
+
+/**
+ * High-level information about a ranked scene.
+ */
+export type SceneRankingSceneSummary = {
+  id: string
+  book_slug: string
+  chapter_number: number
+  chapter_title: string
+  scene_number: number
+  location_marker: string
+  refined: string | null
+  raw: string
+  refinement_decision?: string | null
 }
 
 export type Token = {
@@ -100,6 +293,38 @@ export type ValidationError = {
   type: string
 }
 
+export type ImagePromptsListPromptsForSceneData = {
+  includeScene?: boolean
+  limit?: number
+  modelName?: string | null
+  newestFirst?: boolean
+  promptVersion?: string | null
+  sceneId: string
+}
+
+export type ImagePromptsListPromptsForSceneResponse = ImagePromptListResponse
+
+export type ImagePromptsListPromptsForBookData = {
+  bookSlug: string
+  chapterNumber?: number | null
+  includeScene?: boolean
+  limit?: number
+  modelName?: string | null
+  newestFirst?: boolean
+  offset?: number | null
+  promptVersion?: string | null
+  styleTag?: string | null
+}
+
+export type ImagePromptsListPromptsForBookResponse = ImagePromptListResponse
+
+export type ImagePromptsGetImagePromptData = {
+  includeScene?: boolean
+  promptId: string
+}
+
+export type ImagePromptsGetImagePromptResponse = ImagePromptRead
+
 export type ItemsReadItemsData = {
   limit?: number
   skip?: number
@@ -157,6 +382,65 @@ export type LoginRecoverPasswordHtmlContentData = {
 }
 
 export type LoginRecoverPasswordHtmlContentResponse = string
+
+export type PrivateCreateUserData = {
+  requestBody: PrivateUserCreate
+}
+
+export type PrivateCreateUserResponse = UserPublic
+
+export type SceneExtractionsListSceneExtractionsData = {
+  bookSlug?: string | null
+  chapterNumber?: number | null
+  decision?: string | null
+  endDate?: string | null
+  hasRefined?: boolean | null
+  order?: "asc" | "desc"
+  page?: number
+  pageSize?: number
+  search?: string | null
+  startDate?: string | null
+}
+
+export type SceneExtractionsListSceneExtractionsResponse =
+  SceneExtractionListResponse
+
+export type SceneExtractionsGetFilterOptionsResponse =
+  SceneExtractionFilterOptions
+
+export type SceneExtractionsGetSceneExtractionData = {
+  sceneId: string
+}
+
+export type SceneExtractionsGetSceneExtractionResponse = SceneExtractionRead
+
+export type SceneRankingsListTopSceneRankingsData = {
+  bookSlug: string
+  includeScene?: boolean
+  limit?: number
+  modelName?: string | null
+  promptVersion?: string | null
+  weightConfigHash?: string | null
+}
+
+export type SceneRankingsListTopSceneRankingsResponse = SceneRankingListResponse
+
+export type SceneRankingsListSceneRankingHistoryData = {
+  includeScene?: boolean
+  limit?: number
+  newestFirst?: boolean
+  sceneId: string
+}
+
+export type SceneRankingsListSceneRankingHistoryResponse =
+  SceneRankingListResponse
+
+export type SceneRankingsGetSceneRankingData = {
+  includeScene?: boolean
+  rankingId: string
+}
+
+export type SceneRankingsGetSceneRankingResponse = SceneRankingRead
 
 export type UsersReadUsersData = {
   limit?: number
