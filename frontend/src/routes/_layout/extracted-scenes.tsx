@@ -441,7 +441,7 @@ const SceneExtractionItem = ({ scene }: { scene: SceneExtraction }) => {
     >
       <AccordionItemTrigger _expanded={{ bg: "bg.subtle" }}>
         <Flex align="center" flex="1" gap={3} textAlign="left">
-          <Box>
+          <Box flex="1">
             <Text fontWeight="semibold">
               {scene.chapter_title}
               <Text as="span" fontWeight="normal" color="fg.muted" ml={2}>
@@ -488,22 +488,8 @@ const SceneExtractionItem = ({ scene }: { scene: SceneExtraction }) => {
                 {formatDateTime(scene.extracted_at)}
               </Badge>
             </Flex>
-          </Box>
-        </Flex>
-        <AccordionItemIndicator />
-      </AccordionItemTrigger>
-      <AccordionItemContent>
-        <Stack gap={6} pt={2}>
-          <Box>
-            <Text
-              fontSize="sm"
-              fontWeight="bold"
-              textTransform="uppercase"
-              mb={2}
-            >
-              Raw Excerpt
-            </Text>
             <Box
+              mt={3}
               p={3}
               borderRadius="md"
               borderWidth="1px"
@@ -515,6 +501,11 @@ const SceneExtractionItem = ({ scene }: { scene: SceneExtraction }) => {
               {scene.raw}
             </Box>
           </Box>
+        </Flex>
+        <AccordionItemIndicator />
+      </AccordionItemTrigger>
+      <AccordionItemContent>
+        <Stack gap={6} pt={2}>
           {scene.refined && (
             <Box>
               <Text
