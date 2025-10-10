@@ -60,6 +60,7 @@ const GeneratedImageModal = ({
 
   const sceneImages = sceneImagesQuery.data?.data ?? []
   const currentImage = imageQuery.data
+  const isLoading = imageQuery.isLoading || imageQuery.isFetching
 
   const handlePreviousVariant = () => {
     if (sceneImages.length === 0 || !imageId || !onNavigate) return
@@ -149,11 +150,9 @@ const GeneratedImageModal = ({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [isOpen, imageId, sceneId, sceneImages, allImages, onNavigate])
 
-  if (!currentImage) {
-    return null
-  }
-
-  const fullPath = `${OpenAPI.BASE}/${currentImage.image.storage_path}/${currentImage.image.file_name}`
+  const fullPath = currentImage
+    ? `${OpenAPI.BASE}/${currentImage.image.storage_path}/${currentImage.image.file_name}`
+    : ""
   const hasMultipleImages = sceneImages.length > 1
   const currentIndex = imageId ? sceneImages.findIndex((img) => img.id === imageId) : -1
 
@@ -171,8 +170,8 @@ const GeneratedImageModal = ({
         <DialogCloseTrigger />
         <DialogHeader>
           <DialogTitle>
-            {currentImage.scene?.book_slug || "Generated Image"} · Chapter{" "}
-            {currentImage.image.chapter_number}
+            {currentImage?.scene?.book_slug || "Generated Image"}
+            {currentImage && ` · Chapter ${currentImage.image.chapter_number}`}
             {hasMultipleImages && currentIndex !== -1 && ` · ${currentIndex + 1} of ${sceneImages.length}`}
           </DialogTitle>
         </DialogHeader>
@@ -186,6 +185,7 @@ const GeneratedImageModal = ({
                 variant="ghost"
                 size="lg"
                 alignSelf="center"
+                disabled={isLoading}
               >
                 <FiChevronLeft />
               </IconButton>
@@ -193,13 +193,16 @@ const GeneratedImageModal = ({
 
             {/* Image */}
             <Box flex="1" display="flex" justifyContent="center" alignItems="center">
-              <Image
-                src={fullPath}
-                alt={`Generated image for chapter ${currentImage.image.chapter_number}`}
-                objectFit="contain"
-                maxH="70vh"
-                maxW="full"
-              />
+              {currentImage && (
+                <Image
+                  src={fullPath}
+                  alt={`Generated image for chapter ${currentImage.image.chapter_number}`}
+                  objectFit="contain"
+                  maxH="70vh"
+                  maxW="full"
+                  loading="eager"
+                />
+              )}
             </Box>
 
             {/* Right arrow */}
@@ -210,81 +213,84 @@ const GeneratedImageModal = ({
                 variant="ghost"
                 size="lg"
                 alignSelf="center"
+                disabled={isLoading}
               >
                 <FiChevronRight />
               </IconButton>
             )}
 
             {/* Context panel */}
-            <Stack
-              gap={4}
-              maxW="md"
-              minW="xs"
-              overflowY="auto"
-              maxH="70vh"
-              pr={2}
-            >
-              {/* Image metadata */}
-              <Box>
-                <Text fontWeight="bold" fontSize="sm" mb={2}>
-                  Image Details
-                </Text>
-                <HStack gap={2} wrap="wrap" mb={2}>
-                  <Badge>{currentImage.image.size}</Badge>
-                  <Badge colorScheme="purple">{currentImage.image.quality}</Badge>
-                  <Badge colorScheme="blue">{currentImage.image.style}</Badge>
-                  <Badge colorScheme="gray">
-                    Variant #{currentImage.image.variant_index + 1}
-                  </Badge>
-                </HStack>
-                <Text fontSize="xs" color="fg.muted">
-                  {currentImage.image.provider} · {currentImage.image.model}
-                </Text>
-              </Box>
-
-              {/* Prompt text */}
-              {currentImage.prompt && (
+            {currentImage && (
+              <Stack
+                gap={4}
+                maxW="md"
+                minW="xs"
+                overflowY="auto"
+                maxH="70vh"
+                pr={2}
+              >
+                {/* Image metadata */}
                 <Box>
                   <Text fontWeight="bold" fontSize="sm" mb={2}>
-                    Prompt
+                    Image Details
                   </Text>
-                  {currentImage.prompt.style_tags &&
-                    currentImage.prompt.style_tags.length > 0 && (
-                      <HStack gap={2} wrap="wrap" mb={2}>
-                        {currentImage.prompt.style_tags.map((tag) => (
-                          <Badge key={tag} colorScheme="purple" variant="subtle">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </HStack>
-                    )}
-                  <Text
-                    fontSize="sm"
-                    whiteSpace="pre-wrap"
-                    fontFamily="mono"
-                    color="fg.muted"
-                  >
-                    {currentImage.prompt.prompt_text}
+                  <HStack gap={2} wrap="wrap" mb={2}>
+                    <Badge>{currentImage.image.size}</Badge>
+                    <Badge colorScheme="purple">{currentImage.image.quality}</Badge>
+                    <Badge colorScheme="blue">{currentImage.image.style}</Badge>
+                    <Badge colorScheme="gray">
+                      Variant #{currentImage.image.variant_index + 1}
+                    </Badge>
+                  </HStack>
+                  <Text fontSize="xs" color="fg.muted">
+                    {currentImage.image.provider} · {currentImage.image.model}
                   </Text>
                 </Box>
-              )}
 
-              {/* Scene text */}
-              {currentImage.scene && (
-                <Box>
-                  <Text fontWeight="bold" fontSize="sm" mb={2}>
-                    Scene {currentImage.scene.scene_number}
-                  </Text>
-                  <Text fontSize="xs" color="fg.subtle" mb={1}>
-                    {currentImage.scene.chapter_title} ·{" "}
-                    {currentImage.scene.location_marker}
-                  </Text>
-                  <Text fontSize="sm" whiteSpace="pre-wrap" color="fg.muted">
-                    {currentImage.scene.refined || currentImage.scene.raw}
-                  </Text>
-                </Box>
-              )}
-            </Stack>
+                {/* Prompt text */}
+                {currentImage.prompt && (
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm" mb={2}>
+                      Prompt
+                    </Text>
+                    {currentImage.prompt.style_tags &&
+                      currentImage.prompt.style_tags.length > 0 && (
+                        <HStack gap={2} wrap="wrap" mb={2}>
+                          {currentImage.prompt.style_tags.map((tag) => (
+                            <Badge key={tag} colorScheme="purple" variant="subtle">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </HStack>
+                      )}
+                    <Text
+                      fontSize="sm"
+                      whiteSpace="pre-wrap"
+                      fontFamily="mono"
+                      color="fg.muted"
+                    >
+                      {currentImage.prompt.prompt_text}
+                    </Text>
+                  </Box>
+                )}
+
+                {/* Scene text */}
+                {currentImage.scene && (
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm" mb={2}>
+                      Scene {currentImage.scene.scene_number}
+                    </Text>
+                    <Text fontSize="xs" color="fg.subtle" mb={1}>
+                      {currentImage.scene.chapter_title} ·{" "}
+                      {currentImage.scene.location_marker}
+                    </Text>
+                    <Text fontSize="sm" whiteSpace="pre-wrap" color="fg.muted">
+                      {currentImage.scene.refined || currentImage.scene.raw}
+                    </Text>
+                  </Box>
+                )}
+              </Stack>
+            )}
           </HStack>
         </DialogBody>
       </DialogContent>
