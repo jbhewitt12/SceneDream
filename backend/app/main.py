@@ -1,4 +1,5 @@
 import sentry_sdk
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
@@ -34,4 +35,7 @@ if settings.all_cors_origins:
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # Mount static files for generated images
-app.mount("/img", StaticFiles(directory="img"), name="images")
+# Path resolution: backend/app/main.py -> backend -> project root -> img
+img_dir = Path(__file__).parent.parent.parent / "img"
+if img_dir.exists() and img_dir.is_dir():
+    app.mount("/img", StaticFiles(directory=str(img_dir)), name="images")
