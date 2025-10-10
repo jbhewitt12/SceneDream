@@ -291,6 +291,11 @@ function GeneratedImagesGalleryPage() {
     setSelectedSceneId(null)
   }
 
+  const handleNavigate = (imageId: string, sceneId: string) => {
+    setSelectedImageId(imageId)
+    setSelectedSceneId(sceneId)
+  }
+
   // Intersection Observer for infinite scroll
   useEffect(() => {
     if (!loadMoreRef.current) return
@@ -382,6 +387,8 @@ function GeneratedImagesGalleryPage() {
         onClose={handleModalClose}
         imageId={selectedImageId}
         sceneId={selectedSceneId}
+        allImages={images.map((img) => ({ id: img.id, scene_extraction_id: img.scene_extraction_id }))}
+        onNavigate={handleNavigate}
       />
     </Container>
   )

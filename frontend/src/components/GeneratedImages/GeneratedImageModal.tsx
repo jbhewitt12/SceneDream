@@ -8,13 +8,10 @@ import {
   Text,
 } from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi"
 
-import {
-  GeneratedImageApi,
-  type GeneratedImageWithContext,
-} from "@/api/generatedImages"
+import { GeneratedImageApi } from "@/api/generatedImages"
 import { OpenAPI } from "@/client"
 import {
   DialogBody,
@@ -30,6 +27,8 @@ type GeneratedImageModalProps = {
   onClose: () => void
   imageId: string | null
   sceneId: string | null
+  allImages?: Array<{ id: string; scene_extraction_id: string }>
+  onNavigate?: (imageId: string, sceneId: string) => void
 }
 
 const GeneratedImageModal = ({
@@ -37,9 +36,9 @@ const GeneratedImageModal = ({
   onClose,
   imageId,
   sceneId,
+  allImages = [],
+  onNavigate,
 }: GeneratedImageModalProps) => {
-  const [currentIndex, setCurrentIndex] = useState(0)
-
   // Fetch the current image details with context
   const imageQuery = useQuery({
     queryKey: ["generated-image", imageId],
@@ -62,24 +61,68 @@ const GeneratedImageModal = ({
   const sceneImages = sceneImagesQuery.data?.data ?? []
   const currentImage = imageQuery.data
 
-  // Update current index when imageId changes
-  useEffect(() => {
-    if (imageId && sceneImages.length > 0) {
-      const index = sceneImages.findIndex((img) => img.id === imageId)
-      if (index !== -1) {
-        setCurrentIndex(index)
-      }
+  const handlePreviousVariant = () => {
+    if (sceneImages.length === 0 || !imageId || !onNavigate) return
+    const currentIndex = sceneImages.findIndex((img) => img.id === imageId)
+    if (currentIndex === -1) return
+    const newIndex = (currentIndex - 1 + sceneImages.length) % sceneImages.length
+    const newImage = sceneImages[newIndex]
+    if (newImage) {
+      onNavigate(newImage.id, newImage.scene_extraction_id)
     }
-  }, [imageId, sceneImages])
-
-  const handlePrevious = () => {
-    if (sceneImages.length === 0) return
-    setCurrentIndex((prev) => (prev - 1 + sceneImages.length) % sceneImages.length)
   }
 
-  const handleNext = () => {
-    if (sceneImages.length === 0) return
-    setCurrentIndex((prev) => (prev + 1) % sceneImages.length)
+  const handleNextVariant = () => {
+    if (sceneImages.length === 0 || !imageId || !onNavigate) return
+    const currentIndex = sceneImages.findIndex((img) => img.id === imageId)
+    if (currentIndex === -1) return
+    const newIndex = (currentIndex + 1) % sceneImages.length
+    const newImage = sceneImages[newIndex]
+    if (newImage) {
+      onNavigate(newImage.id, newImage.scene_extraction_id)
+    }
+  }
+
+  const handlePreviousScene = () => {
+    if (allImages.length === 0 || !imageId || !onNavigate) return
+    const currentGalleryIndex = allImages.findIndex((img) => img.id === imageId)
+    if (currentGalleryIndex === -1) return
+
+    // Find the previous image that has a different scene_extraction_id
+    for (let i = currentGalleryIndex - 1; i >= 0; i--) {
+      if (allImages[i].scene_extraction_id !== sceneId) {
+        onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
+        return
+      }
+    }
+    // If no previous scene found, wrap to the last scene
+    for (let i = allImages.length - 1; i > currentGalleryIndex; i--) {
+      if (allImages[i].scene_extraction_id !== sceneId) {
+        onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
+        return
+      }
+    }
+  }
+
+  const handleNextScene = () => {
+    if (allImages.length === 0 || !imageId || !onNavigate) return
+    const currentGalleryIndex = allImages.findIndex((img) => img.id === imageId)
+    if (currentGalleryIndex === -1) return
+
+    // Find the next image that has a different scene_extraction_id
+    for (let i = currentGalleryIndex + 1; i < allImages.length; i++) {
+      if (allImages[i].scene_extraction_id !== sceneId) {
+        onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
+        return
+      }
+    }
+    // If no next scene found, wrap to the first scene
+    for (let i = 0; i < currentGalleryIndex; i++) {
+      if (allImages[i].scene_extraction_id !== sceneId) {
+        onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
+        return
+      }
+    }
   }
 
   // Keyboard navigation
@@ -89,16 +132,22 @@ const GeneratedImageModal = ({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "ArrowLeft") {
         event.preventDefault()
-        handlePrevious()
+        handlePreviousVariant()
       } else if (event.key === "ArrowRight") {
         event.preventDefault()
-        handleNext()
+        handleNextVariant()
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault()
+        handlePreviousScene()
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault()
+        handleNextScene()
       }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, handlePrevious, handleNext])
+  }, [isOpen, imageId, sceneId, sceneImages, allImages, onNavigate])
 
   if (!currentImage) {
     return null
@@ -106,6 +155,7 @@ const GeneratedImageModal = ({
 
   const fullPath = `${OpenAPI.BASE}/${currentImage.image.storage_path}/${currentImage.image.file_name}`
   const hasMultipleImages = sceneImages.length > 1
+  const currentIndex = imageId ? sceneImages.findIndex((img) => img.id === imageId) : -1
 
   return (
     <DialogRoot
@@ -123,7 +173,7 @@ const GeneratedImageModal = ({
           <DialogTitle>
             {currentImage.scene?.book_slug || "Generated Image"} · Chapter{" "}
             {currentImage.image.chapter_number}
-            {hasMultipleImages && ` · ${currentIndex + 1} of ${sceneImages.length}`}
+            {hasMultipleImages && currentIndex !== -1 && ` · ${currentIndex + 1} of ${sceneImages.length}`}
           </DialogTitle>
         </DialogHeader>
         <DialogBody>
@@ -132,7 +182,7 @@ const GeneratedImageModal = ({
             {hasMultipleImages && (
               <IconButton
                 aria-label="Previous image"
-                onClick={handlePrevious}
+                onClick={handlePreviousVariant}
                 variant="ghost"
                 size="lg"
                 alignSelf="center"
@@ -156,7 +206,7 @@ const GeneratedImageModal = ({
             {hasMultipleImages && (
               <IconButton
                 aria-label="Next image"
-                onClick={handleNext}
+                onClick={handleNextVariant}
                 variant="ghost"
                 size="lg"
                 alignSelf="center"
