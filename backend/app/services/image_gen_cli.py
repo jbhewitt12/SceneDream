@@ -8,22 +8,25 @@ This CLI orchestrates the full pipeline from scene extraction through image gene
 
 Usage examples:
     # Run full pipeline: extract -> rank -> generate 3 prompts per scene -> generate images for top 5 scenes
-    uv run python -m app.services.image_gen_cli run --book-slug excession-iain-m-banks --prompts-per-scene 3 --images-for-scenes 5
+    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --prompts-per-scene 3 --images-for-scenes 5
 
     # Extract and refine only
-    uv run python -m app.services.image_gen_cli extract --book-slug excession-iain-m-banks
+    uv run python -m app.services.image_gen_cli extract --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub"
 
-    # Rank existing scenes
-    uv run python -m app.services.image_gen_cli rank --book-slug excession-iain-m-banks
+    # Rank existing scenes (no book-path needed, works from database)
+    uv run python -m app.services.image_gen_cli rank --book-slug look-to-windward-iain-m-banks
 
-    # Generate prompts for top 10 scenes
-    uv run python -m app.services.image_gen_cli prompts --book-slug excession-iain-m-banks --prompts-per-scene 3 --top-scenes 10
+    # Generate prompts for top 10 scenes (no book-path needed, works from database)
+    uv run python -m app.services.image_gen_cli prompts --book-slug look-to-windward-iain-m-banks --prompts-per-scene 3 --top-scenes 10
 
-    # Generate images for top 5 scenes
-    uv run python -m app.services.image_gen_cli images --book-slug excession-iain-m-banks --top-scenes 5
+    # Generate images for top 5 scenes (no book-path needed, works from database)
+    uv run python -m app.services.image_gen_cli images --book-slug look-to-windward-iain-m-banks --top-scenes 5
 
     # Dry run to preview what would happen
-    uv run python -m app.services.image_gen_cli run --book-slug excession-iain-m-banks --prompts-per-scene 2 --images-for-scenes 3 --dry-run
+    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --prompts-per-scene 2 --images-for-scenes 3 --dry-run
+
+    # Skip extraction and run remaining steps (useful if scenes already extracted)
+    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --skip-extraction --prompts-per-scene 3 --images-for-scenes 5
 """
 
 from __future__ import annotations
@@ -222,11 +225,11 @@ def _add_book_args(parser: argparse.ArgumentParser) -> None:
     """Add book-related arguments."""
     parser.add_argument(
         "--book-slug",
-        help="Book slug (e.g., excession-iain-m-banks)",
+        help="Book slug (e.g., look-to-windward-iain-m-banks). If provided without --book-path, book extraction will be skipped.",
     )
     parser.add_argument(
         "--book-path",
-        help="Path to EPUB file (defaults to Excession)",
+        help="Path to EPUB file. Required for scene extraction. Can be absolute or relative to project root.",
     )
 
 
@@ -268,7 +271,13 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
 async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
     """Run the complete pipeline."""
     stats = PipelineStats()
-    book_path = Path(args.book_path) if args.book_path else EXCESSION_EPUB_PATH
+
+    # Validate book_path is provided if extraction is needed
+    if not args.skip_extraction and not args.book_path:
+        logger.error("--book-path is required for scene extraction. Either provide --book-path or use --skip-extraction.")
+        raise ValueError("--book-path is required for scene extraction")
+
+    book_path = Path(args.book_path) if args.book_path else None
 
     # Step 1: Extract scenes (if not skipped)
     if not args.skip_extraction:
@@ -292,11 +301,15 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
 
     # Determine book slug
     book_slug = args.book_slug
-    if not book_slug and not args.dry_run:
-        config = SceneExtractionConfig()
-        extractor = SceneExtractor(config=config)
-        book_slug = extractor._resolve_book_slug(book_path)
-        logger.info("Resolved book slug: %s", book_slug)
+    if not book_slug:
+        if book_path and not args.dry_run:
+            config = SceneExtractionConfig()
+            extractor = SceneExtractor(config=config)
+            book_slug = extractor._resolve_book_slug(book_path)
+            logger.info("Resolved book slug: %s", book_slug)
+        else:
+            logger.error("--book-slug is required when --skip-extraction is used without --book-path")
+            raise ValueError("--book-slug is required")
 
     # Step 2: Rank scenes (if not skipped)
     if not args.skip_ranking:
@@ -458,7 +471,13 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
 async def _run_extract(args: argparse.Namespace) -> PipelineStats:
     """Extract scenes from a book."""
     stats = PipelineStats()
-    book_path = Path(args.book_path) if args.book_path else EXCESSION_EPUB_PATH
+
+    # Require book_path for extraction
+    if not args.book_path:
+        logger.error("--book-path is required for scene extraction")
+        raise ValueError("--book-path is required for scene extraction")
+
+    book_path = Path(args.book_path)
 
     if args.dry_run:
         logger.info("DRY RUN: Would extract scenes from %s", book_path)
