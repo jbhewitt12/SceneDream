@@ -345,9 +345,10 @@ class SceneExtractor:
             "or atmospheric enough to inspire image or video generation. Focus on moments with concrete, visual details. Never include a scene that lacks concrete, visual details."
         )
         guidelines = (
-            "- Use the provided numbered paragraphs to guide location markers.\n"
-            "- A scene may span multiple paragraphs; reference them as ranges when needed.\n"
-            "- Copy excerpts verbatim from the text without paraphrasing. Copy the entire scene, even if it is a big chunk of text. The purpose is to capture all information from the scenethat can be used to create images or videos.\n"
+            "- Use the provided numbered paragraphs for positions.\n"
+            "- Set location_marker to numbers only: '12' or '12-15' (no words).\n"
+            "- Scenes may span multiple paragraphs; use a hyphenated range.\n"
+            "- Copy the full scene excerpt verbatim into raw_excerpt. Do not paraphrase.\n"
             "- If no qualifying scenes exist, return an empty scenes array."
         )
         context_header = (
@@ -606,6 +607,13 @@ class SceneExtractor:
         if not text:
             return None, None
         lowered = text.lower()
+        # Fast path: numeric-only forms like "12" or "12-15"
+        numeric_only_match = re.fullmatch(r"\s*(\d+)\s*(?:[-–]\s*(\d+)\s*)?", text)
+        if numeric_only_match:
+            start = int(numeric_only_match.group(1))
+            end_raw = numeric_only_match.group(2)
+            end = int(end_raw) if end_raw else start
+            return start, end
         paragraph_pattern = re.search(
             r"para(?:graph)?s?\s+(\d+)(?:\s*(?:[-–]|to|through|and|&)\s*(\d+))?",
             lowered,
