@@ -406,7 +406,6 @@ class ImagePromptGenerationService:
             raise ImagePromptGenerationServiceError(
                 f"Scene {scene.id} is missing raw excerpt text"
             )
-        refined_excerpt = (scene.refined or "").strip()
         metadata_lines = [
             f"- Book slug: {scene.book_slug}",
             f"- Chapter number: {scene.chapter_number}",
@@ -416,14 +415,10 @@ class ImagePromptGenerationService:
             f"- Paragraph span: {context_window['paragraph_span'][0]}-{context_window['paragraph_span'][1]}",
             f"- Context paragraphs: {config.context_before} before, {config.context_after} after",
         ]
-        if refined_excerpt:
-            metadata_lines.append(
-                "- A refined excerpt is available; prefer raw text but cross-check for clarity."
-            )
         metadata_block = "\n".join(metadata_lines)
         guidance = (
             "Craft distinct, cinematic prompt variants that explore different artistic lenses, compositions, "
-            "lighting styles, and moods inspired by the scene. Encourage variety across variants (camera angle, focus, palette, atmosphere)."
+            "lighting styles, and moods inspired by the scene. Encourage variety across variants (visual styles, camera angle, focus, palette, atmosphere)."
         )
         output_schema = json.dumps(
             {
@@ -444,7 +439,7 @@ class ImagePromptGenerationService:
         )
         prompt_lines = [
             "You are an elite prompt engineer who converts novel scenes into world-class AI image prompts.",
-            f"Your goal is to produce exactly {config.variants_count} distinct prompt variants suitable for a model like DALLE3 or Midjourney.",
+            f"Your goal is to produce exactly {config.variants_count} distinct prompt variants suitable for the DALLE3 model.",
             "",
             "## Scene Metadata",
             metadata_block,
@@ -452,14 +447,6 @@ class ImagePromptGenerationService:
             "## Scene Excerpt (verbatim)",
             scene_excerpt,
         ]
-        if refined_excerpt:
-            prompt_lines.extend(
-                [
-                    "",
-                    "## Refined Excerpt (for reference)",
-                    refined_excerpt,
-                ]
-            )
         prompt = "\n".join(prompt_lines)
         prompt += (
             "\n\n## Surrounding Context Paragraphs\n"
