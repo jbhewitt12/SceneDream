@@ -71,6 +71,20 @@ class SceneRanking(SQLModel, table=True):
         default=None,
         sa_column=Column(JSONB, nullable=True),
     )
+    recommended_prompt_count: int | None = Field(
+        default=None,
+        ge=1,
+        le=10,
+        sa_column=Column(Integer, nullable=True),
+    )
+    complexity_rationale: str | None = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+    )
+    distinct_visual_moments: list[dict[str, Any]] | None = Field(
+        default=None,
+        sa_column=Column(JSONB, nullable=True),
+    )
     raw_response: dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False),

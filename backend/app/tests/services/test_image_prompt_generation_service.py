@@ -62,7 +62,9 @@ def scene_factory(db: Session) -> Callable[..., SceneExtraction]:
     db.commit()
 
 
-def _variants(payload: list[dict[str, object]] | None = None) -> list[dict[str, object]]:
+def _variants(
+    payload: list[dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
     if payload is not None:
         return payload
     return [
@@ -97,7 +99,9 @@ def _variants(payload: list[dict[str, object]] | None = None) -> list[dict[str, 
     ]
 
 
-def _patch_context(service: ImagePromptGenerationService, monkeypatch: pytest.MonkeyPatch) -> None:
+def _patch_context(
+    service: ImagePromptGenerationService, monkeypatch: pytest.MonkeyPatch
+) -> None:
     chapter = SimpleNamespace(
         number=1,
         title="Chapter 1",
@@ -123,7 +127,9 @@ def _patch_context(service: ImagePromptGenerationService, monkeypatch: pytest.Mo
     )
 
 
-def test_generate_for_scene_creates_prompts(db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generate_for_scene_creates_prompts(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scene = scene_factory()
     config = ImagePromptGenerationConfig(variants_count=2)
     service = ImagePromptGenerationService(db, config=config)
@@ -153,7 +159,9 @@ def test_generate_for_scene_creates_prompts(db: Session, scene_factory, monkeypa
     repository.delete_for_scene(scene.id, commit=True)
 
 
-def test_generate_for_scene_dry_run_returns_previews(db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generate_for_scene_dry_run_returns_previews(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scene = scene_factory()
     config = ImagePromptGenerationConfig(dry_run=True, variants_count=2)
     service = ImagePromptGenerationService(db, config=config)
@@ -169,7 +177,9 @@ def test_generate_for_scene_dry_run_returns_previews(db: Session, scene_factory,
     assert repository.list_for_scene(scene.id) == []
 
 
-def test_generate_for_scene_returns_existing_when_overwrite_disabled(db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generate_for_scene_returns_existing_when_overwrite_disabled(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scene = scene_factory()
     repository = ImagePromptRepository(db)
     existing = repository.bulk_create(
@@ -217,7 +227,9 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(db: Session
     repository.delete_for_scene(scene.id, commit=True)
 
 
-def test_generate_for_scene_overwrites_when_allowed(db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generate_for_scene_overwrites_when_allowed(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scene = scene_factory()
     repository = ImagePromptRepository(db)
     repository.create(
@@ -258,6 +270,8 @@ def test_generate_for_scene_overwrites_when_allowed(db: Session, scene_factory, 
     assert len(results) == 2
     stored = repository.list_for_scene(scene.id)
     assert len(stored) == 2
-    assert all(prompt.title in {"Neon Watchtower", "Garden Overwatch"} for prompt in stored)
+    assert all(
+        prompt.title in {"Neon Watchtower", "Garden Overwatch"} for prompt in stored
+    )
 
     repository.delete_for_scene(scene.id, commit=True)

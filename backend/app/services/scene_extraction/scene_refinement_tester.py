@@ -4,7 +4,7 @@ Run this to test the scene refinement model.
 We want refinement to be pretty ruthless in its decision-making.
 
 Prompt to improve:
-    Read plan.md. Look at backend/app/services/scene_extraction/scene_refinement_tester.py and the examples there. Update the backend/app/services/scene_extraction/scene_refinement.py prompt using best prompting 
+    Read plan.md. Look at backend/app/services/scene_extraction/scene_refinement_tester.py and the examples there. Update the backend/app/services/scene_extraction/scene_refinement.py prompt using best prompting
     practices to maximise the number of correct labels done using the backend/app/services/scene_extraction/scene_refinement_tester.py. Iterate the prompt over multiple rounds of testing.
 
 To run: uv run python -m app.services.scene_extraction.scene_refinement_tester
@@ -26,6 +26,7 @@ if str(BACKEND_ROOT) not in sys.path:
 try:
     from app.services.scene_extraction.scene_extraction import Chapter, RawScene
 except ModuleNotFoundError:
+
     @dataclass
     class Chapter:  # type: ignore[override]
         number: int
@@ -47,6 +48,7 @@ except ModuleNotFoundError:
         paragraph_end: int | None = None
         word_start: int | None = None
         word_end: int | None = None
+
 
 from app.services.scene_extraction.scene_refinement import RefinedScene, SceneRefiner
 
@@ -183,7 +185,11 @@ def main() -> None:
         scene_id = labeled.scene.scene_id
         refinement: RefinedScene | None = refinements.get(scene_id)
         decision = refinement.decision if refinement else "keep"
-        rationale = refinement.rationale if refinement else "No refinement response; defaulted to keep."
+        rationale = (
+            refinement.rationale
+            if refinement
+            else "No refinement response; defaulted to keep."
+        )
         is_match = decision == labeled.expected_decision
         if is_match:
             matches += 1

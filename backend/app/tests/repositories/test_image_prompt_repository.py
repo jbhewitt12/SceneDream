@@ -40,9 +40,7 @@ def scene(db: Session) -> object:
         commit=True,
     )
     yield scene
-    db.execute(
-        delete(ImagePrompt).where(ImagePrompt.scene_extraction_id == scene.id)
-    )
+    db.execute(delete(ImagePrompt).where(ImagePrompt.scene_extraction_id == scene.id))
     db.delete(scene)
     db.commit()
 
@@ -92,7 +90,9 @@ def _prompt_payload(
 
 def test_create_and_get_image_prompt(db: Session, scene) -> None:
     repository = ImagePromptRepository(db)
-    created = repository.create(data=_prompt_payload(scene, variant_index=0), commit=True)
+    created = repository.create(
+        data=_prompt_payload(scene, variant_index=0), commit=True
+    )
 
     fetched = repository.get(created.id)
     assert fetched is not None

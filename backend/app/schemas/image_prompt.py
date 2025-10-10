@@ -57,5 +57,3 @@ class ImagePromptListResponse(BaseModel):
 
     data: list[ImagePromptRead]
     meta: dict[str, Any] = Field(default_factory=dict)
-
-

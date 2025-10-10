@@ -47,7 +47,7 @@ def generate_images(
     quality: str = "standard",
     style: str = "vivid",
     n: int = 1,
-    response_format: str = "url"
+    response_format: str = "url",
 ) -> List[Union[str, bytes]]:
     """
     Generates images using OpenAI's DALL·E model based on the provided text prompt.
@@ -112,10 +112,12 @@ def generate_images(
             model=model,
             prompt=prompt,
             size=size,
-            quality=quality if model == "dall-e-3" else None,  # Quality only for DALL·E 3
-            style=style if model == "dall-e-3" else None,      # Style only for DALL·E 3
+            quality=quality
+            if model == "dall-e-3"
+            else None,  # Quality only for DALL·E 3
+            style=style if model == "dall-e-3" else None,  # Style only for DALL·E 3
             n=n,
-            response_format=response_format
+            response_format=response_format,
         )
 
         if response_format == "url":

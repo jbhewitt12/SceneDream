@@ -169,7 +169,9 @@ def _parse_chapter_range(range_str: str) -> tuple[int, int]:
         start = int(parts[0])
         end = int(parts[1])
         if start < 0 or end < 0 or start >= end:
-            raise ValueError("Invalid chapter range (start must be < end and both >= 0)")
+            raise ValueError(
+                "Invalid chapter range (start must be < end and both >= 0)"
+            )
         return (start, end)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"Invalid chapter range: {exc}") from exc
@@ -206,7 +208,9 @@ async def _handle_generate(args: argparse.Namespace) -> int:
     # Validate API key (check args, then settings, then os.environ as fallback)
     api_key = args.api_key or settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY")
     if not api_key and not args.dry_run:
-        logger.error("OPENAI_API_KEY environment variable or --api-key argument required for image generation")
+        logger.error(
+            "OPENAI_API_KEY environment variable or --api-key argument required for image generation"
+        )
         return 1
 
     # Create configuration
