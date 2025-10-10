@@ -177,7 +177,7 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(db: Session
             {
                 "scene_extraction_id": scene.id,
                 "model_vendor": "google",
-                "model_name": "gemini-2.5-pro",
+                "model_name": "gemini-2.5-flash",
                 "prompt_version": "image-prompts-v1",
                 "variant_index": 0,
                 "title": "Existing",
@@ -224,7 +224,7 @@ def test_generate_for_scene_overwrites_when_allowed(db: Session, scene_factory, 
         data={
             "scene_extraction_id": scene.id,
             "model_vendor": "google",
-            "model_name": "gemini-2.5-pro",
+            "model_name": "gemini-2.5-flash",
             "prompt_version": "image-prompts-v1",
             "variant_index": 0,
             "title": "Old",
