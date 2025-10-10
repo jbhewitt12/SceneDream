@@ -132,8 +132,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default="gemini-2.5-pro",
-        help="Gemini model to use for refinement (default: gemini-2.5-pro)",
+        default="gemini-2.5-flash",
+        help="Gemini model to use for refinement (default: gemini-2.5-flash)",
     )
     parser.add_argument(
         "--temperature",

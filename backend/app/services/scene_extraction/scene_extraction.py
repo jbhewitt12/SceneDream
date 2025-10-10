@@ -50,11 +50,11 @@ SCENE_EXTRACTION_SCHEMA_TEXT = """{
 
 @dataclass
 class SceneExtractionConfig:
-    gemini_model: str = "gemini-2.5-pro"
+    gemini_model: str = "gemini-2.5-flash"
     gemini_temperature: float = 0.0
     max_chunk_chars: int = 12000
     chunk_overlap_paragraphs: int = 2
-    refinement_model: str = "gemini-2.5-pro"
+    refinement_model: str = "gemini-2.5-flash"
     refinement_temperature: float = 0.1
     refinement_max_tokens: Optional[int] = None
     book_slug: Optional[str] = None
