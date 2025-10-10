@@ -46,9 +46,13 @@ class SceneExtractionRepository:
         *,
         chapter_number: Optional[int] = None,
     ) -> list[SceneExtraction]:
-        statement = select(SceneExtraction).where(SceneExtraction.book_slug == book_slug)
+        statement = select(SceneExtraction).where(
+            SceneExtraction.book_slug == book_slug
+        )
         if chapter_number is not None:
-            statement = statement.where(SceneExtraction.chapter_number == chapter_number)
+            statement = statement.where(
+                SceneExtraction.chapter_number == chapter_number
+            )
         statement = statement.order_by(
             SceneExtraction.chapter_number,
             SceneExtraction.scene_number,
@@ -69,7 +73,9 @@ class SceneExtractionRepository:
         if book_slug:
             statement = statement.where(SceneExtraction.book_slug == book_slug)
         if chapter_number is not None:
-            statement = statement.where(SceneExtraction.chapter_number == chapter_number)
+            statement = statement.where(
+                SceneExtraction.chapter_number == chapter_number
+            )
         statement = statement.order_by(
             SceneExtraction.book_slug,
             SceneExtraction.chapter_number,
@@ -180,12 +186,13 @@ class SceneExtractionRepository:
             .distinct()
             .order_by(SceneExtraction.book_slug)
         )
-        book_slugs = [value for value in self._session.exec(book_statement).all() if value]
+        book_slugs = [
+            value for value in self._session.exec(book_statement).all() if value
+        ]
 
-        chapter_statement = (
-            select(SceneExtraction.book_slug, SceneExtraction.chapter_number)
-            .distinct()
-        )
+        chapter_statement = select(
+            SceneExtraction.book_slug, SceneExtraction.chapter_number
+        ).distinct()
         chapters_by_book: dict[str, list[int]] = defaultdict(list)
         for book, chapter in self._session.exec(chapter_statement).all():
             if book is None or chapter is None:
@@ -200,7 +207,9 @@ class SceneExtractionRepository:
             .distinct()
             .order_by(SceneExtraction.refinement_decision)
         )
-        decisions = [value for value in self._session.exec(decisions_statement).all() if value]
+        decisions = [
+            value for value in self._session.exec(decisions_statement).all() if value
+        ]
 
         earliest = self._session.exec(
             select(func.min(SceneExtraction.extracted_at))

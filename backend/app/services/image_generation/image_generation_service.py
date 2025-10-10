@@ -108,7 +108,9 @@ def map_aspect_ratio_to_size(aspect_ratio: str | None) -> str:
     return mapping.get(aspect_ratio or "", "1024x1024")
 
 
-def derive_style_from_tags(style_tags: list[str] | None, preferred: str | None = None) -> str:
+def derive_style_from_tags(
+    style_tags: list[str] | None, preferred: str | None = None
+) -> str:
     """
     Derive DALL·E 3 style from prompt style tags.
 
@@ -158,7 +160,9 @@ class ImageGenerationService:
     ) -> None:
         self._session = session
         self._config = config or ImageGenerationConfig()
-        self._api_key = api_key or self._config.api_key or os.getenv("OPENAI_API_KEY", "")
+        self._api_key = (
+            api_key or self._config.api_key or os.getenv("OPENAI_API_KEY", "")
+        )
         self._image_repo = GeneratedImageRepository(session)
         self._prompt_repo = ImagePromptRepository(session)
         self._scene_repo = SceneExtractionRepository(session)
@@ -244,9 +248,7 @@ class ImageGenerationService:
 
         # Collect successful generation IDs
         generated_ids = [
-            r.generated_image_id
-            for r in results
-            if r.generated_image_id is not None
+            r.generated_image_id for r in results if r.generated_image_id is not None
         ]
 
         logger.info(
@@ -311,7 +313,8 @@ class ImageGenerationService:
             if chapter_range:
                 start_chapter, end_chapter = chapter_range
                 prompts = [
-                    p for p in prompts
+                    p
+                    for p in prompts
                     if p.scene_extraction
                     and start_chapter <= p.scene_extraction.chapter_number < end_chapter
                 ]
@@ -420,7 +423,11 @@ class ImageGenerationService:
             else:
                 logger.warning("No prompts found for scene %s", scene_id)
 
-        logger.info("Selected %d prompts from %d scenes", len(prompts), len(scenes_without_images))
+        logger.info(
+            "Selected %d prompts from %d scenes",
+            len(prompts),
+            len(scenes_without_images),
+        )
 
         return prompts
 
@@ -447,7 +454,9 @@ class ImageGenerationService:
             scene_id = scene.id
 
             # Determine aspect ratio, size, and style
-            prompt_aspect = prompt.attributes.get("aspect_ratio") if prompt.attributes else None
+            prompt_aspect = (
+                prompt.attributes.get("aspect_ratio") if prompt.attributes else None
+            )
             aspect_ratio = config.aspect_ratio or prompt_aspect
             size = map_aspect_ratio_to_size(aspect_ratio)
             style = derive_style_from_tags(prompt.style_tags, config.preferred_style)
@@ -602,12 +611,16 @@ class ImageGenerationService:
             if config.response_format == "b64_json":
                 success = await loop.run_in_executor(
                     None,
-                    lambda: dalle_image_api.save_image_from_b64(results[0], str(file_path)),
+                    lambda: dalle_image_api.save_image_from_b64(
+                        results[0], str(file_path)
+                    ),
                 )
             else:  # url format
                 success = await loop.run_in_executor(
                     None,
-                    lambda: dalle_image_api.save_image_from_url(results[0], str(file_path)),
+                    lambda: dalle_image_api.save_image_from_url(
+                        results[0], str(file_path)
+                    ),
                 )
 
             if not success:

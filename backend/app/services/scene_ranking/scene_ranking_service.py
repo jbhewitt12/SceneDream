@@ -99,6 +99,15 @@ class _RankingScores(BaseModel):
         raise ValueError(f"Unhandled score value: {value!r}")
 
 
+class _VisualMoment(BaseModel):
+    """Represents a distinct visual moment within a scene."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    description: str = Field(..., min_length=1)
+    composition_variety: str = Field(..., pattern="^(low|medium|high)$")
+
+
 class _RankingResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -107,6 +116,12 @@ class _RankingResponse(BaseModel):
     justification: str = Field(..., min_length=1)
     warnings: list[str] | None = None
     character_tags: list[str] | None = None
+
+    # Complexity analysis fields
+    distinct_visual_moments: list[_VisualMoment] | None = None
+    recommended_prompt_count: int | None = Field(None, ge=1, le=10)
+    complexity_rationale: str | None = None
+
     diagnostics: dict[str, Any] | None = None
 
     @field_validator("justification", mode="after")
@@ -193,6 +208,9 @@ class SceneRankingPreview:
     weight_config_hash: str
     execution_time_ms: int
     raw_response: dict[str, Any]
+    recommended_prompt_count: int | None
+    complexity_rationale: str | None
+    distinct_visual_moments: list[dict[str, Any]] | None
 
 
 class SceneRankingServiceError(RuntimeError):
@@ -302,6 +320,13 @@ class SceneRankingService:
         warnings = list(parsed.warnings) if parsed.warnings else None
         character_tags = list(parsed.character_tags) if parsed.character_tags else None
         llm_overall = round(float(parsed.overall_priority), 1)
+
+        # Extract complexity analysis fields
+        distinct_moments = None
+        if parsed.distinct_visual_moments:
+            distinct_moments = [
+                moment.model_dump() for moment in parsed.distinct_visual_moments
+            ]
         metadata_block = {
             "prompt_version": config.prompt_version,
             "model_name": config.model_name,
@@ -342,6 +367,9 @@ class SceneRankingService:
                 weight_config_hash=weight_hash,
                 execution_time_ms=execution_time_ms,
                 raw_response=raw_payload,
+                recommended_prompt_count=parsed.recommended_prompt_count,
+                complexity_rationale=parsed.complexity_rationale,
+                distinct_visual_moments=distinct_moments,
             )
         ranking = self._ranking_repo.create(
             data={
@@ -360,6 +388,9 @@ class SceneRankingService:
                 "execution_time_ms": execution_time_ms,
                 "temperature": config.temperature,
                 "llm_request_id": llm_request_id,
+                "recommended_prompt_count": parsed.recommended_prompt_count,
+                "complexity_rationale": parsed.complexity_rationale,
+                "distinct_visual_moments": distinct_moments,
             },
             commit=config.autocommit,
             refresh=True,
@@ -558,6 +589,17 @@ class SceneRankingService:
             f"- {key}: weight {weight_config[key]:.2f}" for key in SCORING_CRITERIA
         ]
         previous_section = self._format_previous_rankings(previous_rankings)
+        complexity_guidance = (
+            "\n\nAdditionally, analyze the scene's visual complexity to recommend how many "
+            "image prompt variants should be generated:\n"
+            "- Count distinct visual settings/locations (e.g., 'bridge → corridor → space')\n"
+            "- Identify temporal moments that merit separate images (e.g., 'before/during/after explosion')\n"
+            "- Consider composition variety potential (camera angles, focal points)\n"
+            "- Recommend 2-3 variants per distinct setting, minimum 2, maximum 10\n"
+            "- Return in 'distinct_visual_moments' array with 'description' and 'composition_variety' (low/medium/high)\n"
+            "- Provide 'recommended_prompt_count' integer (1-10) and 'complexity_rationale' string"
+        )
+
         prompt_parts = [
             f"You are using prompt template version {prompt_version}. Score the scene using the criteria below.",
             "Provide concise reasoning and flag sensitive content when relevant.",
@@ -568,10 +610,14 @@ class SceneRankingService:
             '  "justification": string,',
             '  "warnings": [string],',
             '  "character_tags": [string],',
+            '  "distinct_visual_moments": [{"description": string, "composition_variety": "low|medium|high"}],',
+            '  "recommended_prompt_count": number (1-10),',
+            '  "complexity_rationale": string,',
             '  "diagnostics": { ... }',
             "}",
             "\nScoring guidance:",
             CRITERIA_GUIDANCE,
+            complexity_guidance,
             "\nWeight heuristic (do not output, just use for reasoning):",
             "\n".join(weight_lines),
             "\nScene metadata:",

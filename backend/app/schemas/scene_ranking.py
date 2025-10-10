@@ -56,4 +56,3 @@ class SceneRankingListResponse(BaseModel):
 
     data: list[SceneRankingRead]
     meta: dict[str, Any] = Field(default_factory=dict)
-

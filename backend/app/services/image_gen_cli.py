@@ -7,8 +7,14 @@ This CLI orchestrates the full pipeline from scene extraction through image gene
 4. Generate images for top-ranked scenes with prompts
 
 Usage examples:
-    # Run full pipeline: extract -> rank -> generate 3 prompts per scene -> generate images for top 5 scenes
-    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --prompts-per-scene 3 --images-for-scenes 5
+    # Run full pipeline with automatic variant counts from scene complexity analysis
+    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --images-for-scenes 5
+
+    # Generate prompts using scene complexity recommendations (default behavior)
+    uv run python -m app.services.image_gen_cli prompts --book-slug look-to-windward-iain-m-banks --top-scenes 10
+
+    # Override with fixed count for all scenes
+    uv run python -m app.services.image_gen_cli prompts --book-slug look-to-windward-iain-m-banks --top-scenes 10 --prompts-per-scene 5 --ignore-ranking-recommendations
 
     # Extract and refine only
     uv run python -m app.services.image_gen_cli extract --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub"
@@ -16,17 +22,14 @@ Usage examples:
     # Rank existing scenes (no book-path needed, works from database)
     uv run python -m app.services.image_gen_cli rank --book-slug look-to-windward-iain-m-banks
 
-    # Generate prompts for top 10 scenes (no book-path needed, works from database)
-    uv run python -m app.services.image_gen_cli prompts --book-slug look-to-windward-iain-m-banks --prompts-per-scene 3 --top-scenes 10
-
     # Generate images for top 5 scenes (no book-path needed, works from database)
     uv run python -m app.services.image_gen_cli images --book-slug look-to-windward-iain-m-banks --top-scenes 5
 
     # Dry run to preview what would happen
-    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --prompts-per-scene 2 --images-for-scenes 3 --dry-run
+    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --images-for-scenes 3 --dry-run
 
     # Skip extraction and run remaining steps (useful if scenes already extracted)
-    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --skip-extraction --prompts-per-scene 3 --images-for-scenes 5
+    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --skip-extraction --images-for-scenes 5
 """
 
 from __future__ import annotations
@@ -35,9 +38,7 @@ import argparse
 import asyncio
 import json
 import logging
-import sys
 from pathlib import Path
-from typing import Optional
 
 from sqlmodel import Session
 
@@ -54,7 +55,6 @@ from app.services.image_prompt_generation.image_prompt_generation_service import
     ImagePromptGenerationService,
 )
 from app.services.scene_extraction.scene_extraction import (
-    EXCESSION_EPUB_PATH,
     SceneExtractionConfig,
     SceneExtractor,
 )
@@ -103,8 +103,12 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--prompts-per-scene",
         type=int,
-        default=3,
-        help="Number of prompt variants to generate per scene (default: 3)",
+        help="Override number of prompt variants per scene (ignores ranking recommendations when provided)",
+    )
+    run.add_argument(
+        "--ignore-ranking-recommendations",
+        action="store_true",
+        help="Always use --prompts-per-scene value, ignoring scene complexity analysis",
     )
     run.add_argument(
         "--images-for-scenes",
@@ -178,8 +182,12 @@ def _build_parser() -> argparse.ArgumentParser:
     prompts.add_argument(
         "--prompts-per-scene",
         type=int,
-        default=3,
-        help="Number of prompt variants to generate per scene (default: 3)",
+        help="Override number of prompt variants per scene (ignores ranking recommendations when provided)",
+    )
+    prompts.add_argument(
+        "--ignore-ranking-recommendations",
+        action="store_true",
+        help="Always use --prompts-per-scene value, ignoring scene complexity analysis",
     )
     prompts.add_argument(
         "--top-scenes",
@@ -274,7 +282,9 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
 
     # Validate book_path is provided if extraction is needed
     if not args.skip_extraction and not args.book_path:
-        logger.error("--book-path is required for scene extraction. Either provide --book-path or use --skip-extraction.")
+        logger.error(
+            "--book-path is required for scene extraction. Either provide --book-path or use --skip-extraction."
+        )
         raise ValueError("--book-path is required for scene extraction")
 
     book_path = Path(args.book_path) if args.book_path else None
@@ -308,7 +318,9 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
             book_slug = extractor._resolve_book_slug(book_path)
             logger.info("Resolved book slug: %s", book_slug)
         else:
-            logger.error("--book-slug is required when --skip-extraction is used without --book-path")
+            logger.error(
+                "--book-slug is required when --skip-extraction is used without --book-path"
+            )
             raise ValueError("--book-slug is required")
 
     # Step 2: Rank scenes (if not skipped)
@@ -328,7 +340,9 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                     logger.warning("No scenes found for book: %s", book_slug)
                 else:
                     ranking_config = SceneRankingConfig()
-                    ranking_service = SceneRankingService(session, config=ranking_config)
+                    ranking_service = SceneRankingService(
+                        session, config=ranking_config
+                    )
 
                     for scene in scenes:
                         try:
@@ -361,11 +375,30 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
         logger.info("=" * 60)
 
         if args.dry_run:
-            logger.info(
-                "DRY RUN: Would generate %d prompts per scene for book: %s",
-                args.prompts_per_scene,
-                book_slug,
-            )
+            if (
+                hasattr(args, "prompts_per_scene")
+                and args.prompts_per_scene is not None
+            ):
+                if (
+                    hasattr(args, "ignore_ranking_recommendations")
+                    and args.ignore_ranking_recommendations
+                ):
+                    logger.info(
+                        "DRY RUN: Would generate %d prompts per scene for book: %s (ignoring ranking recommendations)",
+                        args.prompts_per_scene,
+                        book_slug,
+                    )
+                else:
+                    logger.info(
+                        "DRY RUN: Would generate prompts using ranking recommendations (fallback: %d) for book: %s",
+                        args.prompts_per_scene,
+                        book_slug,
+                    )
+            else:
+                logger.info(
+                    "DRY RUN: Would generate prompts using ranking recommendations (fallback: 4) for book: %s",
+                    book_slug,
+                )
         else:
             with Session(engine) as session:
                 # Get top-ranked scenes without prompts
@@ -395,9 +428,40 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                 )
 
                 if scenes_needing_prompts:
-                    prompt_config = ImagePromptGenerationConfig(
-                        variants_count=args.prompts_per_scene
-                    )
+                    # Determine config based on flags
+                    config_kwargs = {}
+
+                    if (
+                        hasattr(args, "prompts_per_scene")
+                        and args.prompts_per_scene is not None
+                    ):
+                        if (
+                            hasattr(args, "ignore_ranking_recommendations")
+                            and args.ignore_ranking_recommendations
+                        ):
+                            # Explicit override mode
+                            config_kwargs["variants_count"] = args.prompts_per_scene
+                            config_kwargs["use_ranking_recommendation"] = False
+                            logger.info(
+                                "Using fixed variant count: %d (ignoring rankings)",
+                                args.prompts_per_scene,
+                            )
+                        else:
+                            # Fallback for scenes without rankings
+                            config_kwargs["variants_count"] = args.prompts_per_scene
+                            config_kwargs["use_ranking_recommendation"] = True
+                            logger.info(
+                                "Using ranking recommendations (fallback: %d variants)",
+                                args.prompts_per_scene,
+                            )
+                    else:
+                        # Full auto mode
+                        config_kwargs["use_ranking_recommendation"] = True
+                        logger.info(
+                            "Using ranking recommendations (fallback: 4 variants)"
+                        )
+
+                    prompt_config = ImagePromptGenerationConfig(**config_kwargs)
                     prompt_service = ImagePromptGenerationService(
                         session, config=prompt_config
                     )
@@ -547,11 +611,24 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
     stats = PipelineStats()
 
     if args.dry_run:
-        logger.info(
-            "DRY RUN: Would generate %d prompts per scene for book: %s",
-            args.prompts_per_scene,
-            args.book_slug,
-        )
+        if args.prompts_per_scene is not None:
+            if args.ignore_ranking_recommendations:
+                logger.info(
+                    "DRY RUN: Would generate %d prompts per scene for book: %s (ignoring ranking recommendations)",
+                    args.prompts_per_scene,
+                    args.book_slug,
+                )
+            else:
+                logger.info(
+                    "DRY RUN: Would generate prompts using ranking recommendations (fallback: %d) for book: %s",
+                    args.prompts_per_scene,
+                    args.book_slug,
+                )
+        else:
+            logger.info(
+                "DRY RUN: Would generate prompts using ranking recommendations (fallback: 4) for book: %s",
+                args.book_slug,
+            )
         return stats
 
     with Session(engine) as session:
@@ -586,9 +663,34 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
         )
 
         if scenes_to_process:
-            prompt_config = ImagePromptGenerationConfig(
-                variants_count=args.prompts_per_scene
-            )
+            # Determine config based on flags
+            config_kwargs = {}
+
+            if (
+                args.prompts_per_scene is not None
+                and args.ignore_ranking_recommendations
+            ):
+                # Explicit override mode
+                config_kwargs["variants_count"] = args.prompts_per_scene
+                config_kwargs["use_ranking_recommendation"] = False
+                logger.info(
+                    "Using fixed variant count: %d (ignoring rankings)",
+                    args.prompts_per_scene,
+                )
+            elif args.prompts_per_scene is not None:
+                # Fallback for scenes without rankings
+                config_kwargs["variants_count"] = args.prompts_per_scene
+                config_kwargs["use_ranking_recommendation"] = True
+                logger.info(
+                    "Using ranking recommendations (fallback: %d variants)",
+                    args.prompts_per_scene,
+                )
+            else:
+                # Full auto mode (use recommendations, fallback to default of 4)
+                config_kwargs["use_ranking_recommendation"] = True
+                logger.info("Using ranking recommendations (fallback: 4 variants)")
+
+            prompt_config = ImagePromptGenerationConfig(**config_kwargs)
             prompt_service = ImagePromptGenerationService(session, config=prompt_config)
 
             for scene in scenes_to_process:
@@ -608,11 +710,15 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
                             scene.chapter_number,
                         )
                 except Exception as exc:
-                    error_msg = f"Failed to generate prompts for scene {scene.id}: {exc}"
+                    error_msg = (
+                        f"Failed to generate prompts for scene {scene.id}: {exc}"
+                    )
                     logger.error(error_msg)
                     stats.errors.append(error_msg)
 
-            logger.info("Prompt generation complete: %d prompts", stats.prompts_generated)
+            logger.info(
+                "Prompt generation complete: %d prompts", stats.prompts_generated
+            )
 
     return stats
 
@@ -658,7 +764,7 @@ async def _run_images(args: argparse.Namespace) -> PipelineStats:
     return stats
 
 
-async def async_main(argv: Optional[list[str]] = None) -> int:
+async def async_main(argv: list[str] | None = None) -> int:
     """Async main entry point."""
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -699,7 +805,7 @@ async def async_main(argv: Optional[list[str]] = None) -> int:
     return 0
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """Main entry point."""
     return asyncio.run(async_main(argv))
 

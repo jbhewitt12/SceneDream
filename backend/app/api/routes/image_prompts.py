@@ -61,7 +61,9 @@ def list_prompts_for_scene(
         limit=limit,
         include_scene=include_scene,
     )
-    data = [_serialize_prompt(record, include_scene=include_scene) for record in prompts]
+    data = [
+        _serialize_prompt(record, include_scene=include_scene) for record in prompts
+    ]
     meta: dict[str, object] = {
         "scene_extraction_id": str(scene_id),
         "count": len(data),
@@ -104,7 +106,9 @@ def list_prompts_for_book(
         offset=offset,
         include_scene=include_scene,
     )
-    data = [_serialize_prompt(record, include_scene=include_scene) for record in prompts]
+    data = [
+        _serialize_prompt(record, include_scene=include_scene) for record in prompts
+    ]
     meta: dict[str, object] = {
         "book_slug": book_slug,
         "count": len(data),
@@ -135,5 +139,3 @@ def get_image_prompt(
     if record is None:
         raise HTTPException(status_code=404, detail="Image prompt not found")
     return _serialize_prompt(record, include_scene=bool(include_scene))
-
-

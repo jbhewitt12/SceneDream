@@ -95,7 +95,9 @@ class SceneRankingRepository:
     ) -> list[SceneRanking]:
         statement = (
             select(SceneRanking)
-            .join(SceneExtraction, SceneRanking.scene_extraction_id == SceneExtraction.id)
+            .join(
+                SceneExtraction, SceneRanking.scene_extraction_id == SceneExtraction.id
+            )
             .where(SceneExtraction.book_slug == book_slug)
             .order_by(
                 SceneRanking.overall_priority.desc(),
@@ -127,7 +129,9 @@ class SceneRankingRepository:
         """Return globally top rankings across all books by overall_priority."""
         statement = (
             select(SceneRanking)
-            .join(SceneExtraction, SceneRanking.scene_extraction_id == SceneExtraction.id)
+            .join(
+                SceneExtraction, SceneRanking.scene_extraction_id == SceneExtraction.id
+            )
             .order_by(
                 SceneRanking.overall_priority.desc(),
                 SceneRanking.created_at.desc(),

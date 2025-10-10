@@ -163,7 +163,9 @@ def _filter_scenes_without_prompts(
     return result
 
 
-def _summarize_prompts(scene: SceneExtraction, prompts: list[ImagePrompt] | list[object] | None) -> dict[str, object]:
+def _summarize_prompts(
+    scene: SceneExtraction, prompts: list[ImagePrompt] | list[object] | None
+) -> dict[str, object]:
     base = {
         "scene_extraction_id": str(scene.id),
         "book_slug": scene.book_slug,
@@ -256,5 +258,3 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

@@ -64,9 +64,7 @@ def list_scene_extractions(
 
 
 @router.get("/filters", response_model=SceneExtractionFilterOptions)
-def get_filter_options(
-    *, session: SessionDep
-) -> SceneExtractionFilterOptions:
+def get_filter_options(*, session: SessionDep) -> SceneExtractionFilterOptions:
     """Expose the available filter options for scene extractions."""
 
     repository = SceneExtractionRepository(session)
@@ -75,9 +73,7 @@ def get_filter_options(
 
 
 @router.get("/{scene_id}", response_model=SceneExtractionRead)
-def get_scene_extraction(
-    *, session: SessionDep, scene_id: UUID
-) -> SceneExtractionRead:
+def get_scene_extraction(*, session: SessionDep, scene_id: UUID) -> SceneExtractionRead:
     """Fetch a single scene extraction by its identifier."""
 
     repository = SceneExtractionRepository(session)

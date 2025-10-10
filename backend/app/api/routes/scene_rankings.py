@@ -31,7 +31,9 @@ def _serialize_ranking(
     if include_scene and getattr(record, "scene_extraction", None) is not None:
         item = item.model_copy(
             update={
-                "scene": SceneRankingSceneSummary.model_validate(record.scene_extraction)
+                "scene": SceneRankingSceneSummary.model_validate(
+                    record.scene_extraction
+                )
             }
         )
     return item
@@ -59,7 +61,9 @@ def list_top_scene_rankings(
         weight_config_hash=weight_config_hash,
         include_scene=include_scene,
     )
-    data = [_serialize_ranking(record, include_scene=include_scene) for record in rankings]
+    data = [
+        _serialize_ranking(record, include_scene=include_scene) for record in rankings
+    ]
     meta: dict[str, object] = {
         "book_slug": book_slug,
         "limit": limit,
@@ -96,7 +100,9 @@ def list_scene_ranking_history(
         limit=limit,
         newest_first=newest_first,
     )
-    data = [_serialize_ranking(record, include_scene=include_scene) for record in rankings]
+    data = [
+        _serialize_ranking(record, include_scene=include_scene) for record in rankings
+    ]
     meta: dict[str, object] = {
         "scene_extraction_id": str(scene_id),
         "count": len(data),
@@ -122,4 +128,3 @@ def get_scene_ranking(
         raise HTTPException(status_code=404, detail="Scene ranking not found")
     include_scene = bool(include_scene)
     return _serialize_ranking(ranking, include_scene=include_scene)
-
