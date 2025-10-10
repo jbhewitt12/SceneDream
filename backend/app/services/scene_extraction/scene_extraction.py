@@ -342,7 +342,8 @@ class SceneExtractor:
     def _build_chunk_prompt(self, chunk: ChapterChunk) -> str:
         instructions = (
             "Scan the chapter excerpt and extract EVERY descriptive scene that is visually rich, action-packed, "
-            "or atmospheric enough to inspire image or video generation. Focus on moments with concrete, visual details. Never include a scene that lacks concrete, visual details."
+            "or atmospheric enough to inspire image or video generation. Focus on moments with concrete, visual details. "
+            "Never include a scene that lacks concrete, visual details."
         )
         guidelines = (
             "- Use the provided numbered paragraphs for positions.\n"
