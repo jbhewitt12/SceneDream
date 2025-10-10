@@ -11,12 +11,13 @@ import {
   NativeSelectIndicator,
   NativeSelectRoot,
   SimpleGrid,
+  Spinner,
   Stack,
   Text,
 } from "@chakra-ui/react"
-import { useQuery } from "@tanstack/react-query"
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { FiFilter, FiRefreshCcw } from "react-icons/fi"
 import { z } from "zod"
 
@@ -59,7 +60,6 @@ const generatedImagesSearchSchema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined))
     .catch(undefined),
-  page: z.coerce.number().int().min(1).catch(1),
   page_size: z.coerce.number().int().min(1).max(48).catch(24),
 })
 
@@ -86,10 +86,7 @@ const GeneratedImagesFilters = ({
   const disabled = !books.length
 
   const handleChange = (updates: Partial<GeneratedImagesSearch>) => {
-    onChange({
-      ...updates,
-      page: 1,
-    })
+    onChange(updates)
   }
 
   const resetFilters = () => {
@@ -208,19 +205,27 @@ const GeneratedImagesFilters = ({
 const useGeneratedImagesData = (search: GeneratedImagesSearch) => {
   const queryEnabled = Boolean(search.book_slug)
 
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ["generated-images", "list", search],
-    queryFn: () =>
+    queryFn: ({ pageParam = 0 }) =>
       GeneratedImageApi.list({
         book: search.book_slug!,
         chapter: search.chapter_number,
         provider: search.provider,
         model: search.model,
         limit: search.page_size,
-        offset: (search.page - 1) * search.page_size,
+        offset: pageParam,
       }),
     enabled: queryEnabled,
-    placeholderData: (previousData) => previousData,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      // If the last page has fewer items than the page size, there are no more pages
+      if (lastPage.data.length < search.page_size) {
+        return undefined
+      }
+      // Calculate the next offset
+      return allPages.length * search.page_size
+    },
   })
 
   return query
@@ -237,6 +242,7 @@ function GeneratedImagesGalleryPage() {
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null)
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
   const filtersQuery = useQuery({
     queryKey: ["scene-extractions", "filters"],
@@ -246,7 +252,7 @@ function GeneratedImagesGalleryPage() {
   useEffect(() => {
     if (!search.book_slug && filtersQuery.data?.books?.length) {
       navigate({
-        search: (prev) => ({
+        search: (prev: GeneratedImagesSearch) => ({
           ...prev,
           book_slug: filtersQuery.data?.books?.[0],
         }),
@@ -257,7 +263,7 @@ function GeneratedImagesGalleryPage() {
   const handleSearchUpdate = useCallback(
     (updates: Partial<GeneratedImagesSearch>) => {
       navigate({
-        search: (prev) => ({
+        search: (prev: GeneratedImagesSearch) => ({
           ...prev,
           ...updates,
         }),
@@ -267,11 +273,11 @@ function GeneratedImagesGalleryPage() {
   )
 
   const imagesQuery = useGeneratedImagesData(search)
-  const images = (imagesQuery.data?.data ?? []).filter((image) => !image.error)
 
-  const pageSize = search.page_size
-  const hasNextPage = images.length === pageSize
-  const hasPrevPage = search.page > 1
+  // Flatten all pages into a single array
+  const images = (imagesQuery.data?.pages ?? [])
+    .flatMap((page) => page.data)
+    .filter((image) => !image.error)
 
   const handleImageClick = (imageId: string, sceneId: string) => {
     setSelectedImageId(imageId)
@@ -285,13 +291,25 @@ function GeneratedImagesGalleryPage() {
     setSelectedSceneId(null)
   }
 
-  const handleNextPage = () => {
-    handleSearchUpdate({ page: search.page + 1 })
-  }
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    if (!loadMoreRef.current) return
+    if (!imagesQuery.hasNextPage) return
+    if (imagesQuery.isFetchingNextPage) return
 
-  const handlePrevPage = () => {
-    handleSearchUpdate({ page: search.page - 1 })
-  }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && imagesQuery.hasNextPage) {
+          imagesQuery.fetchNextPage()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    observer.observe(loadMoreRef.current)
+
+    return () => observer.disconnect()
+  }, [imagesQuery.hasNextPage, imagesQuery.isFetchingNextPage, imagesQuery.fetchNextPage])
 
   return (
     <Container maxW="full" py={4} display="flex" flexDirection="column" gap={4}>
@@ -336,27 +354,25 @@ function GeneratedImagesGalleryPage() {
             ))}
           </SimpleGrid>
 
-          {/* Pagination */}
-          <Flex justify="center" align="center" gap={4} mt={4}>
-            <Button
-              onClick={handlePrevPage}
-              disabled={!hasPrevPage || imagesQuery.isLoading}
-              size="sm"
-            >
-              Previous
-            </Button>
-            <Text fontSize="sm">
-              Page {search.page}
-              {images.length === pageSize && "+"}
-            </Text>
-            <Button
-              onClick={handleNextPage}
-              disabled={!hasNextPage || imagesQuery.isLoading}
-              size="sm"
-            >
-              Next
-            </Button>
-          </Flex>
+          {/* Infinite scroll loading indicator */}
+          <Box ref={loadMoreRef} py={8} textAlign="center">
+            {imagesQuery.isFetchingNextPage ? (
+              <Flex justify="center" align="center" gap={2}>
+                <Spinner size="sm" />
+                <Text fontSize="sm" color="fg.subtle">
+                  Loading more images...
+                </Text>
+              </Flex>
+            ) : imagesQuery.hasNextPage ? (
+              <Text fontSize="sm" color="fg.subtle">
+                Scroll for more
+              </Text>
+            ) : images.length > 0 ? (
+              <Text fontSize="sm" color="fg.subtle">
+                No more images
+              </Text>
+            ) : null}
+          </Box>
         </>
       )}
 
