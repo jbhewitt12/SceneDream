@@ -955,6 +955,156 @@ uv run python -m app.services.image_gen_cli run \
 ### Notes from Previous Claude Instances
 <!-- Each instance should add notes here about important discoveries, gotchas, or decisions -->
 
+### Phase 1: Database Schema Extension - Completed 2025-10-10
+**Status**: ✅ Complete
+**Key findings**:
+- Migration ran smoothly with no conflicts with existing data
+- All three columns added successfully: `recommended_prompt_count` (INTEGER), `complexity_rationale` (TEXT), `distinct_visual_moments` (JSONB)
+- Migration ID: ea4c5446c893
+- Model updated in backend/models/scene_ranking.py with proper Field definitions including validation constraints (ge=1, le=10 for recommended_prompt_count)
+**Gotchas**:
+- All columns are nullable=True to support backward compatibility with existing rankings
+- Used postgresql.JSONB for distinct_visual_moments to match existing JSONB patterns in the codebase
+**Warnings for next phase**:
+- Service layer must handle None values gracefully when these fields are not populated by LLM
+- Pydantic validation in _RankingResponse should use Optional types and set ge=1, le=10 constraints on recommended_prompt_count
+
+### Phase 2: Enhance Scene Ranking Service LLM Prompt - Completed 2025-10-10
+**Status**: ✅ Complete
+**Key findings**:
+- LLM (Gemini 2.5 Pro) reliably returns complexity analysis without additional configuration
+- Tested with 3 scenes: recommendations ranged from 3-4 variants (sensible range)
+- All fields are properly validated by Pydantic models and persisted to database
+- CLI output updated to display complexity fields in dry-run and actual ranking modes
+**Gotchas**:
+- Created new `_VisualMoment` Pydantic model to validate the structure of distinct_visual_moments array
+- The LLM naturally returns 2-3 distinct visual moments per scene, even for single-location scenes
+- Needed to update `_summarize_result()` in main.py to display complexity fields in CLI output
+**Changes made**:
+1. Added `_VisualMoment` BaseModel (lines 102-108 in scene_ranking_service.py)
+2. Updated `_RankingResponse` with three new optional fields: `distinct_visual_moments`, `recommended_prompt_count`, `complexity_rationale` (lines 110-123)
+3. Extended `_build_prompt()` to include complexity guidance (lines 575-584)
+4. Updated JSON schema example in prompt to include new fields (lines 596-598)
+5. Modified `rank_scene()` to extract and persist complexity fields (lines 320-328, 385-387)
+6. Updated `SceneRankingPreview` dataclass with new fields (lines 210-212)
+7. Enhanced CLI `_summarize_result()` to display complexity fields (lines 205-211 in main.py)
+**Test results**:
+- Dry-run test: ✅ LLM returned all complexity fields with valid structure
+- Database persistence test: ✅ 3 scenes ranked successfully, all fields stored in PostgreSQL
+- Verified in DB: `recommended_prompt_count` values (3, 4, 4), `complexity_rationale` text persisted, `distinct_visual_moments` JSONB arrays have 2-3 elements
+**Warnings for next phase**:
+- Prompt generation service will need to query `SceneRankingRepository.get_latest_for_scene()` to retrieve recommendations
+- Must handle None values gracefully when no ranking exists or ranking predates Phase 1 migration
+- Consider logging when recommendations are used vs. fallback to config default
+
+### Phase 3: Update Prompt Generation Service to Use Recommendations - Completed 2025-10-10
+**Status**: ✅ Complete
+**Key findings**:
+- Service successfully integrates ranking recommendations with clean fallback hierarchy
+- All three test scenarios passed: (1) using recommendation, (2) CLI override, (3) fallback to default
+- Logging provides clear visibility into decision-making process
+- The `_determine_variant_count()` helper method correctly queries rankings and returns appropriate count
+**Gotchas**:
+- Initial testing appeared to fail because existing prompts were being returned (not regenerated)
+- Must use `overwrite=True` in tests to force regeneration and see new variant counts
+- When `variants_count` parameter is explicitly provided to `generate_for_scene()`, it automatically disables ranking recommendations via `_resolve_config()` logic
+**Changes made**:
+1. Added `use_ranking_recommendation: bool = True` field to `ImagePromptGenerationConfig` (line 44)
+2. Updated `copy_with()` method to include new field (line 64)
+3. Implemented `_determine_variant_count()` helper method (lines 361-397) that:
+   - Returns config value if `use_ranking_recommendation=False`
+   - Queries `SceneRankingRepository.get_latest_for_scene()` for recommendation
+   - Falls back to config default if no ranking or `recommended_prompt_count` is None
+   - Logs decision rationale at INFO level
+4. Updated `generate_for_scene()` to call `_determine_variant_count()` and override config (lines 185-194)
+5. Modified `_resolve_config()` to disable recommendations when explicit `variants_count` provided (lines 359-362)
+**Test results**:
+- Test 1 ✓: Scene with ranking (4 recommended) → 4 variants generated
+- Test 2 ✓: Same scene with `variants_count=6` override → 6 variants generated (ranking ignored)
+- Test 3 ✓: Scene without ranking → 4 variants generated (config default)
+- All logging messages correctly indicate decision source
+**Warnings for next phase**:
+- CLI tools (`image_gen_cli.py`, `image_prompt_generation/main.py`) need to be updated to pass configuration properly
+- Need to add `--ignore-ranking-recommendations` flag for explicit override mode
+- Default behavior should use recommendations (backward compatible since new field defaults to True)
+
+### Phase 4: Update CLI Tools and Add Configuration - Completed 2025-10-10
+**Status**: ✅ Complete
+**Key findings**:
+- CLI successfully updated with `--ignore-ranking-recommendations` flag for both `run` and `prompts` commands
+- Default behavior now uses ranking recommendations with configurable fallback values
+- Three modes implemented: (1) full auto mode (recommendations with default fallback), (2) fallback mode (recommendations with custom fallback), (3) override mode (fixed count ignoring recommendations)
+- All dry-run messages properly reflect the decision logic
+- Help text clearly documents new behavior
+**Changes made**:
+1. Added `--ignore-ranking-recommendations` flag to `run` and `prompts` subparsers
+2. Updated `--prompts-per-scene` help text to clarify it's an override when provided
+3. Modified `_run_prompts()` to implement config logic based on flags:
+   - If `--prompts-per-scene N --ignore-ranking-recommendations`: use fixed N (override mode)
+   - If `--prompts-per-scene N`: use recommendations, fallback to N (fallback mode)
+   - If neither flag: use recommendations, fallback to 4 (full auto mode)
+4. Modified `_run_full_pipeline()` with same logic for Step 3 (prompt generation)
+5. Updated dry-run messages in both functions to reflect decision logic
+6. Updated module docstring with new usage examples showcasing the recommendation system
+**Test results**:
+- Dry-run test (full auto): ✅ "Using ranking recommendations (fallback: 4 variants)"
+- Dry-run test (fallback mode): ✅ "Using ranking recommendations (fallback: 3 variants)"
+- Dry-run test (override mode): ✅ "6 prompts per scene (ignoring ranking recommendations)"
+- Help text: ✅ Both `run` and `prompts` commands show new flags with proper descriptions
+- Linting: ✅ All code passes ruff check and formatting
+**Gotchas**:
+- Used `hasattr()` checks in `_run_full_pipeline()` because the args namespace might not have all attributes depending on the subcommand
+- In `_run_prompts()`, direct attribute access is safe since the function is only called from the `prompts` subcommand
+- Removed unused imports (sys, EXCESSION_EPUB_PATH) and updated type annotations (Optional -> |) to pass ruff linting
+**Warnings for next phase**:
+- Phase 5 (Testing and Calibration) should verify end-to-end behavior with actual prompt generation
+- Need to test with scenes that have various recommended_prompt_count values (2-10 range)
+- Should verify that the fallback hierarchy works correctly when rankings are missing
+
+### Phase 5: Testing and Calibration - Completed 2025-10-10
+**Status**: ✅ Complete
+**Key findings**:
+- Full pipeline test passed successfully - all phases work together seamlessly
+- Sample size of 3 scenes with recommendations shows sensible values (3-4 variants range)
+- LLM provides detailed, thoughtful complexity rationales explaining reasoning (temporal variations, visual layers, compositional variety)
+- System handles fallback gracefully - 537 old rankings without recommendations work correctly
+- Performance impact negligible (~43 seconds for 5 scenes, ~8.6s per scene) - complexity analysis adds no overhead as it's part of the same LLM call
+- All three CLI modes tested and working: (1) full auto, (2) fallback with custom value, (3) override mode
+- Migration file linting issues fixed (import ordering, unused imports)
+**Gotchas**:
+- Database has 540 total rankings: only 3 with recommendations (from Phase 2 testing), 537 old rankings without (perfect for testing fallback)
+- Pre-existing test failure in `test_create_user` due to duplicate email (unrelated to our changes)
+- Many pre-existing linting issues in codebase (import ordering, unused variables in tests) - not from our changes
+- Our specific changes pass linting after fixing migration file
+**Test results**:
+- ✅ Full pipeline dry-run: Shows "Using ranking recommendations (fallback: 4)"
+- ✅ Database distribution analysis: 1 scene with 3 variants, 2 scenes with 4 variants (sensible range)
+- ✅ Complexity rationale quality: LLM provides detailed explanations mentioning temporal variations, visual layers, composition potential
+- ✅ Sample visual moments: 2-3 per scene with variety ratings (low/medium/high)
+- ✅ CLI override mode: "6 prompts per scene (ignoring ranking recommendations)"
+- ✅ CLI fallback mode: "Using ranking recommendations (fallback: 3 variants)"
+- ✅ Performance check: ~8.6s per scene (no significant slowdown)
+- ✅ Migration status: ea4c5446c893 (head) - applied successfully
+- ✅ Linting: All modified files clean after fixing migration imports
+**Calibration findings**:
+- Current sample (3 scenes) shows conservative recommendations: 3-4 variants
+- Complexity rationales are detailed and well-reasoned:
+  - "Scene describes a single location but explicitly details how the primary light source appears at different times of day (dawn, mid-day, sunset)"
+  - "Scene describes a single location at a single time but contains two distinct visual layers: sea surface and upper atmosphere"
+  - "Scene describes a single, static setting but offers high potential for compositional variety"
+- Distribution appears reasonable (no extreme values like 1 or 10 in current sample)
+- Need more rankings to get full distribution analysis, but current behavior is sensible
+**Edge cases verified**:
+- ✅ Scenes with recommendations: Use recommended count from ranking
+- ✅ Scenes without recommendations (old rankings): Fall back to config default (4 variants)
+- ✅ CLI override flag: Ignores recommendations, uses fixed count
+- ✅ Custom fallback value: Uses recommendations when available, custom fallback when not
+**Warnings for next phase** (Phase 6 - Optional):
+- Phase 6 is optional (frontend API integration) - backend is fully functional
+- If implementing Phase 6, update `SceneRankingPublic` schema to include new fields
+- All new fields are nullable, maintaining backward compatibility with old rankings
+- Frontend client regeneration will be needed if exposing these fields to UI
+
 ### Phase Completion Notes Structure:
 Each phase should document:
 - **Phase X: [Name]** - Completed YYYY-MM-DD

@@ -39,11 +39,16 @@ def _coerce_content_to_text(payload: Any) -> str:
     return str(payload)
 
 
-def _get_llm(model: str = DEFAULT_FLASH_MODEL, temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> ChatGoogleGenerativeAI:
+def _get_llm(
+    model: str = DEFAULT_FLASH_MODEL,
+    temperature: float = 0.7,
+    max_tokens: int = None,
+    **kwargs: Any,
+) -> ChatGoogleGenerativeAI:
     """
     Internal helper function to initialize the ChatGoogleGenerativeAI LLM.
     Loads the API key from .env and configures the model with provided parameters.
-    
+
     :param model: The Gemini model name (e.g., "gemini-pro-latest", "gemini-flash-latest").
     :param temperature: Controls randomness (0.0 for deterministic, higher for creative).
     :param max_tokens: Maximum number of tokens in the response (optional).
@@ -54,24 +59,31 @@ def _get_llm(model: str = DEFAULT_FLASH_MODEL, temperature: float = 0.7, max_tok
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY not found in .env file.")
-    
+
     return ChatGoogleGenerativeAI(
         model=model,
         google_api_key=api_key,
         temperature=temperature,
         max_tokens=max_tokens,
-        **kwargs
+        **kwargs,
     )
 
-def simple_call(prompt: str, model: str = DEFAULT_FLASH_MODEL, temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> str:
+
+def simple_call(
+    prompt: str,
+    model: str = DEFAULT_FLASH_MODEL,
+    temperature: float = 0.7,
+    max_tokens: int = None,
+    **kwargs: Any,
+) -> str:
     """
     Makes a simple LLM call with a single prompt string.
     Useful for basic text generation or completion tasks.
-    
+
     Example usage:
     response = simple_call("Write a short poem about AI.")
     print(response)
-    
+
     :param prompt: The input prompt string.
     :param model: The Gemini model to use.
     :param temperature: Randomness control.
@@ -83,11 +95,18 @@ def simple_call(prompt: str, model: str = DEFAULT_FLASH_MODEL, temperature: floa
     response = llm.invoke(prompt)
     return response.content
 
-def chat_call(messages: List[Dict[str, str]], model: str = DEFAULT_FLASH_MODEL, temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> str:
+
+def chat_call(
+    messages: List[Dict[str, str]],
+    model: str = DEFAULT_FLASH_MODEL,
+    temperature: float = 0.7,
+    max_tokens: int = None,
+    **kwargs: Any,
+) -> str:
     """
     Makes a chat-style LLM call with a list of messages (supports system, user, assistant roles).
     Converts input dicts to LangChain message objects.
-    
+
     Example usage:
     messages = [
         {"role": "system", "content": "You are a helpful assistant."},
@@ -95,7 +114,7 @@ def chat_call(messages: List[Dict[str, str]], model: str = DEFAULT_FLASH_MODEL, 
     ]
     response = chat_call(messages)
     print(response)
-    
+
     :param messages: List of dicts with 'role' (system/user/assistant) and 'content'.
     :param model: The Gemini model to use.
     :param temperature: Randomness control.
@@ -116,26 +135,34 @@ def chat_call(messages: List[Dict[str, str]], model: str = DEFAULT_FLASH_MODEL, 
             lc_messages.append(AIMessage(content=content))
         else:
             raise ValueError(f"Unsupported role: {role}")
-    
+
     response = llm.invoke(lc_messages)
     return response.content
 
-def call_with_tools(prompt: str, tools: List[Any], model: str = DEFAULT_PRO_MODEL, temperature: float = 0.7, max_tokens: int = None, **kwargs: Any) -> Any:
+
+def call_with_tools(
+    prompt: str,
+    tools: List[Any],
+    model: str = DEFAULT_PRO_MODEL,
+    temperature: float = 0.7,
+    max_tokens: int = None,
+    **kwargs: Any,
+) -> Any:
     """
     Makes an LLM call with bound tools/functions for function calling.
     The LLM may return tool calls in the response if the prompt requires it.
     Tools can be defined using @tool decorator or as dicts.
-    
+
     Example usage:
     @tool
     def add(a: int, b: int) -> int:
         return a + b
-    
+
     response = call_with_tools("What is 2 + 3?", tools=[add])
     if response.tool_calls:
         # Handle tool execution here
         pass
-    
+
     :param prompt: The input prompt string.
     :param tools: List of tools (functions or dict schemas).
     :param model: The Gemini model to use (must support tool calling).
@@ -149,19 +176,28 @@ def call_with_tools(prompt: str, tools: List[Any], model: str = DEFAULT_PRO_MODE
     response = llm_with_tools.invoke(prompt)
     return response
 
-def structured_output(prompt: str, schema: Type[BaseModel], method: str = "default", model: str = DEFAULT_PRO_MODEL, temperature: float = 0.0, max_tokens: int = None, **kwargs: Any) -> BaseModel:
+
+def structured_output(
+    prompt: str,
+    schema: Type[BaseModel],
+    method: str = "default",
+    model: str = DEFAULT_PRO_MODEL,
+    temperature: float = 0.0,
+    max_tokens: int = None,
+    **kwargs: Any,
+) -> BaseModel:
     """
     Makes an LLM call that enforces structured output based on a Pydantic schema.
     Useful for extracting data in a specific format.
-    
+
     Example usage:
     class Person(BaseModel):
         name: str
         age: int
-    
+
     result = structured_output("Extract info: John is 30 years old.", Person)
     print(result.name, result.age)
-    
+
     :param prompt: The input prompt string.
     :param schema: Pydantic BaseModel subclass defining the structure.
     :param method: "default" (function calling) or "json_mode" (native JSON).
@@ -176,19 +212,27 @@ def structured_output(prompt: str, schema: Type[BaseModel], method: str = "defau
         structured_llm = llm.with_structured_output(schema, method="json_mode")
     else:
         structured_llm = llm.with_structured_output(schema)
-    
+
     result = structured_llm.invoke(prompt)
     return result
 
-def json_output(prompt: str, system_instruction: str = "Respond only with valid JSON.", model: str = DEFAULT_PRO_MODEL, temperature: float = 0.0, max_tokens: int = None, **kwargs: Any) -> Dict:
+
+def json_output(
+    prompt: str,
+    system_instruction: str = "Respond only with valid JSON.",
+    model: str = DEFAULT_PRO_MODEL,
+    temperature: float = 0.0,
+    max_tokens: int = None,
+    **kwargs: Any,
+) -> Dict:
     """
     Makes an LLM call that forces JSON output using generation config.
     Parses the response to a Python dict.
-    
+
     Example usage:
     response = json_output("List 3 fruits as JSON array.")
     print(response)  # e.g., {"fruits": ["apple", "banana", "cherry"]}
-    
+
     :param prompt: The input prompt string.
     :param system_instruction: System prompt to enforce JSON (optional).
     :param model: The Gemini model to use.
@@ -198,6 +242,7 @@ def json_output(prompt: str, system_instruction: str = "Respond only with valid 
     :return: Parsed JSON as a dict.
     """
     import json
+
     llm = _get_llm(
         model,
         temperature,
@@ -222,7 +267,9 @@ def json_output(prompt: str, system_instruction: str = "Respond only with valid 
         finish_reason = metadata.get("finish_reason")
         snippet = content[:500]
         logger.debug(
-            "Gemini JSON decode failed. finish_reason=%s snippet=%r", finish_reason, snippet
+            "Gemini JSON decode failed. finish_reason=%s snippet=%r",
+            finish_reason,
+            snippet,
         )
         if finish_reason == "MAX_TOKENS":
             raise ValueError(

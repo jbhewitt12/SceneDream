@@ -117,7 +117,9 @@ class SceneRefiner:
                     numeric_id = int(scene_id)
                 except (TypeError, ValueError):
                     continue
-                decision = decision_raw if decision_raw in {"keep", "discard"} else "keep"
+                decision = (
+                    decision_raw if decision_raw in {"keep", "discard"} else "keep"
+                )
                 refinements[numeric_id] = RefinedScene(
                     scene_id=numeric_id,
                     decision=decision,
@@ -137,7 +139,9 @@ class SceneRefiner:
             )
         return refinements
 
-    def _build_refinement_prompt(self, chapter: "Chapter", scenes: List["RawScene"]) -> str:
+    def _build_refinement_prompt(
+        self, chapter: "Chapter", scenes: List["RawScene"]
+    ) -> str:
         chapter_number = getattr(chapter, "number", "?")
         chapter_title = getattr(chapter, "title", "")
         header = dedent(
@@ -177,13 +181,11 @@ class SceneRefiner:
             excerpt = str(getattr(scene, "raw_excerpt", "")).strip()
             if not excerpt:
                 continue
-            scenes_text.append(
-                f"Scene {scene_id} | {location}\n{excerpt}\n---"
-            )
+            scenes_text.append(f"Scene {scene_id} | {location}\n{excerpt}\n---")
         scene_body = "\n".join(scenes_text)
         schema_hint = (
             "Schema reminder (types shown as comments):\n"
-            "{\n  \"scenes\": [\n    {\n      \"scene_id\": \"integer\",\n      \"decision\": \"keep|discard\",\n      \"rationale\": \"string\"\n    }\n  ]\n}\n"
+            '{\n  "scenes": [\n    {\n      "scene_id": "integer",\n      "decision": "keep|discard",\n      "rationale": "string"\n    }\n  ]\n}\n'
         )
         return f"{header}\n\n{schema_hint}\nScenes to review:\n\n{scene_body}"
 

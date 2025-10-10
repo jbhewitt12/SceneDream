@@ -41,6 +41,7 @@ class ImagePromptGenerationConfig:
     model_name: str = "gemini-2.5-pro"
     prompt_version: str = "image-prompts-v1"
     variants_count: int = 4
+    use_ranking_recommendation: bool = True
     temperature: float = 0.4
     max_output_tokens: int | None = 8192
     context_before: int = 3
@@ -60,6 +61,7 @@ class ImagePromptGenerationConfig:
             "model_name": self.model_name,
             "prompt_version": self.prompt_version,
             "variants_count": self.variants_count,
+            "use_ranking_recommendation": self.use_ranking_recommendation,
             "temperature": self.temperature,
             "max_output_tokens": self.max_output_tokens,
             "context_before": self.context_before,
@@ -179,6 +181,20 @@ class ImagePromptGenerationService:
             dry_run=dry_run,
             metadata=metadata,
         )
+
+        # Determine final variant count (may override config based on ranking recommendation)
+        final_count, count_rationale = self._determine_variant_count(
+            target_scene, config
+        )
+
+        # Override config with final determination
+        merged_metadata = dict(config.metadata)
+        merged_metadata["variant_count_source"] = count_rationale
+        config = config.copy_with(
+            variants_count=final_count,
+            metadata=merged_metadata,
+        )
+
         if config.variants_count <= 0:
             raise ImagePromptGenerationServiceError("variants_count must be positive")
 
@@ -265,7 +281,9 @@ class ImagePromptGenerationService:
             )
             if deleted:
                 logger.info(
-                    "Deleted %s existing image prompt variants for scene %s", deleted, target_scene.id
+                    "Deleted %s existing image prompt variants for scene %s",
+                    deleted,
+                    target_scene.id,
                 )
 
         created = self._prompt_repo.bulk_create(
@@ -343,7 +361,9 @@ class ImagePromptGenerationService:
         if prompt_version is not None:
             overrides["prompt_version"] = prompt_version
         if variants_count is not None:
+            # Explicit count provided = disable recommendation
             overrides["variants_count"] = variants_count
+            overrides["use_ranking_recommendation"] = False
         if temperature is not None:
             overrides["temperature"] = temperature
         if max_output_tokens is not None:
@@ -355,6 +375,44 @@ class ImagePromptGenerationService:
         if metadata is not None:
             overrides["metadata"] = dict(metadata)
         return self._config.copy_with(**overrides)
+
+    def _determine_variant_count(
+        self,
+        scene: SceneExtraction,
+        config: ImagePromptGenerationConfig,
+    ) -> tuple[int, str]:
+        """
+        Determine how many variants to generate, returning (count, rationale).
+
+        Priority:
+        1. Config variants_count if use_ranking_recommendation=False
+        2. Scene ranking recommendation if available
+        3. Config variants_count as fallback
+        """
+        if not config.use_ranking_recommendation:
+            return config.variants_count, "config_override"
+
+        # Query latest ranking for this scene
+        ranking = self._ranking_repo.get_latest_for_scene(scene.id)
+
+        if ranking and ranking.recommended_prompt_count is not None:
+            count = ranking.recommended_prompt_count
+            rationale = f"ranking_recommendation (complexity: {ranking.complexity_rationale or 'N/A'})"
+            logger.info(
+                "Using ranking recommendation for scene %s: %d variants (rationale: %s)",
+                scene.id,
+                count,
+                ranking.complexity_rationale or "N/A",
+            )
+            return count, rationale
+
+        # Fallback to config
+        logger.info(
+            "No ranking recommendation found for scene %s, using config default: %d",
+            scene.id,
+            config.variants_count,
+        )
+        return config.variants_count, "config_default"
 
     def _build_scene_context(
         self,
@@ -470,7 +528,6 @@ class ImagePromptGenerationService:
         )
         return prompt
 
-
     def _invoke_llm(
         self,
         *,
@@ -553,9 +610,7 @@ class ImagePromptGenerationService:
     ) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []
         for index, variant in enumerate(variants):
-            style_tags = (
-                list(variant.style_tags) if variant.style_tags else None
-            )
+            style_tags = list(variant.style_tags) if variant.style_tags else None
             attributes = dict(variant.attributes)
             records.append(
                 {
@@ -564,7 +619,9 @@ class ImagePromptGenerationService:
                     "model_name": config.model_name,
                     "prompt_version": config.prompt_version,
                     "variant_index": index,
-                    "title": variant.title.strip() if isinstance(variant.title, str) else None,
+                    "title": variant.title.strip()
+                    if isinstance(variant.title, str)
+                    else None,
                     "prompt_text": variant.prompt_text.strip(),
                     "negative_prompt": None,
                     "style_tags": style_tags,

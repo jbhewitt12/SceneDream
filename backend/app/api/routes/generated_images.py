@@ -162,7 +162,9 @@ def get_generated_image(
         scene_repo = SceneExtractionRepository(session)
         record.scene_extraction = scene_repo.get(record.scene_extraction_id)
 
-    return _build_context(record, include_prompt=include_prompt, include_scene=include_scene)
+    return _build_context(
+        record, include_prompt=include_prompt, include_scene=include_scene
+    )
 
 
 @router.get("/scene/{scene_id}", response_model=GeneratedImageListResponse)

@@ -112,14 +112,10 @@ class GeneratedImageRepository:
         include_prompt: bool = False,
         include_scene: bool = False,
     ) -> list[GeneratedImage]:
-        statement = select(GeneratedImage).where(
-            GeneratedImage.book_slug == book_slug
-        )
+        statement = select(GeneratedImage).where(GeneratedImage.book_slug == book_slug)
 
         if chapter_number is not None:
-            statement = statement.where(
-                GeneratedImage.chapter_number == chapter_number
-            )
+            statement = statement.where(GeneratedImage.chapter_number == chapter_number)
         if provider:
             statement = statement.where(GeneratedImage.provider == provider)
         if model:

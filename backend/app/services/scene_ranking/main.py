@@ -11,8 +11,8 @@ import argparse
 import json
 import logging
 import sys
+from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import Iterable, Optional
 from uuid import UUID
 
 from sqlmodel import Session
@@ -163,7 +163,7 @@ def _collect_scenes(
     return scenes
 
 
-def _build_metadata(operator: str | None, note: str | None, args: argparse.Namespace) -> dict[str, object]:
+def _build_metadata(operator: str | None, note: str | None) -> dict[str, object]:
     metadata: dict[str, object] = {
         "cli": "scene-ranking",
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -201,6 +201,24 @@ def _summarize_result(result: SceneRanking | SceneRankingPreview) -> dict[str, o
                 "committed": False,
             }
         )
+
+    # Add complexity fields if present
+    if (
+        hasattr(result, "recommended_prompt_count")
+        and result.recommended_prompt_count is not None
+    ):
+        base["recommended_prompt_count"] = result.recommended_prompt_count
+    if (
+        hasattr(result, "complexity_rationale")
+        and result.complexity_rationale is not None
+    ):
+        base["complexity_rationale"] = result.complexity_rationale
+    if (
+        hasattr(result, "distinct_visual_moments")
+        and result.distinct_visual_moments is not None
+    ):
+        base["distinct_visual_moments"] = result.distinct_visual_moments
+
     return base
 
 
@@ -227,7 +245,7 @@ def _handle_rank(args: argparse.Namespace) -> int:
         config_kwargs["weight_config"] = weight_overrides
 
     config = SceneRankingConfig(**config_kwargs)
-    metadata = _build_metadata(args.operator, args.note, args)
+    metadata = _build_metadata(args.operator, args.note)
 
     with Session(engine) as session:
         service = SceneRankingService(session, config=config)
@@ -257,14 +275,14 @@ def _handle_rank(args: argparse.Namespace) -> int:
                     metadata=metadata,
                 )
             except SceneRankingServiceError as exc:
-                logger.error(
-                    "Failed to rank scene %s: %s", scene.id, exc
-                )
+                logger.error("Failed to rank scene %s: %s", scene.id, exc)
                 if args.fail_on_error:
                     return 1
                 continue
             if outcome is None:
-                logger.info("Skipped scene %s based on service configuration.", scene.id)
+                logger.info(
+                    "Skipped scene %s based on service configuration.", scene.id
+                )
                 continue
             results.append(_summarize_result(outcome))
 
@@ -272,7 +290,7 @@ def _handle_rank(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     parser = _build_parser()
     args = parser.parse_args(argv)

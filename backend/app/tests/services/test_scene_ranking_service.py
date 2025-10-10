@@ -74,7 +74,9 @@ def _mock_response(score: float = 6.0) -> dict[str, object]:
     }
 
 
-def test_rank_scene_creates_ranking(db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rank_scene_creates_ranking(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scene = scene_factory()
 
     monkeypatch.setattr(gemini_api, "json_output", lambda **_: _mock_response(6.5))
@@ -96,7 +98,9 @@ def test_rank_scene_creates_ranking(db: Session, scene_factory, monkeypatch: pyt
     db.commit()
 
 
-def test_rank_scene_dry_run_returns_preview(db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rank_scene_dry_run_returns_preview(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scene = scene_factory(book_slug="dry-run-book")
 
     monkeypatch.setattr(gemini_api, "json_output", lambda **_: _mock_response(7.2))

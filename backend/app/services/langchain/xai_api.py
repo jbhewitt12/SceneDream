@@ -34,17 +34,18 @@ from langchain_core.tools import tool  # For defining tools
 from langchain_core.pydantic_v1 import BaseModel  # For structured outputs
 from pydantic import Field
 
+
 class XAIAPI:
     """
     A class to handle various LLM calls to xAI's Grok API using LangChain.
-    
+
     Attributes:
         api_key (str): Your xAI API key.
         base_url (str): The base URL for xAI API (default: 'https://api.x.ai/v1').
         model (str): The model name to use (default: 'grok-beta').
         llm: The initialized ChatOpenAI instance for making calls.
     """
-    
+
     def __init__(
         self,
         api_key: str,
@@ -55,14 +56,14 @@ class XAIAPI:
     ):
         """
         Initializes the XAIAPI wrapper.
-        
+
         Args:
             api_key: xAI API key.
             base_url: API endpoint base URL.
             model: Model name (e.g., 'grok-beta').
             temperature: Controls randomness (0-1).
             max_tokens: Max tokens in response.
-        
+
         This sets up the LangChain ChatOpenAI with custom base_url for xAI compatibility.
         Example from LangChain docs: ChatOpenAI can be pointed to custom endpoints.
         """
@@ -80,14 +81,14 @@ class XAIAPI:
     def simple_call(self, prompt: str, system_prompt: Optional[str] = None) -> str:
         """
         Makes a simple LLM call: prompt -> response as string.
-        
+
         Args:
             prompt: The user prompt.
             system_prompt: Optional system message for context.
-        
+
         Returns:
             str: The LLM's response.
-        
+
         This uses a basic ChatPromptTemplate and StrOutputParser.
         Inspired by simple LLM chain examples, e.g., from https://python.langchain.com/docs/tutorials/llm_chain/
         where a prompt template is chained to an LLM for translation or basic queries.
@@ -102,10 +103,10 @@ class XAIAPI:
             )
         else:
             template = PromptTemplate.from_template("{prompt}")
-        
+
         # Chain: prompt -> LLM -> string output
         chain = template | self.llm | StrOutputParser()
-        
+
         # Invoke the chain
         response = chain.invoke({"prompt": prompt})
         return response
@@ -119,16 +120,16 @@ class XAIAPI:
     ) -> Union[Dict[str, Any], Any]:
         """
         Makes an LLM call with function/tool calling.
-        
+
         Args:
             prompt: The user prompt.
             tools: List of tool definitions (each as dict with 'type': 'function', 'function': {'name', 'description', 'parameters'}}).
             system_prompt: Optional system message.
             auto_execute: If True, automatically execute the called tool (assumes tools are callable Python functions).
-        
+
         Returns:
             Dict or Any: Tool call response if tool called, else plain response. If auto_execute, returns tool result.
-        
+
         This binds tools to the LLM and invokes. Handles tool calls manually if needed.
         Based on function calling examples from https://python.langchain.com/docs/how_to/function_calling/
         and concepts like binding tools with .bind_tools().
@@ -137,7 +138,7 @@ class XAIAPI:
         """
         # Bind tools to the LLM
         llm_with_tools = self.llm.bind_tools(tools)
-        
+
         # Create prompt template
         if system_prompt:
             messages = [
@@ -146,10 +147,10 @@ class XAIAPI:
             ]
         else:
             messages = [("human", prompt)]
-        
+
         # Invoke LLM with tools
         response = llm_with_tools.invoke(messages)
-        
+
         # Check if tool calls are present
         if response.tool_calls:
             tool_call = response.tool_calls[0]  # Assume single tool call for simplicity
@@ -157,11 +158,15 @@ class XAIAPI:
                 # Find the tool function (assumes tools are callable; in practice, map names to functions)
                 # For demo, you'd need to provide callable tools; here we simulate
                 # Coding agent note: Extend this by mapping tool names to actual functions.
-                tool_name = tool_call['name']
-                args = tool_call['args']
+                tool_name = tool_call["name"]
+                args = tool_call["args"]
                 # Example: If tool is a Python @tool decorator, call it
                 # But for now, return the call details
-                return {"tool_called": tool_name, "args": args, "note": "Auto-execute not implemented; implement function mapping."}
+                return {
+                    "tool_called": tool_name,
+                    "args": args,
+                    "note": "Auto-execute not implemented; implement function mapping.",
+                }
             else:
                 return {"tool_calls": response.tool_calls}
         else:
@@ -175,15 +180,15 @@ class XAIAPI:
     ) -> Dict[str, Any]:
         """
         Makes an LLM call enforcing JSON structured output.
-        
+
         Args:
             prompt: The user prompt.
             schema: Pydantic BaseModel class or JSON schema dict for output structure.
             system_prompt: Optional system message.
-        
+
         Returns:
             Dict: Parsed JSON response matching the schema.
-        
+
         Uses .with_structured_output() for enforcement.
         Inspired by structured output examples from https://python.langchain.com/docs/how_to/structured_output/
         and Pydantic/JSON schema usage in https://medium.com/@asmmorshedulhoque/mastering-structured-output-in-langchain-pydantic-typeddict-and-json-schema-573d67d5daa4
@@ -195,7 +200,7 @@ class XAIAPI:
             llm_structured = self.llm.with_structured_output(schema)
         else:
             llm_structured = self.llm.with_structured_output(schema, method="json_mode")
-        
+
         # Create prompt template
         if system_prompt:
             template = ChatPromptTemplate.from_messages(
@@ -206,20 +211,21 @@ class XAIAPI:
             )
         else:
             template = ChatPromptTemplate.from_messages([("human", "{prompt}")])
-        
+
         # Chain: prompt -> structured LLM
         chain = template | llm_structured
-        
+
         # Invoke and return dict
         response = chain.invoke({"prompt": prompt})
         return response
+
 
 # Example usage (commented out; for testing)
 # if __name__ == "__main__":
 #     api = XAIAPI(api_key="your_xai_api_key_here")
 #     # Simple call
 #     print(api.simple_call("Hello, world!"))
-#     
+#
 #     # Function call example
 #     @tool
 #     def multiply(a: int, b: int) -> int:
@@ -227,7 +233,7 @@ class XAIAPI:
 #         return a * b
 #     tools = [multiply]
 #     print(api.call_with_functions("What is 5 times 3?", tools))
-#     
+#
 #     # JSON output
 #     class Joke(BaseModel):
 #         setup: str = Field(description="The setup of the joke")
