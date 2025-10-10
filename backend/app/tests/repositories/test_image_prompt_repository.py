@@ -51,7 +51,7 @@ def _prompt_payload(
     scene,
     *,
     variant_index: int,
-    model_name: str = "gemini-2.5-pro",
+    model_name: str = "gemini-2.5-flash",
     prompt_version: str = "image-prompts-v1",
     title: str | None = None,
     style_tags: list[str] | None = None,
@@ -114,7 +114,7 @@ def test_list_for_scene_orders_by_created_at(db: Session, scene) -> None:
     assert [prompt.variant_index for prompt in oldest_first] == [0, 1]
 
     filtered = repository.list_for_scene(
-        scene.id, model_name="gemini-2.5-pro", prompt_version="image-prompts-v1"
+        scene.id, model_name="gemini-2.5-flash", prompt_version="image-prompts-v1"
     )
     assert len(filtered) == 2
 
@@ -133,7 +133,7 @@ def test_get_latest_set_for_scene_returns_variants_sorted(db: Session, scene) ->
     )
 
     latest = repository.get_latest_set_for_scene(
-        scene.id, model_name="gemini-2.5-pro", prompt_version="image-prompts-v1"
+        scene.id, model_name="gemini-2.5-flash", prompt_version="image-prompts-v1"
     )
     assert [prompt.variant_index for prompt in latest] == [0, 1, 2]
 
