@@ -418,7 +418,9 @@ class ImagePromptGenerationService:
         metadata_block = "\n".join(metadata_lines)
         guidance = (
             "Craft distinct, cinematic prompt variants that explore different artistic lenses, compositions, "
-            "lighting styles, and moods inspired by the scene. Encourage variety across variants (visual styles, camera angle, focus, palette, atmosphere)."
+            "lighting styles, and moods inspired by the scene excerpt. Encourage variety across variants (visual styles, camera angle, focus, palette, atmosphere)."
+            "Use your understanding of what makes a good image prompt to take creative license to produce a prompt that maximises the potential of the DALLE3 model to produce exceptional images."
+            "The scene excerpt is for inspiration. Ensure that the prompt you produce does not fall back to generic or stereotypical descriptions. It must be inspired and unique."
         )
         output_schema = json.dumps(
             {
@@ -439,7 +441,7 @@ class ImagePromptGenerationService:
         )
         prompt_lines = [
             "You are an elite prompt engineer who converts novel scenes into world-class AI image prompts.",
-            f"Your goal is to produce exactly {config.variants_count} distinct prompt variants suitable for the DALLE3 model.",
+            f"Your goal is to produce exactly {config.variants_count} distinct prompt variants that produce exceptional images when fed into the DALLE3 model.",
             "",
             "## Scene Metadata",
             metadata_block,
