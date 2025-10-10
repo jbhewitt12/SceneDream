@@ -347,7 +347,7 @@ function GeneratedImagesGalleryPage() {
         </Box>
       ) : (
         <>
-          <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4, xl: 6 }} gap={4}>
+          <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} gap={4}>
             {images.map((image) => (
               <GeneratedImageCard
                 key={image.id}
