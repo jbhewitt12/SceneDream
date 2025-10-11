@@ -12,7 +12,6 @@ import { useEffect } from "react"
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi"
 
 import { GeneratedImageApi } from "@/api/generatedImages"
-import { OpenAPI } from "@/client"
 import {
   DialogBody,
   DialogCloseTrigger,
@@ -21,6 +20,7 @@ import {
   DialogRoot,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { buildGeneratedImageUrl } from "./url"
 
 type GeneratedImageModalProps = {
   isOpen: boolean
@@ -151,7 +151,11 @@ const GeneratedImageModal = ({
   }, [isOpen, imageId, sceneId, sceneImages, allImages, onNavigate])
 
   const fullPath = currentImage
-    ? `${OpenAPI.BASE}/${currentImage.image.storage_path}/${currentImage.image.file_name}`
+    ? buildGeneratedImageUrl({
+        id: currentImage.image.id,
+        storagePath: currentImage.image.storage_path,
+        fileName: currentImage.image.file_name,
+      })
     : ""
   const hasMultipleImages = sceneImages.length > 1
   const currentIndex = imageId ? sceneImages.findIndex((img) => img.id === imageId) : -1
