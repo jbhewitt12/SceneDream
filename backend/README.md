@@ -73,8 +73,9 @@ that means that you are in a `bash` session inside your container, as a `root` u
 
 There you can use the `fastapi run --reload` command to run the debug live reloading server.
 
+This has auto reloading enabled.
 ```console
-$ fastapi run --reload app/main.py
+$ uv run fastapi dev app/main.py
 ```
 
 ...it will look like:
