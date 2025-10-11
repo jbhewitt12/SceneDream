@@ -8,7 +8,7 @@ import {
 } from "@chakra-ui/react"
 
 import type { GeneratedImageRead } from "@/api/generatedImages"
-import { OpenAPI } from "@/client"
+import { buildGeneratedImageUrl } from "./url"
 
 type GeneratedImageCardProps = {
   image: GeneratedImageRead
@@ -16,7 +16,11 @@ type GeneratedImageCardProps = {
 }
 
 const GeneratedImageCard = ({ image, onClick }: GeneratedImageCardProps) => {
-  const fullPath = `${OpenAPI.BASE}/${image.storage_path}/${image.file_name}`
+  const fullPath = buildGeneratedImageUrl({
+    id: image.id,
+    storagePath: image.storage_path,
+    fileName: image.file_name,
+  })
   const aspectRatioLabel = image.aspect_ratio || image.size
 
   return (

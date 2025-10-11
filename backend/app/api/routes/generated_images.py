@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import mimetypes
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from app.api.deps import SessionDep
 from app.repositories import (
@@ -33,6 +36,9 @@ _MAX_LIST_LIMIT = 200
 _DEFAULT_SCENE_LIMIT = 20
 _MAX_SCENE_LIMIT = 100
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+_GENERATED_IMAGES_ROOT = (_PROJECT_ROOT / "img").resolve()
+
 
 def _build_context(
     record, *, include_prompt: bool, include_scene: bool
@@ -53,6 +59,20 @@ def _build_context(
         prompt=prompt_data,
         scene=scene_data,
     )
+
+
+def _resolve_image_file(storage_path: str, file_name: str) -> Path:
+    """Resolve the on-disk path for a generated image and guard against traversal."""
+
+    relative_dir = Path(storage_path.strip("/"))
+    candidate = (_PROJECT_ROOT / relative_dir / file_name).resolve()
+
+    try:
+        candidate.relative_to(_GENERATED_IMAGES_ROOT)
+    except ValueError as exc:  # pragma: no cover - defensive guard
+        raise HTTPException(status_code=404, detail="Image file not available") from exc
+
+    return candidate
 
 
 @router.get("", response_model=GeneratedImageListResponse)
@@ -164,6 +184,31 @@ def get_generated_image(
 
     return _build_context(
         record, include_prompt=include_prompt, include_scene=include_scene
+    )
+
+
+@router.get("/{image_id}/content")
+def stream_generated_image_file(
+    *,
+    session: SessionDep,
+    image_id: UUID,
+) -> FileResponse:
+    """Stream the binary image file for a generated image."""
+
+    repository = GeneratedImageRepository(session)
+    record = repository.get(image_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Generated image not found")
+
+    file_path = _resolve_image_file(record.storage_path, record.file_name)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Generated image file not found")
+
+    media_type, _ = mimetypes.guess_type(file_path.name)
+    return FileResponse(
+        path=file_path,
+        media_type=media_type or "application/octet-stream",
+        filename=file_path.name,
     )
 
 
