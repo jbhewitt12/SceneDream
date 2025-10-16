@@ -41,6 +41,122 @@ ENABLE_REFINEMENT = True
 REFINEMENT_BATCH_SIZE = 5
 
 
+FRONT_MATTER_NAME_TOKENS = {
+    "ack",
+    "acknowledge",
+    "acknowledgement",
+    "acknowledgements",
+    "acknowledgment",
+    "acknowledgments",
+    "also",
+    "author",
+    "about",
+    "ads",
+    "advert",
+    "advertisement",
+    "afterword",
+    "alsoby",
+    "appendix",
+    "bio",
+    "colophon",
+    "con",
+    "contents",
+    "copyright",
+    "cop",
+    "cover",
+    "cov",
+    "ded",
+    "dedication",
+    "excerpt",
+    "fm",
+    "foreword",
+    "front",
+    "glossary",
+    "htp",
+    "index",
+    "intro",
+    "introduction",
+    "licence",
+    "license",
+    "map",
+    "notes",
+    "pref",
+    "preface",
+    "praise",
+    "promo",
+    "sample",
+    "sneak",
+    "tit",
+    "title",
+    "toc",
+}
+
+
+FRONT_MATTER_TITLE_KEYWORDS = {
+    "acknowledg",
+    "afterword",
+    "also by",
+    "about the author",
+    "about the illustrator",
+    "about the translator",
+    "appendix",
+    "colophon",
+    "contents",
+    "copyright",
+    "dedication",
+    "foreword",
+    "glossary",
+    "index",
+    "introduction",
+    "license",
+    "map",
+    "notes",
+    "preface",
+    "praise",
+}
+
+
+FRONT_MATTER_CONTAINER_CLASSES = {
+    "acknowledgepage",
+    "aboutauthor",
+    "abouttheauthor",
+    "abouttheillustrator",
+    "abouttranslator",
+    "advertisement",
+    "alsobypage",
+    "colophonpage",
+    "contents",
+    "copyrightpage",
+    "dedicationpage",
+    "frontmatterpage",
+    "glossary",
+    "halftitlepage",
+    "index",
+    "map",
+    "praisepage",
+    "tableofcontents",
+    "titlepage",
+}
+
+
+CHAPTER_NAME_TOKENS = {
+    "act",
+    "chapter",
+    "chap",
+    "ch",
+    "epil",
+    "epilogue",
+    "interlude",
+    "part",
+    "pro",
+    "prologue",
+    "scene",
+    "sec",
+    "section",
+    "volume",
+}
+
+
 SCENE_EXTRACTION_SCHEMA_TEXT = """{
   \"chapter_title\": \"string\",
   \"chapter_number\": \"integer\",
@@ -123,6 +239,54 @@ class SceneExtractor:
         self.config = config or SceneExtractionConfig()
         load_dotenv()
         self._refiner: Optional[SceneRefiner] = None
+
+    def _extract_name_tokens(self, source_name: str) -> set[str]:
+        stem = Path(source_name).stem.lower()
+        tokens = set(re.findall(r"[a-z]+", stem))
+        # Trim obviously generic tokens that do not help classification.
+        generic_tokens = {"text", "section", "xhtml", "html"}
+        cleaned = {token for token in tokens if token not in generic_tokens}
+        return cleaned
+
+    def _top_level_container_classes(self, soup: BeautifulSoup) -> set[str]:
+        body = soup.body
+        if body is None:
+            return set()
+        classes: set[str] = set()
+        for child in body.find_all(recursive=False):
+            for cls in child.get("class", []):
+                classes.add(cls.lower())
+        return classes
+
+    def _should_skip_spine_item(
+        self,
+        *,
+        source_name: str,
+        title: Optional[str],
+        soup: BeautifulSoup,
+        paragraphs: Sequence[str],
+    ) -> bool:
+        name_tokens = self._extract_name_tokens(source_name)
+        has_chapter_token = bool(name_tokens & CHAPTER_NAME_TOKENS)
+        if name_tokens & FRONT_MATTER_NAME_TOKENS and not has_chapter_token:
+            return True
+
+        normalized_title = self._normalize_whitespace(title).lower() if title else ""
+        if normalized_title:
+            if any(keyword in normalized_title for keyword in FRONT_MATTER_TITLE_KEYWORDS):
+                chapter_title_markers = {"chapter", "prologue", "epilogue", "part", "interlude"}
+                if not any(marker in normalized_title for marker in chapter_title_markers):
+                    return True
+
+        container_classes = self._top_level_container_classes(soup)
+        if container_classes & FRONT_MATTER_CONTAINER_CLASSES and not has_chapter_token:
+            return True
+
+        # Defensive fallback: skip extremely short entries that are almost certainly headings.
+        if len(paragraphs) == 1 and len(paragraphs[0]) <= 40 and not has_chapter_token:
+            return True
+
+        return False
 
     def extract_book(
         self, book_path: Union[str, os.PathLike[str]]
@@ -232,7 +396,16 @@ class SceneExtractor:
             paragraphs = self._extract_paragraphs(soup)
             if not paragraphs:
                 continue
-            title = self._extract_title(soup) or f"Chapter {chapter_number}"
+            raw_title = self._extract_title(soup)
+            if self._should_skip_spine_item(
+                source_name=item.get_name() or "",
+                title=raw_title,
+                soup=soup,
+                paragraphs=paragraphs,
+            ):
+                logger.debug("Skipping front/back matter item: %s", item.get_name())
+                continue
+            title = raw_title or f"Chapter {chapter_number}"
             chapters.append(
                 Chapter(
                     number=chapter_number,
@@ -265,7 +438,7 @@ class SceneExtractor:
         for selector in ("h1", "h2", "h3", "title"):
             node = soup.find(selector)
             if node:
-                title = node.get_text(strip=True)
+                title = node.get_text(separator=" ", strip=True)
                 if title:
                     return self._normalize_whitespace(title)
         return None
