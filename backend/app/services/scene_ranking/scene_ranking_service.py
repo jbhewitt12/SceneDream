@@ -600,6 +600,19 @@ class SceneRankingService:
             "- Provide 'recommended_prompt_count' integer (1-10) and 'complexity_rationale' string"
         )
 
+        content_warning_guidance = (
+            "\n\nContent Warning Classification:\n"
+            "Flag scenes with potentially problematic content using standardized warning tags in the 'warnings' array.\n"
+            "Use these exact tags when applicable:\n"
+            "- 'violence' - combat, weapons, physical harm, gore, blood\n"
+            "- 'sexual' - nudity, intimate scenes, sexual content, suggestive material\n"
+            "- 'drugs' - substance use, drug references, intoxication\n"
+            "- 'horror' - disturbing imagery, graphic content, psychological horror\n"
+            "- 'hate' - discriminatory content, hate symbols, slurs\n"
+            "You may include additional descriptive warnings, but ALWAYS use these exact tags when the content applies.\n"
+            "Err on the side of caution - if content might be problematic for commercial image generators, flag it."
+        )
+
         prompt_parts = [
             f"You are using prompt template version {prompt_version}. Score the scene using the criteria below.",
             "Provide concise reasoning and flag sensitive content when relevant.",
@@ -615,6 +628,7 @@ class SceneRankingService:
             '  "complexity_rationale": string,',
             '  "diagnostics": { ... }',
             "}",
+            content_warning_guidance,
             "\nScoring guidance:",
             CRITERIA_GUIDANCE,
             complexity_guidance,
