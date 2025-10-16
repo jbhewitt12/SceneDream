@@ -10,6 +10,9 @@ Usage examples:
     # Run full pipeline with automatic variant counts from scene complexity analysis
     uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --images-for-scenes 5
 
+    # Run full pipeline for top 10 scenes only (prompts and images)
+    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --prompts-for-scenes 10 --images-for-scenes 10
+
     # Generate prompts using scene complexity recommendations (default behavior)
     uv run python -m app.services.image_gen_cli prompts --book-slug look-to-windward-iain-m-banks --top-scenes 10
 
@@ -109,6 +112,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--ignore-ranking-recommendations",
         action="store_true",
         help="Always use --prompts-per-scene value, ignoring scene complexity analysis",
+    )
+    run.add_argument(
+        "--prompts-for-scenes",
+        type=int,
+        help="Number of top-ranked scenes to generate prompts for (default: all scenes without prompts)",
     )
     run.add_argument(
         "--images-for-scenes",
@@ -375,6 +383,10 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
         logger.info("=" * 60)
 
         if args.dry_run:
+            top_scenes_msg = ""
+            if hasattr(args, "prompts_for_scenes") and args.prompts_for_scenes:
+                top_scenes_msg = f" for top {args.prompts_for_scenes} scenes"
+
             if (
                 hasattr(args, "prompts_per_scene")
                 and args.prompts_per_scene is not None
@@ -384,19 +396,22 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                     and args.ignore_ranking_recommendations
                 ):
                     logger.info(
-                        "DRY RUN: Would generate %d prompts per scene for book: %s (ignoring ranking recommendations)",
+                        "DRY RUN: Would generate %d prompts per scene%s for book: %s (ignoring ranking recommendations)",
                         args.prompts_per_scene,
+                        top_scenes_msg,
                         book_slug,
                     )
                 else:
                     logger.info(
-                        "DRY RUN: Would generate prompts using ranking recommendations (fallback: %d) for book: %s",
+                        "DRY RUN: Would generate prompts using ranking recommendations (fallback: %d)%s for book: %s",
                         args.prompts_per_scene,
+                        top_scenes_msg,
                         book_slug,
                     )
             else:
                 logger.info(
-                    "DRY RUN: Would generate prompts using ranking recommendations (fallback: 4) for book: %s",
+                    "DRY RUN: Would generate prompts using ranking recommendations (fallback: 4)%s for book: %s",
+                    top_scenes_msg,
                     book_slug,
                 )
         else:
@@ -405,9 +420,16 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                 ranking_repo = SceneRankingRepository(session)
                 prompt_repo = ImagePromptRepository(session)
 
+                # Determine limit based on --prompts-for-scenes parameter
+                limit = (
+                    args.prompts_for_scenes
+                    if hasattr(args, "prompts_for_scenes") and args.prompts_for_scenes
+                    else 100
+                )
+
                 rankings = ranking_repo.list_top_rankings_for_book(
                     book_slug=book_slug,
-                    limit=100,  # Get many to filter
+                    limit=limit,
                     include_scene=True,
                 )
 
