@@ -47,6 +47,10 @@ class ImagePromptGenerationConfig:
     context_before: int = 3
     context_after: int = 1
     include_cheatsheet_path: str = DEFAULT_CHEATSHEET_PATH
+    blocked_warnings: set[str] = field(
+        default_factory=lambda: {"violence", "sexual", "drugs", "horror", "hate"}
+    )
+    skip_scenes_with_warnings: bool = True
     dry_run: bool = False
     allow_overwrite: bool = False
     autocommit: bool = True
@@ -67,6 +71,8 @@ class ImagePromptGenerationConfig:
             "context_before": self.context_before,
             "context_after": self.context_after,
             "include_cheatsheet_path": self.include_cheatsheet_path,
+            "blocked_warnings": set(self.blocked_warnings),
+            "skip_scenes_with_warnings": self.skip_scenes_with_warnings,
             "dry_run": self.dry_run,
             "allow_overwrite": self.allow_overwrite,
             "autocommit": self.autocommit,
@@ -79,6 +85,8 @@ class ImagePromptGenerationConfig:
         for key, value in overrides.items():
             if key == "metadata":
                 normalized_overrides[key] = dict(value) if value is not None else {}
+            elif key == "blocked_warnings":
+                normalized_overrides[key] = set(value) if value is not None else set()
             elif value is not None:
                 normalized_overrides[key] = value
             elif key in {"max_output_tokens"}:
@@ -181,6 +189,18 @@ class ImagePromptGenerationService:
             dry_run=dry_run,
             metadata=metadata,
         )
+
+        # Check for blocked content warnings
+        if config.skip_scenes_with_warnings and self._scene_has_blocked_warnings(
+            target_scene, config
+        ):
+            problematic_warnings = self._get_problematic_warnings(target_scene, config)
+            logger.info(
+                "Skipping scene %s due to content warnings: %s",
+                target_scene.id,
+                ", ".join(problematic_warnings),
+            )
+            return []
 
         # Determine final variant count (may override config based on ranking recommendation)
         final_count, count_rationale = self._determine_variant_count(
@@ -723,6 +743,39 @@ class ImagePromptGenerationService:
     @staticmethod
     def _normalize_whitespace(text: str) -> str:
         return " ".join(text.split())
+
+    def _scene_has_blocked_warnings(
+        self,
+        scene: SceneExtraction,
+        config: ImagePromptGenerationConfig,
+    ) -> bool:
+        """Check if scene has any blocked content warnings."""
+        if not config.blocked_warnings:
+            return False
+
+        ranking = self._ranking_repo.get_latest_for_scene(scene.id)
+        if not ranking or not ranking.warnings:
+            return False
+
+        # Check if any warning matches a blocked warning (case-insensitive)
+        scene_warnings = {w.lower() for w in ranking.warnings}
+        blocked_warnings = {w.lower() for w in config.blocked_warnings}
+        return bool(scene_warnings & blocked_warnings)
+
+    def _get_problematic_warnings(
+        self,
+        scene: SceneExtraction,
+        config: ImagePromptGenerationConfig,
+    ) -> list[str]:
+        """Get list of problematic warnings for a scene."""
+        ranking = self._ranking_repo.get_latest_for_scene(scene.id)
+        if not ranking or not ranking.warnings:
+            return []
+
+        scene_warnings = {w.lower(): w for w in ranking.warnings}
+        blocked_warnings = {w.lower() for w in config.blocked_warnings}
+        problematic = scene_warnings.keys() & blocked_warnings
+        return [scene_warnings[w] for w in problematic]
 
     def _filter_ranked_scenes(
         self,

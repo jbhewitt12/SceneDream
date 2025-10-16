@@ -42,6 +42,10 @@ class ImageGenerationConfig:
     aspect_ratio: str | None = None
     response_format: str = "b64_json"
     concurrency: int = 3
+    blocked_warnings: set[str] = field(
+        default_factory=lambda: {"violence", "sexual", "drugs", "horror", "hate"}
+    )
+    skip_scenes_with_warnings: bool = True
     dry_run: bool = False
     overwrite: bool = False
     api_key: str | None = None
@@ -57,12 +61,21 @@ class ImageGenerationConfig:
             "aspect_ratio": self.aspect_ratio,
             "response_format": self.response_format,
             "concurrency": self.concurrency,
+            "blocked_warnings": set(self.blocked_warnings),
+            "skip_scenes_with_warnings": self.skip_scenes_with_warnings,
             "dry_run": self.dry_run,
             "overwrite": self.overwrite,
             "api_key": self.api_key,
             "storage_base": self.storage_base,
         }
-        data.update({k: v for k, v in overrides.items() if v is not None})
+        # Handle blocked_warnings specially to preserve set type
+        normalized_overrides = {}
+        for k, v in overrides.items():
+            if k == "blocked_warnings" and v is not None:
+                normalized_overrides[k] = set(v)
+            elif v is not None:
+                normalized_overrides[k] = v
+        data.update(normalized_overrides)
         return ImageGenerationConfig(**data)
 
 
@@ -369,6 +382,19 @@ class ImageGenerationService:
         scenes_without_images: list[UUID] = []
         for ranking in rankings:
             scene_id = ranking.scene_extraction_id
+
+            # Check for content warnings first
+            if self._config.skip_scenes_with_warnings and self._ranking_has_blocked_warnings(
+                ranking
+            ):
+                problematic = self._get_problematic_warnings_from_ranking(ranking)
+                logger.debug(
+                    "Skipping scene %s (priority=%.3f) due to content warnings: %s",
+                    scene_id,
+                    ranking.overall_priority,
+                    ", ".join(problematic),
+                )
+                continue
 
             # Check if this scene already has generated images
             existing_images = self._image_repo.list_for_scene(
@@ -717,6 +743,29 @@ class ImageGenerationService:
                 logger.error("Failed to create error record: %s", db_exc)
 
             return GenerationResult(task=task, error=error_msg)
+
+    def _ranking_has_blocked_warnings(self, ranking: Any) -> bool:
+        """Check if ranking has any blocked content warnings."""
+        if not self._config.blocked_warnings:
+            return False
+
+        if not ranking or not hasattr(ranking, "warnings") or not ranking.warnings:
+            return False
+
+        # Check if any warning matches a blocked warning (case-insensitive)
+        scene_warnings = {w.lower() for w in ranking.warnings}
+        blocked_warnings = {w.lower() for w in self._config.blocked_warnings}
+        return bool(scene_warnings & blocked_warnings)
+
+    def _get_problematic_warnings_from_ranking(self, ranking: Any) -> list[str]:
+        """Get list of problematic warnings from a ranking."""
+        if not ranking or not hasattr(ranking, "warnings") or not ranking.warnings:
+            return []
+
+        scene_warnings = {w.lower(): w for w in ranking.warnings}
+        blocked_warnings = {w.lower() for w in self._config.blocked_warnings}
+        problematic = scene_warnings.keys() & blocked_warnings
+        return [scene_warnings[w] for w in problematic]
 
 
 __all__ = [
