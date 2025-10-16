@@ -62,7 +62,7 @@ scripts/               # Build/test/deployment automation
 
 3. **Image Prompt Generation** (`backend/app/services/image_prompt_generation/`):
    - Converts ranked scenes into multiple prompt variants (default: 4)
-   - Uses `dalle3_sci_fi_prompting_cheatsheet.md` as embedded guidelines
+   - Uses `dalle3_multi_genre_prompting_cheatsheet.md` as embedded guidelines
    - Includes 3 paragraphs before + 1 after scene for context (loaded from EPUB, not stored)
    - Persists to `image_prompts` table with structured metadata (style_tags, attributes: camera/lens/composition/aspect_ratio)
 
@@ -181,7 +181,7 @@ Key variables in `.env`:
 ### Image Prompt Generation
 - **Context loading**: Reopens EPUB to get 3 paragraphs before + 1 after scene for composition details
 - **Do NOT persist copyrighted text**: Store only `context_window` metadata (paragraph spans)
-- **Cheat sheet**: `dalle3_sci_fi_prompting_cheatsheet.md` is embedded verbatim in LLM prompt
+- **Cheat sheet**: `dalle3_multi_genre_prompting_cheatsheet.md` is embedded verbatim in LLM prompt
 - **Variants**: Default 4 per scene, explore different styles/compositions
 - **Unique constraint**: `(scene_extraction_id, model_name, prompt_version, variant_index)`
 

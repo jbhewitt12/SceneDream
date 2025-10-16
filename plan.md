@@ -98,7 +98,7 @@ All data is persisted in PostgreSQL tables: `scene_extractions`, `scene_rankings
 **Implementation**:
 - **Service**: `backend/app/services/image_prompt_generation/image_prompt_generation_service.py`
   - Generates multiple prompt variants per scene (default: 4)
-  - Uses Gemini with embedded `dalle3_sci_fi_prompting_cheatsheet.md` guidelines
+  - Uses Gemini with embedded `dalle3_multi_genre_prompting_cheatsheet.md` guidelines
   - Includes context window: 3 paragraphs before + 1 after scene (loaded from EPUB at generation time)
   - Structured output includes:
     - `prompt_text`: Full DALL-E 3 prompt
@@ -224,4 +224,3 @@ API documentation: http://localhost:8000/docs
 - **Advanced Ranking**: Implement LLM committee voting with score averaging
 - **Prompt Iteration**: Add UI for manual prompt refinement and regeneration
 - **Cost Tracking**: Track API costs per scene/book for budget management
-

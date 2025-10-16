@@ -29,7 +29,7 @@ logger.addHandler(logging.NullHandler())
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_CHEATSHEET_PATH = (
-    "backend/app/services/image_prompt_generation/dalle3_sci_fi_prompting_cheatsheet.md"
+    "backend/app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md"
 )
 
 
@@ -496,9 +496,10 @@ class ImagePromptGenerationService:
         metadata_block = "\n".join(metadata_lines)
         guidance = (
             "Craft distinct, cinematic prompt variants that explore different artistic lenses, compositions, "
-            "lighting styles, and moods inspired by the scene excerpt. Encourage variety across variants (visual styles, camera angle, focus, palette, atmosphere)."
-            "Use your understanding of what makes a good image prompt to take creative license to produce a prompt that maximises the potential of the DALLE3 model to produce exceptional images."
-            "The scene excerpt is for inspiration. Ensure that the prompt you produce does not fall back to generic or stereotypical descriptions. It must be inspired and unique."
+            "lighting styles, and moods inspired by the scene excerpt. Encourage variety across variants (visual styles, camera angle, focus, palette, atmosphere). "
+            "Tailor sensory details and genre cues to match the scene's tone whether it is fantastical, futuristic, historical, or grounded in everyday life. "
+            "Use your understanding of what makes a strong image prompt to take creative license and deliver instructions that maximise the potential of the DALLE3 model. "
+            "The scene excerpt is for inspiration. Ensure the prompts stay specific and avoid generic or stereotypical descriptions; they must be inspired and unique."
         )
         output_schema = json.dumps(
             {
@@ -531,7 +532,7 @@ class ImagePromptGenerationService:
         prompt += (
             "\n\n## Surrounding Context Paragraphs\n"
             f"{context_text}\n\n"
-            "## Sci-Fi Prompting Cheat Sheet\n"
+            "## Prompting Cheat Sheet\n"
             f"{cheatsheet}\n\n"
             "## Creative Guidance\n"
             f"{guidance}\n\n"
