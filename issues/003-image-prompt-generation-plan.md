@@ -3,7 +3,7 @@
 ### Goals
 
 - Convert ranked scenes into multiple high-quality AI image prompts using Gemini 2.5 Pro.
-- Leverage the sci‑fi DALLE3 prompting cheat sheet as embedded guidance to improve prompt craftsmanship.
+- Leverage the multi-genre DALLE3 prompting cheat sheet as embedded guidance to improve prompt craftsmanship.
 - Persist each generated prompt (and its metadata) in a new database table modeled after existing `scene_extraction` and `scene_ranking` patterns.
 - Expose backend APIs to browse prompts in the frontend with rich filtering and scene context.
 
@@ -12,7 +12,7 @@
 - Model: `gemini-2.5-pro` (vendor: google).
 - For each scene, include: the scene’s extracted raw text plus surrounding chapter context: 3 paragraphs before and 1 paragraph after. Do not store copyrighted chapter text; store only spans/metadata. Load paragraphs from the original EPUB via `source_book_path` in `scene_extractions`.
 - For each scene, generate X variants (configurable) that intentionally explore different styles/aspects (e.g., camera angle, subject focus, composition, lighting, palette, mood). Each variant should be distinct and should take artistic license inspired by the scene.
-- Use `backend/app/services/image_prompt_generation/dalle3_sci_fi_prompting_cheatsheet.md` content verbatim as an embedded guideline section in the LLM prompt.
+- Use `backend/app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md` content verbatim as an embedded guideline section in the LLM prompt.
 
 ---
 
@@ -73,7 +73,7 @@ Create `backend/app/services/image_prompt_generation/image_prompt_generation_ser
 - `variants_count: int = 4` (X; configurable)
 - `temperature: float = 0.4`, `max_output_tokens: Optional[int]` (set large enough for multiple variants)
 - `context_before: int = 3`, `context_after: int = 1`
-- `include_cheatsheet_path: str` default to `backend/app/services/image_prompt_generation/dalle3_sci_fi_prompting_cheatsheet.md`
+- `include_cheatsheet_path: str` default to `backend/app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md`
 - Runtime flags: `dry_run`, `allow_overwrite`, `autocommit`, `retry_attempts`, `retry_backoff_seconds`, `fail_on_error`
 
 2) Context loader
@@ -82,7 +82,7 @@ Create `backend/app/services/image_prompt_generation/image_prompt_generation_ser
 - Build a context section with numbered paragraph headers but DO NOT persist full text; only return lines for prompting in-memory.
 
 3) Prompt builder
-- Load the sci‑fi cheat sheet file contents and embed as a “Guidelines” section.
+- Load the multi-genre cheat sheet file contents and embed as a “Guidelines” section.
 - Provide scene metadata (book slug, chapter number/title, scene number, paragraph span).
 - Include the scene’s raw excerpt verbatim.
 - Include the surrounding context paragraphs (3 before, 1 after) to anchor composition details.
