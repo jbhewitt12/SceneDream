@@ -297,8 +297,30 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
 
     book_path = Path(args.book_path) if args.book_path else None
 
+    # Determine book slug early for auto-detection
+    book_slug = args.book_slug
+    if not book_slug and book_path:
+        config = SceneExtractionConfig()
+        extractor = SceneExtractor(config=config)
+        book_slug = extractor._resolve_book_slug(book_path)
+        logger.info("Resolved book slug: %s", book_slug)
+
+    # Auto-detect if extraction should be skipped
+    skip_extraction = args.skip_extraction
+    if not skip_extraction and book_slug and not args.dry_run:
+        with Session(engine) as session:
+            scene_repo = SceneExtractionRepository(session)
+            existing_scenes = scene_repo.list_for_book(book_slug)
+            if existing_scenes:
+                logger.info(
+                    "Auto-detected %d existing scenes for book '%s' - skipping extraction",
+                    len(existing_scenes),
+                    book_slug,
+                )
+                skip_extraction = True
+
     # Step 1: Extract scenes (if not skipped)
-    if not args.skip_extraction:
+    if not skip_extraction:
         logger.info("=" * 60)
         logger.info("STEP 1: EXTRACTING SCENES")
         logger.info("=" * 60)
@@ -315,24 +337,45 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
             stats.scenes_extracted = extraction_stats.get("scenes", 0)
             logger.info("Extracted %d scenes", stats.scenes_extracted)
     else:
-        logger.info("Skipping scene extraction (--skip-extraction)")
+        logger.info("Skipping scene extraction (already completed)")
 
-    # Determine book slug
-    book_slug = args.book_slug
+    # Ensure book slug is set
     if not book_slug:
-        if book_path and not args.dry_run:
-            config = SceneExtractionConfig()
-            extractor = SceneExtractor(config=config)
-            book_slug = extractor._resolve_book_slug(book_path)
-            logger.info("Resolved book slug: %s", book_slug)
-        else:
-            logger.error(
-                "--book-slug is required when --skip-extraction is used without --book-path"
-            )
-            raise ValueError("--book-slug is required")
+        logger.error(
+            "--book-slug is required when --skip-extraction is used without --book-path"
+        )
+        raise ValueError("--book-slug is required")
+
+    # Auto-detect if ranking should be skipped
+    skip_ranking = args.skip_ranking
+    if not skip_ranking and not args.dry_run:
+        with Session(engine) as session:
+            scene_repo = SceneExtractionRepository(session)
+            ranking_repo = SceneRankingRepository(session)
+
+            scenes = scene_repo.list_for_book(book_slug)
+            if scenes:
+                # Check if all scenes have rankings
+                scenes_with_rankings = 0
+                for scene in scenes:
+                    if ranking_repo.get_latest_for_scene(scene.id):
+                        scenes_with_rankings += 1
+
+                if scenes_with_rankings == len(scenes):
+                    logger.info(
+                        "Auto-detected rankings for all %d scenes - skipping ranking",
+                        len(scenes),
+                    )
+                    skip_ranking = True
+                elif scenes_with_rankings > 0:
+                    logger.info(
+                        "Found partial rankings (%d/%d scenes) - will rank remaining scenes",
+                        scenes_with_rankings,
+                        len(scenes),
+                    )
 
     # Step 2: Rank scenes (if not skipped)
-    if not args.skip_ranking:
+    if not skip_ranking:
         logger.info("\n" + "=" * 60)
         logger.info("STEP 2: RANKING SCENES")
         logger.info("=" * 60)
@@ -374,10 +417,54 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
 
                     logger.info("Ranked %d scenes", stats.scenes_ranked)
     else:
-        logger.info("Skipping scene ranking (--skip-ranking)")
+        logger.info("Skipping scene ranking (already completed)")
+
+    # Auto-detect if prompt generation should be skipped
+    skip_prompts = args.skip_prompts
+    if not skip_prompts and not args.dry_run:
+        with Session(engine) as session:
+            ranking_repo = SceneRankingRepository(session)
+            prompt_repo = ImagePromptRepository(session)
+
+            # Determine limit based on --prompts-for-scenes parameter
+            limit = (
+                args.prompts_for_scenes
+                if hasattr(args, "prompts_for_scenes") and args.prompts_for_scenes
+                else 100
+            )
+
+            rankings = ranking_repo.list_top_rankings_for_book(
+                book_slug=book_slug,
+                limit=limit,
+                include_scene=True,
+            )
+
+            if rankings:
+                # Check if all target scenes already have prompts
+                scenes_needing_prompts = 0
+                for ranking in rankings:
+                    if ranking.scene_extraction:
+                        existing_prompts = prompt_repo.has_any_for_scene(
+                            ranking.scene_extraction.id
+                        )
+                        if not existing_prompts:
+                            scenes_needing_prompts += 1
+
+                if scenes_needing_prompts == 0:
+                    logger.info(
+                        "Auto-detected prompts for all %d target scenes - skipping prompt generation",
+                        len(rankings),
+                    )
+                    skip_prompts = True
+                elif scenes_needing_prompts < len(rankings):
+                    logger.info(
+                        "Found partial prompts (%d/%d scenes need prompts)",
+                        scenes_needing_prompts,
+                        len(rankings),
+                    )
 
     # Step 3: Generate prompts (if not skipped)
-    if not args.skip_prompts:
+    if not skip_prompts:
         logger.info("\n" + "=" * 60)
         logger.info("STEP 3: GENERATING PROMPTS")
         logger.info("=" * 60)
@@ -420,75 +507,91 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                 ranking_repo = SceneRankingRepository(session)
                 prompt_repo = ImagePromptRepository(session)
 
-                # Determine limit based on --prompts-for-scenes parameter
-                limit = (
+                # Determine target number of scenes to generate prompts for
+                target_scenes = (
                     args.prompts_for_scenes
                     if hasattr(args, "prompts_for_scenes") and args.prompts_for_scenes
-                    else 100
+                    else None
                 )
+
+                # Determine config based on flags
+                config_kwargs = {}
+
+                if (
+                    hasattr(args, "prompts_per_scene")
+                    and args.prompts_per_scene is not None
+                ):
+                    if (
+                        hasattr(args, "ignore_ranking_recommendations")
+                        and args.ignore_ranking_recommendations
+                    ):
+                        # Explicit override mode
+                        config_kwargs["variants_count"] = args.prompts_per_scene
+                        config_kwargs["use_ranking_recommendation"] = False
+                        logger.info(
+                            "Using fixed variant count: %d (ignoring rankings)",
+                            args.prompts_per_scene,
+                        )
+                    else:
+                        # Fallback for scenes without rankings
+                        config_kwargs["variants_count"] = args.prompts_per_scene
+                        config_kwargs["use_ranking_recommendation"] = True
+                        logger.info(
+                            "Using ranking recommendations (fallback: %d variants)",
+                            args.prompts_per_scene,
+                        )
+                else:
+                    # Full auto mode
+                    config_kwargs["use_ranking_recommendation"] = True
+                    logger.info("Using ranking recommendations (fallback: 4 variants)")
+
+                prompt_config = ImagePromptGenerationConfig(**config_kwargs)
+                prompt_service = ImagePromptGenerationService(
+                    session, config=prompt_config
+                )
+
+                # Fetch a large batch of rankings to ensure we can find enough valid scenes
+                # Use a multiplier to account for skipped scenes
+                fetch_limit = (target_scenes * 10) if target_scenes else 100
 
                 rankings = ranking_repo.list_top_rankings_for_book(
                     book_slug=book_slug,
-                    limit=limit,
+                    limit=fetch_limit,
                     include_scene=True,
                 )
 
-                scenes_needing_prompts = []
-                for ranking in rankings:
-                    if ranking.scene_extraction:
-                        # Check if scene already has prompts
-                        existing_prompts = prompt_repo.has_any_for_scene(
-                            ranking.scene_extraction.id
-                        )
-                        if not existing_prompts:
-                            scenes_needing_prompts.append(ranking.scene_extraction)
-
                 logger.info(
-                    "Found %d scenes needing prompts (out of %d ranked)",
-                    len(scenes_needing_prompts),
+                    "Processing %d rankings to generate prompts for %d scenes",
                     len(rankings),
+                    target_scenes if target_scenes else "all",
                 )
 
-                if scenes_needing_prompts:
-                    # Determine config based on flags
-                    config_kwargs = {}
+                scenes_with_prompts_generated = 0
 
+                for ranking in rankings:
+                    # Check if we've reached the target
                     if (
-                        hasattr(args, "prompts_per_scene")
-                        and args.prompts_per_scene is not None
+                        target_scenes is not None
+                        and scenes_with_prompts_generated >= target_scenes
                     ):
-                        if (
-                            hasattr(args, "ignore_ranking_recommendations")
-                            and args.ignore_ranking_recommendations
-                        ):
-                            # Explicit override mode
-                            config_kwargs["variants_count"] = args.prompts_per_scene
-                            config_kwargs["use_ranking_recommendation"] = False
-                            logger.info(
-                                "Using fixed variant count: %d (ignoring rankings)",
-                                args.prompts_per_scene,
-                            )
-                        else:
-                            # Fallback for scenes without rankings
-                            config_kwargs["variants_count"] = args.prompts_per_scene
-                            config_kwargs["use_ranking_recommendation"] = True
-                            logger.info(
-                                "Using ranking recommendations (fallback: %d variants)",
-                                args.prompts_per_scene,
-                            )
-                    else:
-                        # Full auto mode
-                        config_kwargs["use_ranking_recommendation"] = True
                         logger.info(
-                            "Using ranking recommendations (fallback: 4 variants)"
+                            "Reached target of %d scenes with prompts generated",
+                            target_scenes,
                         )
+                        break
 
-                    prompt_config = ImagePromptGenerationConfig(**config_kwargs)
-                    prompt_service = ImagePromptGenerationService(
-                        session, config=prompt_config
-                    )
+                    if ranking.scene_extraction:
+                        scene = ranking.scene_extraction
 
-                    for scene in scenes_needing_prompts:
+                        # Check if scene already has prompts
+                        existing_prompts = prompt_repo.has_any_for_scene(scene.id)
+                        if existing_prompts:
+                            logger.debug(
+                                "Scene %s already has prompts, skipping",
+                                scene.id,
+                            )
+                            continue
+
                         try:
                             prompts = prompt_service.generate_for_scene(
                                 scene,
@@ -498,6 +601,7 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                             )
                             if prompts:
                                 stats.prompts_generated += len(prompts)
+                                scenes_with_prompts_generated += 1
                                 logger.info(
                                     "Generated %d prompts for scene %d (chapter %d)",
                                     len(prompts),
@@ -509,9 +613,13 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                             logger.error(error_msg)
                             stats.errors.append(error_msg)
 
-                    logger.info("Generated %d prompts total", stats.prompts_generated)
+                logger.info(
+                    "Generated %d prompts for %d scenes",
+                    stats.prompts_generated,
+                    scenes_with_prompts_generated,
+                )
     else:
-        logger.info("Skipping prompt generation (--skip-prompts)")
+        logger.info("Skipping prompt generation (already completed)")
 
     # Step 4: Generate images
     logger.info("\n" + "=" * 60)
@@ -657,65 +765,77 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
         ranking_repo = SceneRankingRepository(session)
         prompt_repo = ImagePromptRepository(session)
 
-        # Determine limit
-        limit = args.top_scenes if args.top_scenes else 100
+        # Determine config based on flags
+        config_kwargs = {}
+
+        if args.prompts_per_scene is not None and args.ignore_ranking_recommendations:
+            # Explicit override mode
+            config_kwargs["variants_count"] = args.prompts_per_scene
+            config_kwargs["use_ranking_recommendation"] = False
+            logger.info(
+                "Using fixed variant count: %d (ignoring rankings)",
+                args.prompts_per_scene,
+            )
+        elif args.prompts_per_scene is not None:
+            # Fallback for scenes without rankings
+            config_kwargs["variants_count"] = args.prompts_per_scene
+            config_kwargs["use_ranking_recommendation"] = True
+            logger.info(
+                "Using ranking recommendations (fallback: %d variants)",
+                args.prompts_per_scene,
+            )
+        else:
+            # Full auto mode (use recommendations, fallback to default of 4)
+            config_kwargs["use_ranking_recommendation"] = True
+            logger.info("Using ranking recommendations (fallback: 4 variants)")
+
+        prompt_config = ImagePromptGenerationConfig(**config_kwargs)
+        prompt_service = ImagePromptGenerationService(session, config=prompt_config)
+
+        # Fetch a large batch of rankings to ensure we can find enough valid scenes
+        # Use a multiplier to account for skipped scenes
+        target_scenes = args.top_scenes
+        fetch_limit = (target_scenes * 10) if target_scenes else 100
 
         rankings = ranking_repo.list_top_rankings_for_book(
             book_slug=args.book_slug,
-            limit=limit,
+            limit=fetch_limit,
             include_scene=True,
         )
 
-        scenes_to_process = []
-        for ranking in rankings:
-            if ranking.scene_extraction:
-                if args.overwrite:
-                    scenes_to_process.append(ranking.scene_extraction)
-                else:
-                    existing_prompts = prompt_repo.has_any_for_scene(
-                        ranking.scene_extraction.id
-                    )
-                    if not existing_prompts:
-                        scenes_to_process.append(ranking.scene_extraction)
-
         logger.info(
-            "Processing %d scenes (out of %d ranked)",
-            len(scenes_to_process),
+            "Processing %d rankings to generate prompts for %d scenes",
             len(rankings),
+            target_scenes if target_scenes else "all",
         )
 
-        if scenes_to_process:
-            # Determine config based on flags
-            config_kwargs = {}
+        scenes_with_prompts_generated = 0
 
+        for ranking in rankings:
+            # Check if we've reached the target
             if (
-                args.prompts_per_scene is not None
-                and args.ignore_ranking_recommendations
+                target_scenes is not None
+                and scenes_with_prompts_generated >= target_scenes
             ):
-                # Explicit override mode
-                config_kwargs["variants_count"] = args.prompts_per_scene
-                config_kwargs["use_ranking_recommendation"] = False
                 logger.info(
-                    "Using fixed variant count: %d (ignoring rankings)",
-                    args.prompts_per_scene,
+                    "Reached target of %d scenes with prompts generated",
+                    target_scenes,
                 )
-            elif args.prompts_per_scene is not None:
-                # Fallback for scenes without rankings
-                config_kwargs["variants_count"] = args.prompts_per_scene
-                config_kwargs["use_ranking_recommendation"] = True
-                logger.info(
-                    "Using ranking recommendations (fallback: %d variants)",
-                    args.prompts_per_scene,
-                )
-            else:
-                # Full auto mode (use recommendations, fallback to default of 4)
-                config_kwargs["use_ranking_recommendation"] = True
-                logger.info("Using ranking recommendations (fallback: 4 variants)")
+                break
 
-            prompt_config = ImagePromptGenerationConfig(**config_kwargs)
-            prompt_service = ImagePromptGenerationService(session, config=prompt_config)
+            if ranking.scene_extraction:
+                scene = ranking.scene_extraction
 
-            for scene in scenes_to_process:
+                # Check if scene already has prompts (unless overwrite is enabled)
+                if not args.overwrite:
+                    existing_prompts = prompt_repo.has_any_for_scene(scene.id)
+                    if existing_prompts:
+                        logger.debug(
+                            "Scene %s already has prompts, skipping",
+                            scene.id,
+                        )
+                        continue
+
                 try:
                     prompts = prompt_service.generate_for_scene(
                         scene,
@@ -725,6 +845,7 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
                     )
                     if prompts:
                         stats.prompts_generated += len(prompts)
+                        scenes_with_prompts_generated += 1
                         logger.info(
                             "Generated %d prompts for scene %d (chapter %d)",
                             len(prompts),
@@ -738,9 +859,11 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
                     logger.error(error_msg)
                     stats.errors.append(error_msg)
 
-            logger.info(
-                "Prompt generation complete: %d prompts", stats.prompts_generated
-            )
+        logger.info(
+            "Prompt generation complete: %d prompts for %d scenes",
+            stats.prompts_generated,
+            scenes_with_prompts_generated,
+        )
 
     return stats
 
