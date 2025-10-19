@@ -410,7 +410,8 @@ class SceneRankingService:
         metadata: Mapping[str, Any] | None = None,
     ) -> list[SceneRanking | SceneRankingPreview | None]:
         results: list[SceneRanking | SceneRankingPreview | None] = []
-        for scene in scenes:
+        total_scenes = len(scenes)
+        for idx, scene in enumerate(scenes, start=1):
             result = self.rank_scene(
                 scene,
                 prompt_version=prompt_version,
@@ -420,6 +421,15 @@ class SceneRankingService:
                 metadata=metadata,
             )
             results.append(result)
+
+            # Progress logging every 20 scenes
+            if idx % 20 == 0:
+                logger.info(
+                    "Scene ranking progress: %d/%d scenes processed",
+                    idx,
+                    total_scenes,
+                )
+
         return results
 
     def _resolve_scene(self, scene: SceneExtraction | UUID) -> SceneExtraction:

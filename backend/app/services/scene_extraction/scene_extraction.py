@@ -295,7 +295,8 @@ class SceneExtractor:
         book_slug = self._resolve_book_slug(resolved_book_path)
         chapters = self._load_chapters(resolved_book_path)
         stats = {"book_slug": book_slug, "chapters": len(chapters), "scenes": 0}
-        for chapter in chapters:
+        total_chapters = len(chapters)
+        for idx, chapter in enumerate(chapters, start=1):
             print(f"Starting chapter {chapter.number}: {chapter.title}")
             raw_scenes = self._extract_chapter_scenes(chapter, book_slug=book_slug)
             refined_map = (
@@ -314,6 +315,14 @@ class SceneExtractor:
             print(
                 f"Finished chapter {chapter.number}: {len(raw_scenes)} new scene(s) saved"
             )
+
+            # Progress logging every 5 chapters
+            if idx % 5 == 0 or idx == total_chapters:
+                logger.info(
+                    "Scene extraction progress: %d/%d chapters complete",
+                    idx,
+                    total_chapters,
+                )
         return stats
 
     def extract_preview(
@@ -337,7 +346,8 @@ class SceneExtractor:
         if not selected:
             return stats
         chunk_limit = max(max_chunks_per_chapter, 0)
-        for chapter in selected:
+        total_chapters = len(selected)
+        for idx, chapter in enumerate(selected, start=1):
             print(f"Starting chapter {chapter.number}: {chapter.title}")
             limit_param: Optional[int]
             if chunk_limit == 0:
@@ -377,6 +387,14 @@ class SceneExtractor:
             print(
                 f"Finished chapter {chapter.number}: {len(raw_scenes)} new scene(s) saved"
             )
+
+            # Progress logging every 5 chapters
+            if idx % 5 == 0 or idx == total_chapters:
+                logger.info(
+                    "Scene extraction progress: %d/%d chapters complete",
+                    idx,
+                    total_chapters,
+                )
         return stats
 
     def _load_chapters(self, book_path: Path) -> List[Chapter]:
