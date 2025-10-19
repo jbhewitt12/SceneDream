@@ -8,7 +8,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from uuid import UUID
 
 from sqlmodel import Session
@@ -18,7 +18,6 @@ from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
 from app.services.image_generation import dalle_image_api
-from models.generated_image import GeneratedImage
 from models.image_prompt import ImagePrompt
 
 logger = logging.getLogger(__name__)
@@ -345,21 +344,24 @@ class ImageGenerationService:
         top_scenes_count: int,
     ) -> list[ImagePrompt]:
         """
-        Fetch prompts for top-ranked scenes, skipping scenes with existing images.
+        Fetch prompts for top-ranked scenes, skipping scenes with existing images or missing prompts.
 
         Args:
             book_slug: Book slug to filter by
-            top_scenes_count: Number of top scenes to process
+            top_scenes_count: Number of top scenes to process (actual scenes with prompts and images generated)
 
         Returns:
             List of prompts for scenes without existing images
         """
-        # Fetch many more rankings than needed to account for scenes with existing images
-        # We'll fetch 5x the requested amount to have a good buffer
-        fetch_limit = top_scenes_count * 5
+        # Fetch many more rankings than needed to account for:
+        # - scenes with existing images
+        # - scenes with content warnings
+        # - scenes without prompts
+        # We'll fetch 10x the requested amount to have a good buffer
+        fetch_limit = top_scenes_count * 10
 
         logger.info(
-            "Fetching top %d rankings for book '%s' (will filter to %d scenes without images)",
+            "Fetching top %d rankings for book '%s' (will filter to %d scenes with prompts and no images)",
             fetch_limit,
             book_slug,
             top_scenes_count,
@@ -378,14 +380,25 @@ class ImageGenerationService:
 
         logger.info("Found %d rankings for book '%s'", len(rankings), book_slug)
 
-        # Filter to scenes without existing images
-        scenes_without_images: list[UUID] = []
+        # Iterate through rankings and collect prompts until we have enough scenes
+        prompts: list[ImagePrompt] = []
+        scenes_with_prompts_added = 0
+
         for ranking in rankings:
+            # Check if we've collected prompts for enough scenes
+            if scenes_with_prompts_added >= top_scenes_count:
+                logger.info(
+                    "Reached target of %d scenes with prompts",
+                    top_scenes_count,
+                )
+                break
+
             scene_id = ranking.scene_extraction_id
 
             # Check for content warnings first
-            if self._config.skip_scenes_with_warnings and self._ranking_has_blocked_warnings(
-                ranking
+            if (
+                self._config.skip_scenes_with_warnings
+                and self._ranking_has_blocked_warnings(ranking)
             ):
                 problematic = self._get_problematic_warnings_from_ranking(ranking)
                 logger.debug(
@@ -402,58 +415,54 @@ class ImageGenerationService:
                 limit=1,
             )
 
-            if not existing_images:
-                scenes_without_images.append(scene_id)
-                logger.debug(
-                    "Scene %s (priority=%.3f) has no generated images",
-                    scene_id,
-                    ranking.overall_priority,
-                )
-
-                # Stop once we have enough scenes
-                if len(scenes_without_images) >= top_scenes_count:
-                    break
-            else:
+            if existing_images:
                 logger.debug(
                     "Skipping scene %s (priority=%.3f) - already has %d generated image(s)",
                     scene_id,
                     ranking.overall_priority,
                     len(existing_images),
                 )
+                continue
 
-        logger.info(
-            "Found %d scenes without images out of %d top-ranked scenes",
-            len(scenes_without_images),
-            len(rankings),
-        )
-
-        if not scenes_without_images:
-            logger.warning("All top-ranked scenes already have generated images")
-            return []
-
-        # Fetch prompts for these scenes
-        prompts: list[ImagePrompt] = []
-        for scene_id in scenes_without_images:
+            # Check if scene has prompts
             scene_prompts = self._prompt_repo.list_for_scene(
                 scene_id,
                 include_scene=True,
             )
-            if scene_prompts:
-                # Take all prompts for each scene
-                prompts.extend(scene_prompts)
-                logger.debug(
-                    "Selected %d prompt(s) for scene %s",
-                    len(scene_prompts),
+
+            if not scene_prompts:
+                logger.warning(
+                    "No prompts found for scene %s (priority=%.3f)",
                     scene_id,
+                    ranking.overall_priority,
                 )
-            else:
-                logger.warning("No prompts found for scene %s", scene_id)
+                continue
+
+            # This scene is valid - add its prompts
+            prompts.extend(scene_prompts)
+            scenes_with_prompts_added += 1
+            logger.debug(
+                "Selected %d prompt(s) for scene %s (priority=%.3f) [%d/%d scenes]",
+                len(scene_prompts),
+                scene_id,
+                ranking.overall_priority,
+                scenes_with_prompts_added,
+                top_scenes_count,
+            )
 
         logger.info(
-            "Selected %d prompts from %d scenes",
+            "Selected %d prompts from %d scenes (target: %d scenes)",
             len(prompts),
-            len(scenes_without_images),
+            scenes_with_prompts_added,
+            top_scenes_count,
         )
+
+        if scenes_with_prompts_added < top_scenes_count:
+            logger.warning(
+                "Only found %d scenes with prompts out of target %d (may need to generate more prompts or rank more scenes)",
+                scenes_with_prompts_added,
+                top_scenes_count,
+            )
 
         return prompts
 
