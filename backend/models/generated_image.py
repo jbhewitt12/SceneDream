@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict
-from sqlalchemy import Column, DateTime, Integer, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Integer, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -87,6 +87,14 @@ class GeneratedImage(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
     error: str | None = Field(default=None, sa_column=Column(Text))
+    user_approved: bool | None = Field(
+        default=None,
+        sa_column=Column(Boolean, nullable=True),
+    )
+    approval_updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
 
     scene_extraction: "SceneExtraction" | None = Relationship(
         sa_relationship=relationship(

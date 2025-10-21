@@ -1174,3 +1174,10 @@ Each phase should document:
 - **Key findings**: Any surprises or deviations from plan
 - **Gotchas**: Issues encountered and how resolved
 - **Warnings for next phase**: Critical information for continuation
+
+### Phase Completion Notes
+- **Phase 1: Database Schema Extension** - Completed 2025-10-21
+  - **Status**: ✅ Complete
+  - **Key findings**: Added `user_approved` and `approval_updated_at` columns to the SQLModel and generated Alembic migration; migration applied successfully against the local Postgres instance.
+  - **Gotchas**: `uv run` and `docker compose exec` required elevated permissions in this environment; reran commands with escalation to proceed.
+  - **Warnings for next phase**: Repository update logic must populate `approval_updated_at` whenever `user_approved` changes to avoid leaving the timestamp null after API interactions.
