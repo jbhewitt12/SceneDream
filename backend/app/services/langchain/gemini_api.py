@@ -22,6 +22,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool  # For defining tools if needed
 from pydantic import BaseModel
 
+from .retry_utils import retry_with_backoff
+
 DEFAULT_FLASH_MODEL = "gemini-flash-latest"
 DEFAULT_PRO_MODEL = "gemini-pro-latest"
 
@@ -92,7 +94,7 @@ def simple_call(
     :return: The generated text response as a string.
     """
     llm = _get_llm(model, temperature, max_tokens, **kwargs)
-    response = llm.invoke(prompt)
+    response = retry_with_backoff(llm.invoke, prompt)
     return response.content
 
 
@@ -136,7 +138,7 @@ def chat_call(
         else:
             raise ValueError(f"Unsupported role: {role}")
 
-    response = llm.invoke(lc_messages)
+    response = retry_with_backoff(llm.invoke, lc_messages)
     return response.content
 
 
@@ -173,7 +175,7 @@ def call_with_tools(
     """
     llm = _get_llm(model, temperature, max_tokens, **kwargs)
     llm_with_tools = llm.bind_tools(tools)
-    response = llm_with_tools.invoke(prompt)
+    response = retry_with_backoff(llm_with_tools.invoke, prompt)
     return response
 
 
@@ -213,7 +215,7 @@ def structured_output(
     else:
         structured_llm = llm.with_structured_output(schema)
 
-    result = structured_llm.invoke(prompt)
+    result = retry_with_backoff(structured_llm.invoke, prompt)
     return result
 
 
@@ -251,7 +253,7 @@ def json_output(
         **kwargs,
     )
     messages = [SystemMessage(content=system_instruction), HumanMessage(content=prompt)]
-    response = llm.invoke(messages)
+    response = retry_with_backoff(llm.invoke, messages)
     content = _coerce_content_to_text(response.content).strip()
     if content.startswith("```"):
         lines = content.splitlines()

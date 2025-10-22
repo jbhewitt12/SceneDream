@@ -34,6 +34,8 @@ from langchain_core.tools import tool  # For defining tools
 from langchain_core.pydantic_v1 import BaseModel  # For structured outputs
 from pydantic import Field
 
+from .retry_utils import retry_with_backoff
+
 
 class XAIAPI:
     """
@@ -108,7 +110,7 @@ class XAIAPI:
         chain = template | self.llm | StrOutputParser()
 
         # Invoke the chain
-        response = chain.invoke({"prompt": prompt})
+        response = retry_with_backoff(chain.invoke, {"prompt": prompt})
         return response
 
     def call_with_functions(
@@ -149,7 +151,7 @@ class XAIAPI:
             messages = [("human", prompt)]
 
         # Invoke LLM with tools
-        response = llm_with_tools.invoke(messages)
+        response = retry_with_backoff(llm_with_tools.invoke, messages)
 
         # Check if tool calls are present
         if response.tool_calls:
@@ -216,7 +218,7 @@ class XAIAPI:
         chain = template | llm_structured
 
         # Invoke and return dict
-        response = chain.invoke({"prompt": prompt})
+        response = retry_with_backoff(chain.invoke, {"prompt": prompt})
         return response
 
 
