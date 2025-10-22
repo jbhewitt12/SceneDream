@@ -3,10 +3,10 @@ import {
   Box,
   Button,
   Collapsible,
-  Separator,
   Flex,
   Heading,
   Icon,
+  Separator,
   SimpleGrid,
   Stack,
   Text,
@@ -28,7 +28,10 @@ type SceneContextPanelProps = {
   contextWindow: ImagePrompt["context_window"]
 }
 
-const SceneContextPanel = ({ scene, contextWindow }: SceneContextPanelProps) => {
+const SceneContextPanel = ({
+  scene,
+  contextWindow,
+}: SceneContextPanelProps) => {
   const [open, setOpen] = useState(false)
 
   const toggleOpen = () => setOpen((prev) => !prev)
@@ -47,7 +50,7 @@ const SceneContextPanel = ({ scene, contextWindow }: SceneContextPanelProps) => 
           <Heading size="sm">Scene context</Heading>
           {scene && (
             <Text fontSize="sm" color="fg.subtle">
-              {scene.book_slug} · Chapter {scene.chapter_number} · Scene {" "}
+              {scene.book_slug} · Chapter {scene.chapter_number} · Scene{" "}
               {scene.scene_number}
             </Text>
           )}
@@ -68,76 +71,100 @@ const SceneContextPanel = ({ scene, contextWindow }: SceneContextPanelProps) => 
         <Collapsible.Content>
           <Separator />
           <Stack px={4} py={4} gap={3} fontSize="sm">
-          {scene ? (
-            <SimpleGrid columns={{ base: 1, md: 2 }} gap={3}>
+            {scene ? (
+              <SimpleGrid columns={{ base: 1, md: 2 }} gap={3}>
+                <Stack spacing={1}>
+                  <Text
+                    textTransform="uppercase"
+                    color="fg.subtle"
+                    fontSize="xs"
+                  >
+                    Chapter
+                  </Text>
+                  <Text>
+                    #{scene.chapter_number} · {scene.chapter_title}
+                  </Text>
+                </Stack>
+                <Stack spacing={1}>
+                  <Text
+                    textTransform="uppercase"
+                    color="fg.subtle"
+                    fontSize="xs"
+                  >
+                    Scene
+                  </Text>
+                  <Text>#{scene.scene_number}</Text>
+                </Stack>
+                <Stack spacing={1}>
+                  <Text
+                    textTransform="uppercase"
+                    color="fg.subtle"
+                    fontSize="xs"
+                  >
+                    Book
+                  </Text>
+                  <Text>{scene.book_slug}</Text>
+                </Stack>
+                <Stack spacing={1}>
+                  <Text
+                    textTransform="uppercase"
+                    color="fg.subtle"
+                    fontSize="xs"
+                  >
+                    Location Marker
+                  </Text>
+                  <Text>{scene.location_marker}</Text>
+                </Stack>
+              </SimpleGrid>
+            ) : (
+              <Text>No scene metadata provided.</Text>
+            )}
+            <Separator />
+            <SimpleGrid columns={{ base: 1, md: 3 }} gap={3}>
               <Stack spacing={1}>
                 <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
-                  Chapter
+                  Paragraph span
                 </Text>
                 <Text>
-                  #{scene.chapter_number} · {scene.chapter_title}
+                  {formatParagraphSpan(contextWindow.paragraphSpan ?? null)}
                 </Text>
               </Stack>
               <Stack spacing={1}>
                 <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
-                  Scene
+                  Context
                 </Text>
-                <Text>#{scene.scene_number}</Text>
+                <Text>
+                  {contextWindow.paragraphsBefore ?? 0} before ·{" "}
+                  {contextWindow.paragraphsAfter ?? 0} after
+                </Text>
               </Stack>
               <Stack spacing={1}>
                 <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
-                  Book
+                  Chapter number
                 </Text>
-                <Text>{scene.book_slug}</Text>
-              </Stack>
-              <Stack spacing={1}>
-                <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
-                  Location Marker
-                </Text>
-                <Text>{scene.location_marker}</Text>
+                <Text>{contextWindow.chapterNumber ?? "—"}</Text>
               </Stack>
             </SimpleGrid>
-          ) : (
-            <Text>No scene metadata provided.</Text>
-          )}
-          <Separator />
-          <SimpleGrid columns={{ base: 1, md: 3 }} gap={3}>
-            <Stack spacing={1}>
-              <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
-                Paragraph span
-              </Text>
-              <Text>{formatParagraphSpan(contextWindow.paragraphSpan ?? null)}</Text>
-            </Stack>
-            <Stack spacing={1}>
-              <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
-                Context
-              </Text>
-              <Text>
-                {contextWindow.paragraphsBefore ?? 0} before · {" "}
-                {contextWindow.paragraphsAfter ?? 0} after
-              </Text>
-            </Stack>
-            <Stack spacing={1}>
-              <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
-                Chapter number
-              </Text>
-              <Text>{contextWindow.chapterNumber ?? "—"}</Text>
-            </Stack>
-          </SimpleGrid>
-          {contextWindow.extras && (
-            <Stack spacing={2}>
-              <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
-                Additional metadata
-              </Text>
-              <SimpleGrid columns={{ base: 1, md: 2 }} gap={2}>
-                {Object.entries(contextWindow.extras).map(([key, value]) => (
-                  <Badge key={key} variant="subtle" colorScheme="gray" px={3} py={1}>
-                    {key}: {String(value)}
-                  </Badge>
-                ))}
-              </SimpleGrid>
-            </Stack>
-          )}
+            {contextWindow.extras && (
+              <Stack spacing={2}>
+                <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
+                  Additional metadata
+                </Text>
+                <SimpleGrid columns={{ base: 1, md: 2 }} gap={2}>
+                  {Object.entries(contextWindow.extras).map(([key, value]) => (
+                    <Badge
+                      key={key}
+                      variant="subtle"
+                      colorScheme="gray"
+                      px={3}
+                      py={1}
+                    >
+                      {key}: {String(value)}
+                    </Badge>
+                  ))}
+                </SimpleGrid>
+              </Stack>
+            )}
           </Stack>
         </Collapsible.Content>
       </Collapsible.Root>

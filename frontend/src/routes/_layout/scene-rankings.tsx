@@ -23,8 +23,8 @@ import {
   SimpleGrid,
   Spinner,
   Stack,
-  TagRoot,
   TagLabel,
+  TagRoot,
   Text,
   VStack,
 } from "@chakra-ui/react"
@@ -498,8 +498,7 @@ const SceneSummary = ({ ranking }: { ranking: SceneRanking }) => {
 const SceneRankingItem = ({ ranking }: { ranking: SceneRanking }) => {
   const warnings = ranking.warnings ?? []
   const characterTags = ranking.character_tags ?? []
-  const scenePreviewSource =
-    ranking.scene?.refined ?? ranking.scene?.raw ?? ""
+  const scenePreviewSource = ranking.scene?.refined ?? ranking.scene?.raw ?? ""
   const scenePreview = scenePreviewSource
     ? truncateText(scenePreviewSource.replace(/\s+/g, " ").trim(), 300)
     : undefined
@@ -547,7 +546,12 @@ const SceneRankingItem = ({ ranking }: { ranking: SceneRanking }) => {
         <Stack gap={6} pt={2}>
           {ranking.scene?.raw && (
             <Box>
-              <Text fontSize="xs" color="fg.subtle" textTransform="uppercase" mb={2}>
+              <Text
+                fontSize="xs"
+                color="fg.subtle"
+                textTransform="uppercase"
+                mb={2}
+              >
                 Raw Excerpt
               </Text>
               <Box

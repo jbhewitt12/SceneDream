@@ -9,7 +9,12 @@ import {
 } from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect } from "react"
-import { FiChevronLeft, FiChevronRight } from "react-icons/fi"
+import {
+  FiChevronLeft,
+  FiChevronRight,
+  FiThumbsDown,
+  FiThumbsUp,
+} from "react-icons/fi"
 
 import { GeneratedImageApi } from "@/api/generatedImages"
 import {
@@ -29,6 +34,7 @@ type GeneratedImageModalProps = {
   sceneId: string | null
   allImages?: Array<{ id: string; scene_extraction_id: string }>
   onNavigate?: (imageId: string, sceneId: string) => void
+  onApprovalChange?: (imageId: string, approved: boolean | null) => void
 }
 
 const GeneratedImageModal = ({
@@ -38,6 +44,7 @@ const GeneratedImageModal = ({
   sceneId,
   allImages = [],
   onNavigate,
+  onApprovalChange,
 }: GeneratedImageModalProps) => {
   // Fetch the current image details with context
   const imageQuery = useQuery({
@@ -66,7 +73,8 @@ const GeneratedImageModal = ({
     if (sceneImages.length === 0 || !imageId || !onNavigate) return
     const currentIndex = sceneImages.findIndex((img) => img.id === imageId)
     if (currentIndex === -1) return
-    const newIndex = (currentIndex - 1 + sceneImages.length) % sceneImages.length
+    const newIndex =
+      (currentIndex - 1 + sceneImages.length) % sceneImages.length
     const newImage = sceneImages[newIndex]
     if (newImage) {
       onNavigate(newImage.id, newImage.scene_extraction_id)
@@ -158,7 +166,9 @@ const GeneratedImageModal = ({
       })
     : ""
   const hasMultipleImages = sceneImages.length > 1
-  const currentIndex = imageId ? sceneImages.findIndex((img) => img.id === imageId) : -1
+  const currentIndex = imageId
+    ? sceneImages.findIndex((img) => img.id === imageId)
+    : -1
 
   return (
     <DialogRoot
@@ -176,7 +186,9 @@ const GeneratedImageModal = ({
           <DialogTitle>
             {currentImage?.scene?.book_slug || "Generated Image"}
             {currentImage && ` · Chapter ${currentImage.image.chapter_number}`}
-            {hasMultipleImages && currentIndex !== -1 && ` · ${currentIndex + 1} of ${sceneImages.length}`}
+            {hasMultipleImages &&
+              currentIndex !== -1 &&
+              ` · ${currentIndex + 1} of ${sceneImages.length}`}
           </DialogTitle>
         </DialogHeader>
         <DialogBody>
@@ -196,7 +208,12 @@ const GeneratedImageModal = ({
             )}
 
             {/* Image */}
-            <Box flex="1" display="flex" justifyContent="center" alignItems="center">
+            <Box
+              flex="1"
+              display="flex"
+              justifyContent="center"
+              alignItems="center"
+            >
               {currentImage && (
                 <Image
                   src={fullPath}
@@ -240,7 +257,9 @@ const GeneratedImageModal = ({
                   </Text>
                   <HStack gap={2} wrap="wrap" mb={2}>
                     <Badge>{currentImage.image.size}</Badge>
-                    <Badge colorScheme="purple">{currentImage.image.quality}</Badge>
+                    <Badge colorScheme="purple">
+                      {currentImage.image.quality}
+                    </Badge>
                     <Badge colorScheme="blue">{currentImage.image.style}</Badge>
                     <Badge colorScheme="gray">
                       Variant #{currentImage.image.variant_index + 1}
@@ -250,6 +269,70 @@ const GeneratedImageModal = ({
                     {currentImage.image.provider} · {currentImage.image.model}
                   </Text>
                 </Box>
+
+                {/* Approval controls */}
+                {onApprovalChange && (
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm" mb={2}>
+                      Approval
+                    </Text>
+                    <HStack gap={2} align="center">
+                      <IconButton
+                        aria-label="Approve image"
+                        variant={
+                          currentImage.image.user_approved === true
+                            ? "solid"
+                            : "outline"
+                        }
+                        colorPalette={
+                          currentImage.image.user_approved === true
+                            ? "green"
+                            : "gray"
+                        }
+                        onClick={() =>
+                          onApprovalChange(
+                            currentImage.image.id,
+                            currentImage.image.user_approved === true
+                              ? null
+                              : true,
+                          )
+                        }
+                      >
+                        <FiThumbsUp />
+                      </IconButton>
+                      <IconButton
+                        aria-label="Reject image"
+                        variant={
+                          currentImage.image.user_approved === false
+                            ? "solid"
+                            : "outline"
+                        }
+                        colorPalette={
+                          currentImage.image.user_approved === false
+                            ? "red"
+                            : "gray"
+                        }
+                        onClick={() =>
+                          onApprovalChange(
+                            currentImage.image.id,
+                            currentImage.image.user_approved === false
+                              ? null
+                              : false,
+                          )
+                        }
+                      >
+                        <FiThumbsDown />
+                      </IconButton>
+                      {currentImage.image.user_approved != null && (
+                        <Text fontSize="xs" color="fg.muted" ml={2}>
+                          {currentImage.image.user_approved
+                            ? "Approved"
+                            : "Rejected"}
+                        </Text>
+                      )}
+                    </HStack>
+                  </Box>
+                )}
 
                 {/* Prompt text */}
                 {currentImage.prompt && (
@@ -261,7 +344,11 @@ const GeneratedImageModal = ({
                       currentImage.prompt.style_tags.length > 0 && (
                         <HStack gap={2} wrap="wrap" mb={2}>
                           {currentImage.prompt.style_tags.map((tag) => (
-                            <Badge key={tag} colorScheme="purple" variant="subtle">
+                            <Badge
+                              key={tag}
+                              colorScheme="purple"
+                              variant="subtle"
+                            >
                               {tag}
                             </Badge>
                           ))}

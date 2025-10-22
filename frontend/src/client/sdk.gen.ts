@@ -4,66 +4,306 @@ import type { CancelablePromise } from "./core/CancelablePromise"
 import { OpenAPI } from "./core/OpenAPI"
 import { request as __request } from "./core/request"
 import type {
-  ImagePromptsListPromptsForSceneData,
-  ImagePromptsListPromptsForSceneResponse,
-  ImagePromptsListPromptsForBookData,
-  ImagePromptsListPromptsForBookResponse,
+  GeneratedImagesGetGeneratedImageData,
+  GeneratedImagesGetGeneratedImageResponse,
+  GeneratedImagesListGeneratedImagesData,
+  GeneratedImagesListGeneratedImagesForPromptData,
+  GeneratedImagesListGeneratedImagesForPromptResponse,
+  GeneratedImagesListGeneratedImagesForSceneData,
+  GeneratedImagesListGeneratedImagesForSceneResponse,
+  GeneratedImagesListGeneratedImagesResponse,
+  GeneratedImagesStreamGeneratedImageFileData,
+  GeneratedImagesStreamGeneratedImageFileResponse,
+  GeneratedImagesTriggerImageGenerationData,
+  GeneratedImagesTriggerImageGenerationResponse,
+  GeneratedImagesUpdateImageApprovalData,
+  GeneratedImagesUpdateImageApprovalResponse,
   ImagePromptsGetImagePromptData,
   ImagePromptsGetImagePromptResponse,
-  ItemsReadItemsData,
-  ItemsReadItemsResponse,
+  ImagePromptsListPromptsForBookData,
+  ImagePromptsListPromptsForBookResponse,
+  ImagePromptsListPromptsForSceneData,
+  ImagePromptsListPromptsForSceneResponse,
   ItemsCreateItemData,
   ItemsCreateItemResponse,
-  ItemsReadItemData,
-  ItemsReadItemResponse,
-  ItemsUpdateItemData,
-  ItemsUpdateItemResponse,
   ItemsDeleteItemData,
   ItemsDeleteItemResponse,
+  ItemsReadItemData,
+  ItemsReadItemResponse,
+  ItemsReadItemsData,
+  ItemsReadItemsResponse,
+  ItemsUpdateItemData,
+  ItemsUpdateItemResponse,
   LoginLoginAccessTokenData,
   LoginLoginAccessTokenResponse,
-  LoginTestTokenResponse,
   LoginRecoverPasswordData,
+  LoginRecoverPasswordHtmlContentData,
+  LoginRecoverPasswordHtmlContentResponse,
   LoginRecoverPasswordResponse,
   LoginResetPasswordData,
   LoginResetPasswordResponse,
-  LoginRecoverPasswordHtmlContentData,
-  LoginRecoverPasswordHtmlContentResponse,
+  LoginTestTokenResponse,
   PrivateCreateUserData,
   PrivateCreateUserResponse,
-  SceneExtractionsListSceneExtractionsData,
-  SceneExtractionsListSceneExtractionsResponse,
   SceneExtractionsGetFilterOptionsResponse,
   SceneExtractionsGetSceneExtractionData,
   SceneExtractionsGetSceneExtractionResponse,
-  SceneRankingsListTopSceneRankingsData,
-  SceneRankingsListTopSceneRankingsResponse,
-  SceneRankingsListSceneRankingHistoryData,
-  SceneRankingsListSceneRankingHistoryResponse,
+  SceneExtractionsListSceneExtractionsData,
+  SceneExtractionsListSceneExtractionsResponse,
   SceneRankingsGetSceneRankingData,
   SceneRankingsGetSceneRankingResponse,
-  UsersReadUsersData,
-  UsersReadUsersResponse,
+  SceneRankingsListSceneRankingHistoryData,
+  SceneRankingsListSceneRankingHistoryResponse,
+  SceneRankingsListTopSceneRankingsData,
+  SceneRankingsListTopSceneRankingsResponse,
   UsersCreateUserData,
   UsersCreateUserResponse,
-  UsersReadUserMeResponse,
+  UsersDeleteUserData,
   UsersDeleteUserMeResponse,
-  UsersUpdateUserMeData,
-  UsersUpdateUserMeResponse,
-  UsersUpdatePasswordMeData,
-  UsersUpdatePasswordMeResponse,
-  UsersRegisterUserData,
-  UsersRegisterUserResponse,
+  UsersDeleteUserResponse,
   UsersReadUserByIdData,
   UsersReadUserByIdResponse,
+  UsersReadUserMeResponse,
+  UsersReadUsersData,
+  UsersReadUsersResponse,
+  UsersRegisterUserData,
+  UsersRegisterUserResponse,
+  UsersUpdatePasswordMeData,
+  UsersUpdatePasswordMeResponse,
   UsersUpdateUserData,
+  UsersUpdateUserMeData,
+  UsersUpdateUserMeResponse,
   UsersUpdateUserResponse,
-  UsersDeleteUserData,
-  UsersDeleteUserResponse,
+  UtilsHealthCheckResponse,
   UtilsTestEmailData,
   UtilsTestEmailResponse,
-  UtilsHealthCheckResponse,
 } from "./types.gen"
+
+export class GeneratedImagesService {
+  /**
+   * List Generated Images
+   * List generated images with optional filters and pagination.
+   * @param data The data for the request.
+   * @param data.book
+   * @param data.chapter
+   * @param data.sceneId
+   * @param data.promptId
+   * @param data.provider
+   * @param data.model
+   * @param data.approval
+   * @param data.newestFirst
+   * @param data.limit
+   * @param data.offset
+   * @returns GeneratedImageListResponse Successful Response
+   * @throws ApiError
+   */
+  public static listGeneratedImages(
+    data: GeneratedImagesListGeneratedImagesData = {},
+  ): CancelablePromise<GeneratedImagesListGeneratedImagesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/generated-images",
+      query: {
+        book: data.book,
+        chapter: data.chapter,
+        scene_id: data.sceneId,
+        prompt_id: data.promptId,
+        provider: data.provider,
+        model: data.model,
+        approval: data.approval,
+        newest_first: data.newestFirst,
+        limit: data.limit,
+        offset: data.offset,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Generated Image
+   * Fetch a single generated image by identifier with full context.
+   * Returns image metadata along with prompt text and raw scene text.
+   * @param data The data for the request.
+   * @param data.imageId
+   * @param data.includePrompt
+   * @param data.includeScene
+   * @returns GeneratedImageWithContext Successful Response
+   * @throws ApiError
+   */
+  public static getGeneratedImage(
+    data: GeneratedImagesGetGeneratedImageData,
+  ): CancelablePromise<GeneratedImagesGetGeneratedImageResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/generated-images/{image_id}",
+      path: {
+        image_id: data.imageId,
+      },
+      query: {
+        include_prompt: data.includePrompt,
+        include_scene: data.includeScene,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update Image Approval
+   * Update the approval status of a generated image.
+   * @param data The data for the request.
+   * @param data.imageId
+   * @param data.requestBody
+   * @returns GeneratedImageRead Successful Response
+   * @throws ApiError
+   */
+  public static updateImageApproval(
+    data: GeneratedImagesUpdateImageApprovalData,
+  ): CancelablePromise<GeneratedImagesUpdateImageApprovalResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/generated-images/{image_id}/approval",
+      path: {
+        image_id: data.imageId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Stream Generated Image File
+   * Stream the binary image file for a generated image.
+   * @param data The data for the request.
+   * @param data.imageId
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static streamGeneratedImageFile(
+    data: GeneratedImagesStreamGeneratedImageFileData,
+  ): CancelablePromise<GeneratedImagesStreamGeneratedImageFileResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/generated-images/{image_id}/content",
+      path: {
+        image_id: data.imageId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List Generated Images For Scene
+   * Return generated images for a specific scene extraction.
+   * @param data The data for the request.
+   * @param data.sceneId
+   * @param data.provider
+   * @param data.model
+   * @param data.newestFirst
+   * @param data.limit
+   * @param data.offset
+   * @param data.includePrompt
+   * @param data.includeScene
+   * @returns GeneratedImageListResponse Successful Response
+   * @throws ApiError
+   */
+  public static listGeneratedImagesForScene(
+    data: GeneratedImagesListGeneratedImagesForSceneData,
+  ): CancelablePromise<GeneratedImagesListGeneratedImagesForSceneResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/generated-images/scene/{scene_id}",
+      path: {
+        scene_id: data.sceneId,
+      },
+      query: {
+        provider: data.provider,
+        model: data.model,
+        newest_first: data.newestFirst,
+        limit: data.limit,
+        offset: data.offset,
+        include_prompt: data.includePrompt,
+        include_scene: data.includeScene,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List Generated Images For Prompt
+   * Return generated images for a specific image prompt.
+   * @param data The data for the request.
+   * @param data.promptId
+   * @param data.provider
+   * @param data.model
+   * @param data.newestFirst
+   * @param data.limit
+   * @param data.offset
+   * @returns GeneratedImageListResponse Successful Response
+   * @throws ApiError
+   */
+  public static listGeneratedImagesForPrompt(
+    data: GeneratedImagesListGeneratedImagesForPromptData,
+  ): CancelablePromise<GeneratedImagesListGeneratedImagesForPromptResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/generated-images/prompt/{prompt_id}",
+      path: {
+        prompt_id: data.promptId,
+      },
+      query: {
+        provider: data.provider,
+        model: data.model,
+        newest_first: data.newestFirst,
+        limit: data.limit,
+        offset: data.offset,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Trigger Image Generation
+   * Trigger image generation for a selection of prompts.
+   *
+   * This endpoint allows you to generate images based on various filters:
+   * - By book_slug (optionally with chapter_range)
+   * - By specific scene_ids
+   * - By specific prompt_ids
+   *
+   * In dry-run mode, it will return a count of 0 and no IDs.
+   * Otherwise, it returns the list of generated image IDs.
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns GeneratedImageGenerateResponse Successful Response
+   * @throws ApiError
+   */
+  public static triggerImageGeneration(
+    data: GeneratedImagesTriggerImageGenerationData,
+  ): CancelablePromise<GeneratedImagesTriggerImageGenerationResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/generated-images/generate",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+}
 
 export class ImagePromptsService {
   /**

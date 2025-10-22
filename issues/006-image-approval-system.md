@@ -1181,3 +1181,33 @@ Each phase should document:
   - **Key findings**: Added `user_approved` and `approval_updated_at` columns to the SQLModel and generated Alembic migration; migration applied successfully against the local Postgres instance.
   - **Gotchas**: `uv run` and `docker compose exec` required elevated permissions in this environment; reran commands with escalation to proceed.
   - **Warnings for next phase**: Repository update logic must populate `approval_updated_at` whenever `user_approved` changes to avoid leaving the timestamp null after API interactions.
+- **Phase 2: Backend Repository and API Endpoints** - Completed 2025-10-21
+  - **Status**: ✅ Complete
+  - **Key findings**: Added repository support for updating approval state and filtering by approval in book listings, exposed a PATCH endpoint for approval updates, and included the new fields in generated image response schemas.
+  - **Gotchas**: `uv run bash scripts/lint.sh` still fails with pre-existing mypy stub/type issues unrelated to the new approval code; documented here for visibility.
+  - **Warnings for next phase**: The list endpoint currently treats missing and explicit `null` approval the same, so the upcoming frontend work may need to send a distinct sentinel (or we adjust the API) to support "pending" filters cleanly.
+- **Phase 3: Frontend TypeScript Client Regeneration** - Completed 2025-10-21
+  - **Status**: ✅ Complete
+  - **Key findings**: Regenerated the OpenAPI client with `openapi-ts`; the SDK now exposes `updateImageApproval`, list queries accept the `approval` filter, and `GeneratedImageRead`/context payloads include `user_approved` and `approval_updated_at` fields (matching existing snake_case naming in generated types).
+  - **Gotchas**: `scripts/generate-client.sh` could not run end-to-end because its inner `python` call does not pick up the `uv` environment in this sandbox; manually reproduced its steps with `uv run` and recorded the new `frontend/src/client` output. `npm run build` still fails due to long-standing Chakra UI typing issues in prompt-related components (see `tsc` errors starting in `frontend/src/components/Prompts/PromptCard.tsx`).
+  - **Warnings for next phase**: Frontend build errors persist, so subsequent UI work should account for the failing `npm run build` baseline when validating changes; no additional client regeneration needed before starting card/modal updates.
+- **Phase 4: Frontend Card Component Enhancements** - Completed 2025-10-21
+  - **Status**: ✅ Complete
+  - **Key findings**: `GeneratedImageCard` now surfaces thumbs up/down controls with tri-state toggling logic and highlights approval status via dynamic border colors; the component accepts an optional `onApprovalChange` callback that will wire into upcoming mutations.
+  - **Gotchas**: Chakra's `IconButton` requires `event.stopPropagation()` to avoid triggering the existing card click handler when changing approval, so both buttons guard against unintended modal opens.
+  - **Warnings for next phase**: Parent gallery page still needs to supply `onApprovalChange` once the mutation plumbing lands—Phase 6 should connect the callback to the new backend endpoint.
+- **Phase 5: Frontend Modal Component** - Completed 2025-10-21
+  - **Status**: ✅ Complete
+  - **Key findings**: Added approval controls to `GeneratedImageModal`, mirroring the card interaction logic and showing current approval status within the context panel; the callback remains optional so existing consumers continue to work until Phase 6 wires it up.
+  - **Gotchas**: Biome's existing `useExhaustiveDependencies` warnings persist for the modal keyboard navigation hook; no new lint issues were introduced.
+  - **Warnings for next phase**: Once mutations are implemented, pass `onApprovalChange` from the gallery page so both the modal and card stay in sync during optimistic updates.
+- **Phase 6: Frontend API Integration and State Management** - Completed 2025-10-21
+  - **Status**: ✅ Complete
+  - **Key findings**: Wired the gallery page and modal to the new approval endpoint with a shared TanStack Query mutation, including optimistic cache updates for the infinite list, single-image modal query, and scene-level list. Added the lightweight REST helper in `frontend/src/api/generatedImages.ts` so the mutation can call the PATCH route without regenerating the entire client.
+  - **Gotchas**: `npm run lint` still fails with long-standing Biome complaints (scene modal dependency heuristics and generated OpenAPI client styles); no new lint errors were introduced by this phase, but the command exits non-zero due to those pre-existing issues.
+  - **Warnings for next phase**: Phase 7 should reuse the existing `listQueryKey`/`search` plumbing when adding approval filters so the optimistic mutation continues to target the right cache key; the `GeneratedImageApi.list` helper already accepts additional query params if needed.
+- **Phase 7: Frontend Approval Filter UI** - Completed 2025-10-22
+  - **Status**: ✅ Complete
+  - **Key findings**: Added the tri-state approval filter to the gallery search schema, query key, and filter controls, letting users toggle All/Approved/Rejected/Pending while keeping state in the URL.
+  - **Gotchas**: Because the backend list endpoint cannot distinguish between a missing approval filter and an explicit `null`, pending images are filtered on the client and may require loading extra pages to surface everything.
+  - **Warnings for next phase**: Consider extending the API to support an explicit pending sentinel (or similar) before layering on additional analytics or compound filters so server-side pagination stays accurate.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -10,8 +11,6 @@ from sqlalchemy.orm import joinedload
 from sqlmodel import Session, select
 
 from models.generated_image import GeneratedImage
-from models.image_prompt import ImagePrompt
-from models.scene_extraction import SceneExtraction
 
 
 class GeneratedImageRepository:
@@ -106,6 +105,7 @@ class GeneratedImageRepository:
         chapter_number: int | None = None,
         provider: str | None = None,
         model: str | None = None,
+        approval: bool | None = None,
         newest_first: bool = True,
         limit: int | None = None,
         offset: int | None = None,
@@ -120,6 +120,8 @@ class GeneratedImageRepository:
             statement = statement.where(GeneratedImage.provider == provider)
         if model:
             statement = statement.where(GeneratedImage.model == model)
+        if approval is not None:
+            statement = statement.where(GeneratedImage.user_approved == approval)
 
         ordering = (
             GeneratedImage.created_at.desc()
@@ -231,6 +233,27 @@ class GeneratedImageRepository:
         image = self.get(image_id)
         if image:
             image.error = error
+            self._session.add(image)
+            self._session.flush()
+            if commit:
+                self._session.commit()
+            self._session.refresh(image)
+        return image
+
+    def update_approval(
+        self,
+        image_id: UUID,
+        approved: bool | None,
+        *,
+        commit: bool = False,
+    ) -> GeneratedImage | None:
+        """Update the approval status of a generated image."""
+
+        image = self.get(image_id)
+        if image:
+            current_time = datetime.now(timezone.utc)
+            image.user_approved = approved
+            image.approval_updated_at = current_time
             self._session.add(image)
             self._session.flush()
             if commit:

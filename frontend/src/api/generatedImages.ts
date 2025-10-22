@@ -25,6 +25,8 @@ export type GeneratedImageRead = {
   error: string | null
   created_at: string
   updated_at: string
+  user_approved: boolean | null
+  approval_updated_at: string | null
 }
 
 export type ImagePromptSummary = {
@@ -63,6 +65,7 @@ export type ListGeneratedImagesParams = {
   promptId?: string
   provider?: string
   model?: string
+  approval?: boolean | null
   newestFirst?: boolean
   limit?: number
   offset?: number
@@ -116,6 +119,7 @@ export const GeneratedImageApi = {
         prompt_id: params.promptId,
         provider: params.provider,
         model: params.model,
+        approval: params.approval ?? undefined,
         newest_first: params.newestFirst ?? true,
         limit: params.limit ?? 24,
         offset: params.offset,
@@ -188,4 +192,38 @@ export const GeneratedImageApi = {
       },
     })
   },
+}
+
+const buildUrl = (path: string) => {
+  const base = OpenAPI.BASE ?? ""
+  if (base) {
+    const sanitizedBase = base.replace(/\/+$/, "")
+    return `${sanitizedBase}${path}`
+  }
+  return path
+}
+
+export const updateImageApproval = async (
+  imageId: string,
+  approved: boolean | null,
+) => {
+  const url = buildUrl(
+    `/api/v1/generated-images/${encodeURIComponent(imageId)}/approval`,
+  )
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ user_approved: approved }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    const message = body || `${response.status} ${response.statusText}`
+    throw new Error(`Failed to update approval: ${message}`)
+  }
+
+  return (await response.json()) as GeneratedImageRead
 }

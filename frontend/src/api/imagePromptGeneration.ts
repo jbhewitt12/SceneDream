@@ -14,7 +14,7 @@ type TriggerForSceneParams = {
 
 const buildUrl = (path: string) => {
   const base = OpenAPI.BASE ?? ""
-  if (base && base.endsWith("/")) {
+  if (base?.endsWith("/")) {
     return `${base.replace(/\/+$/, "")}${path}`
   }
   return `${base}${path}`
@@ -32,7 +32,9 @@ const postJson = async (url: string, payload: Record<string, unknown>) => {
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "")
     throw new Error(
-      errorBody || `${response.status} ${response.statusText}` || "Request failed",
+      errorBody ||
+        `${response.status} ${response.statusText}` ||
+        "Request failed",
     )
   }
 
@@ -61,7 +63,11 @@ export const ImagePromptGenerationApi = {
     })
   },
 
-  triggerForScene({ sceneId, promptVersion, modelName }: TriggerForSceneParams) {
+  triggerForScene({
+    sceneId,
+    promptVersion,
+    modelName,
+  }: TriggerForSceneParams) {
     const url = buildUrl(
       `/api/v1/image-prompt-generation/scene/${encodeURIComponent(sceneId)}`,
     )
@@ -71,4 +77,3 @@ export const ImagePromptGenerationApi = {
     })
   },
 }
-

@@ -2,10 +2,13 @@ import {
   Badge,
   Box,
   HStack,
+  IconButton,
   Image,
   Stack,
   Text,
 } from "@chakra-ui/react"
+
+import { FiThumbsDown, FiThumbsUp } from "react-icons/fi"
 
 import type { GeneratedImageRead } from "@/api/generatedImages"
 import { buildGeneratedImageUrl } from "./url"
@@ -13,15 +16,26 @@ import { buildGeneratedImageUrl } from "./url"
 type GeneratedImageCardProps = {
   image: GeneratedImageRead
   onClick: () => void
+  onApprovalChange?: (imageId: string, approved: boolean | null) => void
 }
 
-const GeneratedImageCard = ({ image, onClick }: GeneratedImageCardProps) => {
+const GeneratedImageCard = ({
+  image,
+  onClick,
+  onApprovalChange,
+}: GeneratedImageCardProps) => {
   const fullPath = buildGeneratedImageUrl({
     id: image.id,
     storagePath: image.storage_path,
     fileName: image.file_name,
   })
   const aspectRatioLabel = image.aspect_ratio || image.size
+  const borderColor =
+    image.user_approved === true
+      ? "green.500"
+      : image.user_approved === false
+        ? "red.500"
+        : "border"
 
   return (
     <Box
@@ -33,6 +47,7 @@ const GeneratedImageCard = ({ image, onClick }: GeneratedImageCardProps) => {
       cursor="pointer"
       onClick={onClick}
       transition="all 0.2s"
+      borderColor={borderColor}
       _hover={{
         shadow: "md",
         transform: "translateY(-2px)",
@@ -44,11 +59,15 @@ const GeneratedImageCard = ({ image, onClick }: GeneratedImageCardProps) => {
         position="relative"
         bg="gray.100"
         _dark={{ bg: "gray.800" }}
-        aspectRatio={image.width && image.height ? image.width / image.height : 1}
+        aspectRatio={
+          image.width && image.height ? image.width / image.height : 1
+        }
       >
         <Image
           src={fullPath}
-          alt={`Generated image for chapter ${image.chapter_number}, variant ${image.variant_index + 1}`}
+          alt={`Generated image for chapter ${image.chapter_number}, variant ${
+            image.variant_index + 1
+          }`}
           objectFit="cover"
           w="full"
           h="full"
@@ -92,6 +111,41 @@ const GeneratedImageCard = ({ image, onClick }: GeneratedImageCardProps) => {
             {image.style}
           </Badge>
         </HStack>
+
+        {onApprovalChange && (
+          <HStack gap={2} justify="center" pt={1}>
+            <IconButton
+              aria-label="Approve image"
+              size="sm"
+              variant={image.user_approved === true ? "solid" : "ghost"}
+              colorPalette={image.user_approved === true ? "green" : "gray"}
+              onClick={(event) => {
+                event.stopPropagation()
+                onApprovalChange(
+                  image.id,
+                  image.user_approved === true ? null : true,
+                )
+              }}
+            >
+              <FiThumbsUp />
+            </IconButton>
+            <IconButton
+              aria-label="Reject image"
+              size="sm"
+              variant={image.user_approved === false ? "solid" : "ghost"}
+              colorPalette={image.user_approved === false ? "red" : "gray"}
+              onClick={(event) => {
+                event.stopPropagation()
+                onApprovalChange(
+                  image.id,
+                  image.user_approved === false ? null : false,
+                )
+              }}
+            >
+              <FiThumbsDown />
+            </IconButton>
+          </HStack>
+        )}
       </Stack>
     </Box>
   )
