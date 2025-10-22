@@ -21,7 +21,7 @@ export const system = createSystem(defaultConfig, {
     "::selection": {
       backgroundColor: "#00e5ff33",
     },
-    
+
     // Improve readability in dark mode by slightly lightening text tokens
     ".dark": {
       "--chakra-colors-fg-default": "#e6edf3",

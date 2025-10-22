@@ -16,6 +16,7 @@ from app.repositories import (
     SceneExtractionRepository,
 )
 from app.schemas import (
+    GeneratedImageApprovalUpdate,
     GeneratedImageGenerateRequest,
     GeneratedImageGenerateResponse,
     GeneratedImageListResponse,
@@ -27,7 +28,6 @@ from app.schemas import (
 from app.services.image_generation.image_generation_service import (
     ImageGenerationService,
 )
-
 
 router = APIRouter(prefix="/generated-images", tags=["generated-images"])
 
@@ -85,6 +85,7 @@ def list_generated_images(
     prompt_id: UUID | None = Query(None),
     provider: str | None = Query(None, min_length=1),
     model: str | None = Query(None, min_length=1),
+    approval: bool | None = Query(None),
     newest_first: bool = Query(True),
     limit: int = Query(_DEFAULT_LIST_LIMIT, ge=1, le=_MAX_LIST_LIMIT),
     offset: int | None = Query(None, ge=0),
@@ -121,6 +122,7 @@ def list_generated_images(
             chapter_number=chapter,
             provider=provider,
             model=model,
+            approval=approval,
             newest_first=newest_first,
             limit=limit,
             offset=offset,
@@ -151,6 +153,8 @@ def list_generated_images(
         meta["provider"] = provider
     if model:
         meta["model"] = model
+    if approval is not None:
+        meta["approval"] = approval
 
     return GeneratedImageListResponse(data=data, meta=meta)
 
@@ -185,6 +189,28 @@ def get_generated_image(
     return _build_context(
         record, include_prompt=include_prompt, include_scene=include_scene
     )
+
+
+@router.patch("/{image_id}/approval", response_model=GeneratedImageRead)
+def update_image_approval(
+    *,
+    session: SessionDep,
+    image_id: UUID,
+    update: GeneratedImageApprovalUpdate,
+) -> GeneratedImageRead:
+    """Update the approval status of a generated image."""
+
+    repository = GeneratedImageRepository(session)
+    image = repository.update_approval(
+        image_id,
+        update.user_approved,
+        commit=True,
+    )
+
+    if image is None:
+        raise HTTPException(status_code=404, detail="Generated image not found")
+
+    return GeneratedImageRead.model_validate(image)
 
 
 @router.get("/{image_id}/content")

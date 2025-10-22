@@ -1,6 +1,6 @@
+import Logo from "@/components/Common/Logo"
 import { Button, Flex, HStack } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
-import Logo from "@/components/Common/Logo"
 
 function Navbar() {
   return (
@@ -21,16 +21,24 @@ function Navbar() {
       </Flex>
       <HStack gap={1} alignItems="center">
         <Link to="/extracted-scenes">
-          <Button size="sm" variant="ghost" className="main-link">Extracted Scenes</Button>
+          <Button size="sm" variant="ghost" className="main-link">
+            Extracted Scenes
+          </Button>
         </Link>
         <Link to="/scene-rankings">
-          <Button size="sm" variant="ghost" className="main-link">Scene Rankings</Button>
+          <Button size="sm" variant="ghost" className="main-link">
+            Scene Rankings
+          </Button>
         </Link>
         <Link to="/prompt-gallery">
-          <Button size="sm" variant="ghost" className="main-link">Prompt Gallery</Button>
+          <Button size="sm" variant="ghost" className="main-link">
+            Prompt Gallery
+          </Button>
         </Link>
         <Link to="/generated-images">
-          <Button size="sm" variant="ghost" className="main-link">Generated Images</Button>
+          <Button size="sm" variant="ghost" className="main-link">
+            Generated Images
+          </Button>
         </Link>
       </HStack>
     </Flex>

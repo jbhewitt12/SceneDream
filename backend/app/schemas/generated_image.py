@@ -40,12 +40,23 @@ class GeneratedImageCreate(GeneratedImageBase):
     pass
 
 
+class GeneratedImageApprovalUpdate(BaseModel):
+    """Schema for updating image approval status."""
+
+    user_approved: bool | None = Field(
+        ...,
+        description="Approval status: true (approved), false (rejected), null (clear approval)",
+    )
+
+
 class GeneratedImageRead(GeneratedImageBase):
     """Detailed representation of a generated image."""
 
     id: UUID
     created_at: datetime
     updated_at: datetime
+    user_approved: bool | None = None
+    approval_updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

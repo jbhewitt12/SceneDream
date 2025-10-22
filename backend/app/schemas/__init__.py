@@ -19,6 +19,7 @@ from .image_prompt import (
 from .generated_image import (
     GeneratedImageBase,
     GeneratedImageCreate,
+    GeneratedImageApprovalUpdate,
     GeneratedImageGenerateRequest,
     GeneratedImageGenerateResponse,
     GeneratedImageListResponse,
@@ -41,6 +42,7 @@ __all__ = [
     "ImagePromptSceneSummary",
     "GeneratedImageBase",
     "GeneratedImageCreate",
+    "GeneratedImageApprovalUpdate",
     "GeneratedImageGenerateRequest",
     "GeneratedImageGenerateResponse",
     "GeneratedImageListResponse",

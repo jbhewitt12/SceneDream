@@ -1,7 +1,7 @@
 import {
-  ImagePromptsService,
   type ImagePromptListResponse,
   type ImagePromptRead,
+  ImagePromptsService,
 } from "@/client"
 
 export type ImagePromptAttributes = Record<string, unknown>
@@ -18,9 +18,7 @@ export type ImagePrompt = Omit<ImagePromptRead, "context_window"> & {
   context_window: ImagePromptContextWindow
 }
 
-const toIntegerTuple = (
-  value: unknown,
-): [number, number] | null => {
+const toIntegerTuple = (value: unknown): [number, number] | null => {
   if (!Array.isArray(value) || value.length !== 2) {
     return null
   }
@@ -36,9 +34,9 @@ const toIntegerTuple = (
 const normalizeContextWindow = (
   context: ImagePromptRead["context_window"],
 ): ImagePromptContextWindow => {
-  const chapterNumberRaw = context?.["chapter_number"]
-  const paragraphsBeforeRaw = context?.["paragraphs_before"]
-  const paragraphsAfterRaw = context?.["paragraphs_after"]
+  const chapterNumberRaw = context?.chapter_number
+  const paragraphsBeforeRaw = context?.paragraphs_before
+  const paragraphsAfterRaw = context?.paragraphs_after
 
   const chapterNumber =
     typeof chapterNumberRaw === "number" ? chapterNumberRaw : null
@@ -47,7 +45,7 @@ const normalizeContextWindow = (
   const paragraphsAfter =
     typeof paragraphsAfterRaw === "number" ? paragraphsAfterRaw : null
 
-  const paragraphSpan = toIntegerTuple(context?.["paragraph_span"])
+  const paragraphSpan = toIntegerTuple(context?.paragraph_span)
 
   const knownKeys = new Set([
     "chapter_number",
@@ -130,7 +128,8 @@ export const ImagePromptApi = {
     params: BookPromptListParams,
   ): Promise<ImagePromptListResponse & { data: ImagePrompt[] }> {
     const page = params.page && params.page > 0 ? params.page : 1
-    const pageSize = params.pageSize && params.pageSize > 0 ? params.pageSize : 24
+    const pageSize =
+      params.pageSize && params.pageSize > 0 ? params.pageSize : 24
     const offset = (page - 1) * pageSize
 
     const response = await ImagePromptsService.listPromptsForBook({
@@ -139,8 +138,7 @@ export const ImagePromptApi = {
       modelName: sanitizeText(params.modelName),
       promptVersion: sanitizeText(params.promptVersion),
       styleTag: sanitizeText(params.styleTag),
-      newestFirst:
-        params.newestFirst === undefined ? true : params.newestFirst,
+      newestFirst: params.newestFirst === undefined ? true : params.newestFirst,
       limit: pageSize,
       offset,
       includeScene: params.includeScene,
@@ -161,4 +159,3 @@ export const ImagePromptApi = {
     return normalizePrompt(response)
   },
 }
-

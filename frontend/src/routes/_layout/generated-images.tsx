@@ -3,8 +3,8 @@ import {
   Button,
   Container,
   Flex,
-  Heading,
   HStack,
+  Heading,
   Icon,
   Input,
   NativeSelectField,
@@ -15,13 +15,25 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react"
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { FiFilter, FiRefreshCcw } from "react-icons/fi"
 import { z } from "zod"
 
-import { GeneratedImageApi } from "@/api/generatedImages"
+import {
+  GeneratedImageApi,
+  type GeneratedImageListResponse,
+  type GeneratedImageRead,
+  type GeneratedImageWithContext,
+  updateImageApproval,
+} from "@/api/generatedImages"
 import {
   type SceneExtractionFilterOptions,
   SceneExtractionService,
@@ -60,12 +72,34 @@ const generatedImagesSearchSchema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined))
     .catch(undefined),
+  approval: z
+    .enum(["approved", "rejected", "pending", ""])
+    .optional()
+    .transform((val) => {
+      if (val === "approved") return true
+      if (val === "rejected") return false
+      if (val === "pending") return null
+      return undefined
+    })
+    .catch(undefined),
   page_size: z.coerce.number().int().min(1).max(48).catch(24),
 })
 
 type GeneratedImagesSearch = z.infer<typeof generatedImagesSearchSchema>
 
 type FilterUpdater = (updates: Partial<GeneratedImagesSearch>) => void
+
+type ApprovalMutationVariables = {
+  imageId: string
+  approved: boolean | null
+}
+
+type ApprovalMutationContext = {
+  previousList?: InfiniteData<GeneratedImageListResponse>
+  previousModal?: GeneratedImageWithContext
+  previousScene?: GeneratedImageListResponse
+  sceneQueryKey?: readonly ["generated-images", "scene", string]
+}
 
 const GeneratedImagesFilters = ({
   search,
@@ -94,6 +128,7 @@ const GeneratedImagesFilters = ({
       chapter_number: undefined,
       provider: undefined,
       model: undefined,
+      approval: undefined,
     })
   }
 
@@ -117,7 +152,7 @@ const GeneratedImagesFilters = ({
           Reset
         </Button>
       </Flex>
-      <SimpleGrid columns={{ base: 1, md: 4 }} gap={4}>
+      <SimpleGrid columns={{ base: 1, md: 5 }} gap={4}>
         <Stack spacing={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Book
@@ -197,6 +232,43 @@ const GeneratedImagesFilters = ({
             disabled={disabled}
           />
         </Stack>
+        <Stack spacing={1}>
+          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
+            Approval
+          </Text>
+          <NativeSelectRoot disabled={disabled} w="full">
+            <NativeSelectField
+              value={
+                search.approval === true
+                  ? "approved"
+                  : search.approval === false
+                    ? "rejected"
+                    : search.approval === null
+                      ? "pending"
+                      : ""
+              }
+              onChange={(event) => {
+                const val = event.target.value
+                handleChange({
+                  approval:
+                    val === "approved"
+                      ? true
+                      : val === "rejected"
+                        ? false
+                        : val === "pending"
+                          ? null
+                          : undefined,
+                })
+              }}
+            >
+              <option value="">All images</option>
+              <option value="approved">Approved only</option>
+              <option value="rejected">Rejected only</option>
+              <option value="pending">Pending only</option>
+            </NativeSelectField>
+            <NativeSelectIndicator />
+          </NativeSelectRoot>
+        </Stack>
       </SimpleGrid>
     </Stack>
   )
@@ -204,15 +276,17 @@ const GeneratedImagesFilters = ({
 
 const useGeneratedImagesData = (search: GeneratedImagesSearch) => {
   const queryEnabled = Boolean(search.book_slug)
+  const queryKey = ["generated-images", "list", search] as const
 
   const query = useInfiniteQuery({
-    queryKey: ["generated-images", "list", search],
+    queryKey,
     queryFn: ({ pageParam = 0 }) =>
       GeneratedImageApi.list({
         book: search.book_slug!,
         chapter: search.chapter_number,
         provider: search.provider,
         model: search.model,
+        approval: search.approval,
         limit: search.page_size,
         offset: pageParam,
       }),
@@ -228,7 +302,7 @@ const useGeneratedImagesData = (search: GeneratedImagesSearch) => {
     },
   })
 
-  return query
+  return { query, queryKey }
 }
 
 export const Route = createFileRoute("/_layout/generated-images")({
@@ -243,6 +317,7 @@ function GeneratedImagesGalleryPage() {
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient()
 
   const filtersQuery = useQuery({
     queryKey: ["scene-extractions", "filters"],
@@ -272,12 +347,187 @@ function GeneratedImagesGalleryPage() {
     [navigate],
   )
 
-  const imagesQuery = useGeneratedImagesData(search)
+  const { query: imagesQuery, queryKey: listQueryKey } =
+    useGeneratedImagesData(search)
+
+  const approvalMutation = useMutation<
+    GeneratedImageRead,
+    Error,
+    ApprovalMutationVariables,
+    ApprovalMutationContext
+  >({
+    mutationFn: ({ imageId, approved }) =>
+      updateImageApproval(imageId, approved),
+    onMutate: async ({ imageId, approved }) => {
+      await queryClient.cancelQueries({ queryKey: listQueryKey })
+
+      const previousList =
+        queryClient.getQueryData<InfiniteData<GeneratedImageListResponse>>(
+          listQueryKey,
+        )
+      const modalQueryKey = ["generated-image", imageId] as const
+      const previousModal =
+        queryClient.getQueryData<GeneratedImageWithContext>(modalQueryKey)
+
+      const sceneIdFromList = previousList?.pages
+        .flatMap((page) => page.data)
+        .find((img) => img.id === imageId)?.scene_extraction_id
+      const sceneIdFromModal = previousModal?.image.scene_extraction_id
+      const sceneId = sceneIdFromList ?? sceneIdFromModal ?? null
+      const sceneQueryKey = sceneId
+        ? (["generated-images", "scene", sceneId] as const)
+        : undefined
+      const previousScene = sceneQueryKey
+        ? queryClient.getQueryData<GeneratedImageListResponse>(sceneQueryKey)
+        : undefined
+
+      const optimisticTimestamp = new Date().toISOString()
+
+      queryClient.setQueryData(
+        listQueryKey,
+        (old: InfiniteData<GeneratedImageListResponse> | undefined) => {
+          if (!old) return old
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              data: page.data.map((img) =>
+                img.id === imageId
+                  ? {
+                      ...img,
+                      user_approved: approved,
+                      approval_updated_at: optimisticTimestamp,
+                    }
+                  : img,
+              ),
+            })),
+          }
+        },
+      )
+
+      if (previousModal) {
+        queryClient.setQueryData(modalQueryKey, {
+          ...previousModal,
+          image: {
+            ...previousModal.image,
+            user_approved: approved,
+            approval_updated_at: optimisticTimestamp,
+          },
+        })
+      }
+
+      if (sceneQueryKey) {
+        queryClient.setQueryData<GeneratedImageListResponse | undefined>(
+          sceneQueryKey,
+          (old) => {
+            if (!old) return old
+            return {
+              ...old,
+              data: old.data.map((img) =>
+                img.id === imageId
+                  ? {
+                      ...img,
+                      user_approved: approved,
+                      approval_updated_at: optimisticTimestamp,
+                    }
+                  : img,
+              ),
+            }
+          },
+        )
+      }
+
+      return {
+        previousList,
+        previousModal,
+        previousScene,
+        sceneQueryKey,
+      }
+    },
+    onError: (_error, variables, context) => {
+      if (context?.previousList) {
+        queryClient.setQueryData(listQueryKey, context.previousList)
+      }
+      if (context?.previousModal) {
+        queryClient.setQueryData(
+          ["generated-image", variables.imageId],
+          context.previousModal,
+        )
+      }
+      if (context?.sceneQueryKey && context.previousScene) {
+        queryClient.setQueryData(context.sceneQueryKey, context.previousScene)
+      }
+    },
+    onSuccess: (data, variables, context) => {
+      queryClient.setQueryData(
+        listQueryKey,
+        (old: InfiniteData<GeneratedImageListResponse> | undefined) => {
+          if (!old) return old
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              data: page.data.map((img) => (img.id === data.id ? data : img)),
+            })),
+          }
+        },
+      )
+
+      queryClient.setQueryData(
+        ["generated-image", variables.imageId],
+        (old: GeneratedImageWithContext | undefined) => {
+          if (!old) return old
+          return {
+            ...old,
+            image: {
+              ...old.image,
+              user_approved: data.user_approved,
+              approval_updated_at: data.approval_updated_at,
+            },
+          }
+        },
+      )
+
+      if (context?.sceneQueryKey) {
+        queryClient.setQueryData<GeneratedImageListResponse | undefined>(
+          context.sceneQueryKey,
+          (old) => {
+            if (!old) return old
+            return {
+              ...old,
+              data: old.data.map((img) => (img.id === data.id ? data : img)),
+            }
+          },
+        )
+      }
+    },
+    onSettled: (_data, _error, variables, context) => {
+      queryClient.invalidateQueries({ queryKey: listQueryKey })
+      queryClient.invalidateQueries({
+        queryKey: ["generated-image", variables.imageId],
+      })
+      if (context?.sceneQueryKey) {
+        queryClient.invalidateQueries({ queryKey: context.sceneQueryKey })
+      }
+    },
+  })
+
+  const handleApprovalChange = useCallback(
+    (imageId: string, approved: boolean | null) => {
+      approvalMutation.mutate({ imageId, approved })
+    },
+    [approvalMutation],
+  )
 
   // Flatten all pages into a single array
   const images = (imagesQuery.data?.pages ?? [])
     .flatMap((page) => page.data)
     .filter((image) => !image.error)
+    .filter((image) => {
+      if (search.approval === undefined) return true
+      if (search.approval === null) return image.user_approved === null
+      return image.user_approved === search.approval
+    })
 
   const handleImageClick = (imageId: string, sceneId: string) => {
     setSelectedImageId(imageId)
@@ -308,13 +558,17 @@ function GeneratedImagesGalleryPage() {
           imagesQuery.fetchNextPage()
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1 },
     )
 
     observer.observe(loadMoreRef.current)
 
     return () => observer.disconnect()
-  }, [imagesQuery.hasNextPage, imagesQuery.isFetchingNextPage, imagesQuery.fetchNextPage])
+  }, [
+    imagesQuery.hasNextPage,
+    imagesQuery.isFetchingNextPage,
+    imagesQuery.fetchNextPage,
+  ])
 
   return (
     <Container maxW="full" py={4} display="flex" flexDirection="column" gap={4}>
@@ -355,6 +609,7 @@ function GeneratedImagesGalleryPage() {
                 onClick={() =>
                   handleImageClick(image.id, image.scene_extraction_id)
                 }
+                onApprovalChange={handleApprovalChange}
               />
             ))}
           </SimpleGrid>
@@ -387,8 +642,12 @@ function GeneratedImagesGalleryPage() {
         onClose={handleModalClose}
         imageId={selectedImageId}
         sceneId={selectedSceneId}
-        allImages={images.map((img) => ({ id: img.id, scene_extraction_id: img.scene_extraction_id }))}
+        allImages={images.map((img) => ({
+          id: img.id,
+          scene_extraction_id: img.scene_extraction_id,
+        }))}
         onNavigate={handleNavigate}
+        onApprovalChange={handleApprovalChange}
       />
     </Container>
   )

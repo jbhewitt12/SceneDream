@@ -1,5 +1,5 @@
 import { Box, Center, Flex, SimpleGrid, Spinner, Text } from "@chakra-ui/react"
-import { type ReactNode } from "react"
+import type { ReactNode } from "react"
 
 import type { ImagePrompt } from "@/api/imagePrompts"
 import PromptCard from "@/components/Prompts/PromptCard"

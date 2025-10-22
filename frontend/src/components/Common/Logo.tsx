@@ -17,16 +17,16 @@ function Logo({ size = "md" }: LogoProps) {
 
   return (
     <Link to="/extracted-scenes" aria-label="SceneDream Home">
-      <Flex align="center" gap={2}
-        _hover={{ opacity: 0.95 }}
-      >
+      <Flex align="center" gap={2} _hover={{ opacity: 0.95 }}>
         <Flex
           align="center"
           justify="center"
           w={8}
           h={8}
           rounded="md"
-          bgGradient="to-br" gradientFrom="#00e5ff" gradientTo="#7f5af0"
+          bgGradient="to-br"
+          gradientFrom="#00e5ff"
+          gradientTo="#7f5af0"
           overflow="hidden"
           boxShadow="0 0 24px 2px #00e5ff33"
         >
@@ -47,5 +47,3 @@ function Logo({ size = "md" }: LogoProps) {
 }
 
 export default Logo
-
-

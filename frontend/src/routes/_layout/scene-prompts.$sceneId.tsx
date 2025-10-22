@@ -2,27 +2,35 @@ import {
   Box,
   Button,
   Container,
-  Separator,
   Flex,
   HStack,
   Heading,
   Icon,
   Input,
+  Separator,
   SimpleGrid,
   Stack,
   Switch,
   Text,
 } from "@chakra-ui/react"
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { Link as RouterLink, createFileRoute, useNavigate } from "@tanstack/react-router"
+import {
+  Link as RouterLink,
+  createFileRoute,
+  useNavigate,
+} from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { FiArrowLeft, FiFilter, FiRefreshCcw, FiZap } from "react-icons/fi"
 import { z } from "zod"
 
-import { ImagePromptApi } from "@/api/imagePrompts"
 import { ImagePromptGenerationApi } from "@/api/imagePromptGeneration"
+import { ImagePromptApi } from "@/api/imagePrompts"
 import type { ImagePromptSceneSummary } from "@/client"
-import { PromptDetailDrawer, PromptList, SceneContextPanel } from "@/components/Prompts"
+import {
+  PromptDetailDrawer,
+  PromptList,
+  SceneContextPanel,
+} from "@/components/Prompts"
 import useCustomToast from "@/hooks/useCustomToast"
 
 const scenePromptsSearchSchema = z.object({
@@ -134,14 +142,21 @@ const ScenePromptFilters = ({
             }
           />
         </Stack>
-        <Stack spacing={1} direction="row" align="center" justify="space-between">
+        <Stack
+          spacing={1}
+          direction="row"
+          align="center"
+          justify="space-between"
+        >
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Newest first
           </Text>
           <Switch
             checked={search.newest_first}
             onChange={(event) =>
-              handleChange({ newest_first: (event.target as HTMLInputElement).checked })
+              handleChange({
+                newest_first: (event.target as HTMLInputElement).checked,
+              })
             }
           />
         </Stack>
@@ -192,7 +207,7 @@ function ScenePromptsPage() {
     }
     const meta = promptQuery.data?.meta
     if (meta && typeof meta === "object" && "scene" in meta) {
-      const value = (meta as Record<string, unknown>)["scene"]
+      const value = (meta as Record<string, unknown>).scene
       if (value && typeof value === "object") {
         return value as ImagePromptSceneSummary
       }
@@ -215,7 +230,9 @@ function ScenePromptsPage() {
     },
     onError: (error) => {
       showErrorToast(
-        error instanceof Error ? error.message : "Unable to trigger prompts for this scene",
+        error instanceof Error
+          ? error.message
+          : "Unable to trigger prompts for this scene",
       )
     },
   })
@@ -232,7 +249,11 @@ function ScenePromptsPage() {
             to="/prompt-gallery"
             size="sm"
             leftIcon={<Icon as={FiArrowLeft} />}
-            search={sceneSummary?.book_slug ? { book_slug: sceneSummary.book_slug } : undefined}
+            search={
+              sceneSummary?.book_slug
+                ? { book_slug: sceneSummary.book_slug }
+                : undefined
+            }
             variant="ghost"
           >
             Back to gallery
@@ -251,12 +272,14 @@ function ScenePromptsPage() {
       {sceneSummary && (
         <SceneContextPanel
           scene={sceneSummary}
-          contextWindow={prompts[0]?.context_window ?? {
-            chapterNumber: sceneSummary.chapter_number,
-            paragraphSpan: null,
-            paragraphsBefore: null,
-            paragraphsAfter: null,
-          }}
+          contextWindow={
+            prompts[0]?.context_window ?? {
+              chapterNumber: sceneSummary.chapter_number,
+              paragraphSpan: null,
+              paragraphsBefore: null,
+              paragraphsAfter: null,
+            }
+          }
         />
       )}
       <ScenePromptFilters search={search} onChange={handleSearchUpdate} />
@@ -271,4 +294,3 @@ function ScenePromptsPage() {
     </Container>
   )
 }
-

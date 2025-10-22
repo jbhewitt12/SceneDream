@@ -79,7 +79,9 @@ const PromptCard = ({ prompt }: PromptCardProps) => {
   const handleCopy = () => {
     clipboard.onCopy()
     showSuccessToast(
-      clipboard.hasCopied ? "Prompt already copied" : "Prompt copied to clipboard",
+      clipboard.hasCopied
+        ? "Prompt already copied"
+        : "Prompt copied to clipboard",
     )
   }
 

@@ -2,7 +2,6 @@ import {
   Box,
   Button,
   Container,
-  Separator,
   Flex,
   HStack,
   Heading,
@@ -11,6 +10,7 @@ import {
   NativeSelectField,
   NativeSelectIndicator,
   NativeSelectRoot,
+  Separator,
   SimpleGrid,
   Stack,
   Text,
@@ -21,8 +21,8 @@ import { useCallback, useEffect, useMemo } from "react"
 import { FiFilter, FiRefreshCcw, FiZap } from "react-icons/fi"
 import { z } from "zod"
 
-import { ImagePromptApi } from "@/api/imagePrompts"
 import { ImagePromptGenerationApi } from "@/api/imagePromptGeneration"
+import { ImagePromptApi } from "@/api/imagePrompts"
 import {
   type SceneExtractionFilterOptions,
   SceneExtractionService,
@@ -313,15 +313,15 @@ function PromptGalleryPage() {
     },
     onError: (error) => {
       showErrorToast(
-        error instanceof Error ? error.message : "Unable to trigger prompt generation",
+        error instanceof Error
+          ? error.message
+          : "Unable to trigger prompt generation",
       )
     },
   })
 
   const disableGenerate =
-    !search.book_slug ||
-    generationMutation.isPending ||
-    filtersQuery.isLoading
+    !search.book_slug || generationMutation.isPending || filtersQuery.isLoading
 
   return (
     <Container maxW="full" py={4} display="flex" flexDirection="column" gap={4}>

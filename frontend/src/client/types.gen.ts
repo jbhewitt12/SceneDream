@@ -9,6 +9,95 @@ export type Body_login_login_access_token = {
   client_secret?: string | null
 }
 
+/**
+ * Schema for updating image approval status.
+ */
+export type GeneratedImageApprovalUpdate = {
+  /**
+   * Approval status: true (approved), false (rejected), null (clear approval)
+   */
+  user_approved: boolean | null
+}
+
+/**
+ * Request schema for triggering image generation.
+ */
+export type GeneratedImageGenerateRequest = {
+  book_slug?: string | null
+  chapter_range?: [number, number] | null
+  scene_ids?: Array<string> | null
+  prompt_ids?: Array<string> | null
+  limit?: number | null
+  overwrite?: boolean
+  quality?: string
+  preferred_style?: string | null
+  aspect_ratio?: string | null
+  provider?: string
+  model?: string
+  response_format?: string
+  concurrency?: number
+  dry_run?: boolean
+}
+
+/**
+ * Response schema for image generation results.
+ */
+export type GeneratedImageGenerateResponse = {
+  generated_image_ids: Array<string>
+  count: number
+  dry_run: boolean
+}
+
+/**
+ * Collection response for generated images with optional metadata.
+ */
+export type GeneratedImageListResponse = {
+  data: Array<GeneratedImageRead>
+  meta?: {
+    [key: string]: unknown
+  }
+}
+
+/**
+ * Detailed representation of a generated image.
+ */
+export type GeneratedImageRead = {
+  scene_extraction_id: string
+  image_prompt_id: string
+  book_slug: string
+  chapter_number: number
+  variant_index: number
+  provider: string
+  model: string
+  size: string
+  quality: string
+  style: string
+  aspect_ratio?: string | null
+  response_format: string
+  storage_path: string
+  file_name: string
+  width?: number | null
+  height?: number | null
+  bytes_approx?: number | null
+  checksum_sha256?: string | null
+  request_id?: string | null
+  error?: string | null
+  id: string
+  created_at: string
+  updated_at: string
+  user_approved?: boolean | null
+  approval_updated_at?: string | null
+}
+
+/**
+ * Generated image with full prompt and scene context.
+ */
+export type GeneratedImageWithContext = {
+  image: GeneratedImageRead
+  prompt?: ImagePromptSummary | null
+  scene?: SceneSummary | null
+}
+
 export type HTTPValidationError = {
   detail?: Array<ValidationError>
 }
@@ -68,6 +157,18 @@ export type ImagePromptSceneSummary = {
   location_marker: string
   refined?: string | null
   raw: string
+}
+
+/**
+ * Summary of image prompt for context.
+ */
+export type ImagePromptSummary = {
+  id: string
+  prompt_text: string
+  style_tags?: Array<string> | null
+  attributes?: {
+    [key: string]: unknown
+  }
 }
 
 export type ItemCreate = {
@@ -237,6 +338,20 @@ export type SceneRankingSceneSummary = {
   refinement_decision?: string | null
 }
 
+/**
+ * Summary of scene for context.
+ */
+export type SceneSummary = {
+  id: string
+  book_slug: string
+  chapter_number: number
+  chapter_title: string
+  scene_number: number
+  location_marker: string
+  raw: string
+  refined?: string | null
+}
+
 export type Token = {
   access_token: string
   token_type?: string
@@ -292,6 +407,76 @@ export type ValidationError = {
   msg: string
   type: string
 }
+
+export type GeneratedImagesListGeneratedImagesData = {
+  approval?: boolean | null
+  book?: string | null
+  chapter?: number | null
+  limit?: number
+  model?: string | null
+  newestFirst?: boolean
+  offset?: number | null
+  promptId?: string | null
+  provider?: string | null
+  sceneId?: string | null
+}
+
+export type GeneratedImagesListGeneratedImagesResponse =
+  GeneratedImageListResponse
+
+export type GeneratedImagesGetGeneratedImageData = {
+  imageId: string
+  includePrompt?: boolean
+  includeScene?: boolean
+}
+
+export type GeneratedImagesGetGeneratedImageResponse = GeneratedImageWithContext
+
+export type GeneratedImagesUpdateImageApprovalData = {
+  imageId: string
+  requestBody: GeneratedImageApprovalUpdate
+}
+
+export type GeneratedImagesUpdateImageApprovalResponse = GeneratedImageRead
+
+export type GeneratedImagesStreamGeneratedImageFileData = {
+  imageId: string
+}
+
+export type GeneratedImagesStreamGeneratedImageFileResponse = unknown
+
+export type GeneratedImagesListGeneratedImagesForSceneData = {
+  includePrompt?: boolean
+  includeScene?: boolean
+  limit?: number
+  model?: string | null
+  newestFirst?: boolean
+  offset?: number | null
+  provider?: string | null
+  sceneId: string
+}
+
+export type GeneratedImagesListGeneratedImagesForSceneResponse =
+  GeneratedImageListResponse
+
+export type GeneratedImagesListGeneratedImagesForPromptData = {
+  limit?: number
+  model?: string | null
+  newestFirst?: boolean
+  offset?: number | null
+  promptId: string
+  provider?: string | null
+}
+
+export type GeneratedImagesListGeneratedImagesForPromptResponse =
+  GeneratedImageListResponse
+
+export type GeneratedImagesTriggerImageGenerationData = {
+  requestBody: GeneratedImageGenerateRequest
+}
+
+export type GeneratedImagesTriggerImageGenerationResponse =
+  GeneratedImageGenerateResponse
 
 export type ImagePromptsListPromptsForSceneData = {
   includeScene?: boolean
