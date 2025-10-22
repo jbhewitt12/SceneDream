@@ -142,6 +142,51 @@ class GeneratedImageRepository:
 
         return list(self._session.exec(statement))
 
+    def list_all(
+        self,
+        *,
+        chapter_number: int | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        approval: bool | None = None,
+        newest_first: bool = True,
+        limit: int | None = None,
+        offset: int | None = None,
+        include_prompt: bool = False,
+        include_scene: bool = False,
+    ) -> list[GeneratedImage]:
+        """Return generated images across all books with optional filters."""
+
+        statement = select(GeneratedImage)
+
+        if chapter_number is not None:
+            statement = statement.where(GeneratedImage.chapter_number == chapter_number)
+        if provider:
+            statement = statement.where(GeneratedImage.provider == provider)
+        if model:
+            statement = statement.where(GeneratedImage.model == model)
+        if approval is not None:
+            statement = statement.where(GeneratedImage.user_approved == approval)
+
+        ordering = (
+            GeneratedImage.created_at.desc()
+            if newest_first
+            else GeneratedImage.created_at.asc()
+        )
+        statement = statement.order_by(ordering)
+
+        if include_prompt:
+            statement = statement.options(joinedload(GeneratedImage.image_prompt))
+        if include_scene:
+            statement = statement.options(joinedload(GeneratedImage.scene_extraction))
+
+        if offset is not None:
+            statement = statement.offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
+
+        return list(self._session.exec(statement))
+
     def list_for_prompt(
         self,
         image_prompt_id: UUID,
