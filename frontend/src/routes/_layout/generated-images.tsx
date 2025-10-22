@@ -73,14 +73,19 @@ const generatedImagesSearchSchema = z.object({
     .or(z.literal("").transform(() => undefined))
     .catch(undefined),
   approval: z
-    .enum(["approved", "rejected", "pending", ""])
-    .optional()
-    .transform((val) => {
-      if (val === "approved") return true
-      if (val === "rejected") return false
-      if (val === "pending") return null
-      return undefined
-    })
+    .preprocess((value) => {
+      if (value === undefined || value === "") return undefined
+      if (value === true || value === "true" || value === "approved") {
+        return true
+      }
+      if (value === false || value === "false" || value === "rejected") {
+        return false
+      }
+      if (value === null || value === "null" || value === "pending") {
+        return null
+      }
+      return value
+    }, z.boolean().or(z.null()).optional())
     .catch(undefined),
   page_size: z.coerce.number().int().min(1).max(48).catch(24),
 })
