@@ -172,7 +172,7 @@ const GeneratedImagesFilters = ({
                 })
               }
             >
-              <option value="">Select book</option>
+              <option value="">All books</option>
               {books.map((book) => (
                 <option key={book} value={book}>
                   {book}
@@ -280,14 +280,14 @@ const GeneratedImagesFilters = ({
 }
 
 const useGeneratedImagesData = (search: GeneratedImagesSearch) => {
-  const queryEnabled = Boolean(search.book_slug)
+  const queryEnabled = true
   const queryKey = ["generated-images", "list", search] as const
 
   const query = useInfiniteQuery({
     queryKey,
     queryFn: ({ pageParam = 0 }) =>
       GeneratedImageApi.list({
-        book: search.book_slug!,
+        book: search.book_slug,
         chapter: search.chapter_number,
         provider: search.provider,
         model: search.model,
@@ -328,17 +328,6 @@ function GeneratedImagesGalleryPage() {
     queryKey: ["scene-extractions", "filters"],
     queryFn: () => SceneExtractionService.filters(),
   })
-
-  useEffect(() => {
-    if (!search.book_slug && filtersQuery.data?.books?.length) {
-      navigate({
-        search: (prev: GeneratedImagesSearch) => ({
-          ...prev,
-          book_slug: filtersQuery.data?.books?.[0],
-        }),
-      })
-    }
-  }, [filtersQuery.data?.books, navigate, search.book_slug])
 
   const handleSearchUpdate = useCallback(
     (updates: Partial<GeneratedImagesSearch>) => {

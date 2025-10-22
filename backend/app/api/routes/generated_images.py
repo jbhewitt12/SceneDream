@@ -128,9 +128,15 @@ def list_generated_images(
             offset=offset,
         )
     else:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one filter (book, scene_id, or prompt_id) is required",
+        # List across all books when no specific filter is provided
+        images = repository.list_all(
+            chapter_number=chapter,
+            provider=provider,
+            model=model,
+            approval=approval,
+            newest_first=newest_first,
+            limit=limit,
+            offset=offset,
         )
 
     data = [GeneratedImageRead.model_validate(record) for record in images]
