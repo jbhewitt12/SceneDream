@@ -41,8 +41,7 @@ Before creating any plan, you MUST thoroughly explore and understand the relevan
 ## General Guidelines
 
 - There is no test database or testnet.
-- If this issue modifies code that conducts trades on Polymarket, the final phase should be to do a single test using a test script that uses actual money.
-- Don't create unit tests for any logic that conducts trades on Polymarket.
+- Don't add any steps that involve manually testing the frontend.
 
 ## Creating the Issue Plan
 
