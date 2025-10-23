@@ -423,7 +423,7 @@ class SceneExtractor:
             ):
                 logger.debug("Skipping front/back matter item: %s", item.get_name())
                 continue
-            title = raw_title or f"Chapter {chapter_number}"
+            title = self._clean_chapter_title(raw_title, chapter_number)
             chapters.append(
                 Chapter(
                     number=chapter_number,
@@ -434,6 +434,30 @@ class SceneExtractor:
             )
             chapter_number += 1
         return chapters
+
+    def _clean_chapter_title(
+        self, title: Optional[str], chapter_number: int
+    ) -> str:
+        fallback = f"Chapter {chapter_number}"
+        if not title:
+            return fallback
+
+        normalized = self._normalize_whitespace(title)
+        if not normalized:
+            return fallback
+
+        # Treat long, multi-sentence headings as body text that was wrapped in a heading tag.
+        punctuation_hits = sum(normalized.count(mark) for mark in ".!?")
+        if len(normalized) > 200 or punctuation_hits >= 2:
+            logger.debug(
+                "Discarding verbose chapter title for chapter %s (len=%s, sentences=%s)",
+                chapter_number,
+                len(normalized),
+                punctuation_hits,
+            )
+            return fallback
+
+        return normalized
 
     def _extract_paragraphs(self, soup: BeautifulSoup) -> List[str]:
         raw_text = soup.get_text("\n")
