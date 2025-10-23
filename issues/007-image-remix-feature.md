@@ -301,40 +301,14 @@ Before starting implementation:
 - Log remix image generation success/failure
 - Use existing logging infrastructure (Python `logging` module)
 
-## Testing Strategy
-
-**Unit Tests**:
-- `test_generate_remix_variants()` - Test service method creates 2 variants with correct indices
-- `test_build_remix_prompt()` - Test prompt construction includes source details and variation instructions
-- Skip LLM API calls (unit tests only for logic that doesn't call external APIs per CLAUDE.md)
-
-**Integration Tests**:
-- Manual test: POST to `/remix` endpoint and verify prompts created in DB
-- Manual test: Verify images generated after remix completes
-
-**Manual Verification** (primary for v1):
-1. Click Remix on an image in the UI
-2. Wait 2-3 minutes
-3. Refresh page
-4. Verify 2 new images appear
-5. Visually confirm they are subtle variations
-6. Verify they have sequential variant indices (e.g., if original was v0, remixes are v1 and v2)
-
-**Optional Performance Check**: Not needed for v1 (remix is infrequent user action)
-
 ## Acceptance Criteria
-- [x] All automated tests pass (if any are written)
-- [x] Code follows project conventions (Python: 4 spaces, snake_case; TypeScript: 2 spaces, camelCase)
-- [x] Backend linting passes (`uv run bash scripts/lint.sh`)
-- [x] Frontend linting passes (`npm run lint`)
-- [x] Remix button appears on image cards
-- [x] Clicking Remix triggers backend generation
-- [x] After 2-3 minutes and page refresh, 2 new images appear
-- [x] New images are subtle variations of the original
-- [x] Variant indices are sequential and unique
-- [x] Error cases handled gracefully (404 for missing image, toast on API error)
-- [x] No console errors in browser
-- [x] Documentation updated in CLAUDE.md
+- [ ] Code follows project conventions (Python: 4 spaces, snake_case; TypeScript: 2 spaces, camelCase)
+- [ ] Backend linting passes (`uv run bash scripts/lint.sh`)
+- [ ] Frontend linting passes (`npm run lint`)
+- [ ] Remix button appears on image cards
+- [ ] Clicking Remix triggers backend generation (fire-and-forget)
+- [ ] Error cases handled gracefully (404 for missing image, toast on API error)
+- [ ] No console errors in browser
 
 ## Quick Reference Commands
 - **Run backend locally**: `cd backend && uv run fastapi dev app/main.py`
