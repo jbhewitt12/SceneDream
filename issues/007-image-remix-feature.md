@@ -248,47 +248,6 @@ Before starting implementation:
    - Run `cd frontend && ./scripts/generate-client.sh`
    - Commit updated types
 
-### Phase 5: Testing and Documentation
-**Goal**: Validate the feature works end-to-end and document usage
-
-**Dependencies**:
-- All previous phases completed
-
-**Time Estimate**: 30 minutes
-
-**Success Metrics**:
-- [ ] Manual test: Click Remix on an image, wait 2-3 minutes, refresh page, verify 2 new images appear
-- [ ] Verify new images are subtle variations (visual inspection)
-- [ ] Verify variant indices are sequential
-- [ ] Error handling works (test with invalid image ID)
-- [ ] Code passes linting (backend and frontend)
-- [ ] Updated CLAUDE.md if any important patterns established
-
-**Tasks**:
-1. Manual end-to-end test:
-   - Start backend and frontend: `docker compose watch`
-   - Navigate to `/generated-images`, filter to a book with images
-   - Click Remix on one image
-   - Verify toast appears
-   - Wait 2-3 minutes
-   - Refresh page
-   - Verify 2 new images appear for the same scene
-   - Compare new images to original visually
-
-2. Error case testing:
-   - Test remix with invalid image ID via curl: `curl -X POST http://localhost:8000/api/generated-images/invalid-uuid-here/remix`
-   - Verify 404 response
-   - Test remix on image with missing prompt (if possible to create this state)
-
-3. Code quality checks:
-   - Backend linting: `cd backend && uv run bash scripts/lint.sh`
-   - Frontend linting: `cd frontend && npm run lint`
-   - Fix any issues
-
-4. Documentation:
-   - Add brief note to `CLAUDE.md` under "Image Generation" section about remix feature
-   - Include example: "Use the Remix button in the UI or POST to `/generated-images/{image_id}/remix` to create 2 subtle variations"
-
 ## System Integration Points
 
 **Database Tables**:
@@ -412,7 +371,4 @@ Each phase should document:
 <!-- To be filled by implementing instance -->
 
 **Phase 4 Notes**:
-<!-- To be filled by implementing instance -->
-
-**Phase 5 Notes**:
 <!-- To be filled by implementing instance -->
