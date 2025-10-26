@@ -105,6 +105,17 @@ export type GeneratedImageGenerateResponse = {
   dry_run: boolean
 }
 
+export type GeneratedImageRemixRequest = {
+  variants_count?: number
+  dry_run?: boolean
+}
+
+export type GeneratedImageRemixResponse = {
+  remix_prompt_ids: string[]
+  status: string
+  estimated_completion_seconds: number
+}
+
 export const GeneratedImageApi = {
   list(
     params: ListGeneratedImagesParams = {},
@@ -226,4 +237,29 @@ export const updateImageApproval = async (
   }
 
   return (await response.json()) as GeneratedImageRead
+}
+
+export const remixImage = async (
+  imageId: string,
+  payload: GeneratedImageRemixRequest | undefined = undefined,
+): Promise<GeneratedImageRemixResponse> => {
+  const url = buildUrl(
+    `/api/v1/generated-images/${encodeURIComponent(imageId)}/remix`,
+  )
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload ?? {}),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    const message = body || `${response.status} ${response.statusText}`
+    throw new Error(`Failed to start remix: ${message}`)
+  }
+
+  return (await response.json()) as GeneratedImageRemixResponse
 }

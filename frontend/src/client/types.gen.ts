@@ -90,6 +90,35 @@ export type GeneratedImageRead = {
 }
 
 /**
+ * Request schema for triggering a remix of an existing image prompt.
+ */
+export type GeneratedImageRemixRequest = {
+  /**
+   * Optional override for number of remix prompt variants to create.
+   */
+  variants_count?: number | null
+  /**
+   * If true, return previews without persisting new prompts.
+   */
+  dry_run?: boolean
+}
+
+/**
+ * Response schema for remix initiation acknowledgment.
+ */
+export type GeneratedImageRemixResponse = {
+  remix_prompt_ids: Array<string>
+  /**
+   * Represents the remix request status (accepted when background task scheduled).
+   */
+  status?: string
+  /**
+   * Rough estimate of how long the remix generation may take.
+   */
+  estimated_completion_seconds?: number
+}
+
+/**
  * Generated image with full prompt and scene context.
  */
 export type GeneratedImageWithContext = {
@@ -470,6 +499,14 @@ export type GeneratedImagesListGeneratedImagesForPromptData = {
 
 export type GeneratedImagesListGeneratedImagesForPromptResponse =
   GeneratedImageListResponse
+
+export type GeneratedImagesRemixGeneratedImageData = {
+  imageId: string
+  requestBody?: GeneratedImageRemixRequest | null
+}
+
+export type GeneratedImagesRemixGeneratedImageResponse =
+  GeneratedImageRemixResponse
 
 export type GeneratedImagesTriggerImageGenerationData = {
   requestBody: GeneratedImageGenerateRequest

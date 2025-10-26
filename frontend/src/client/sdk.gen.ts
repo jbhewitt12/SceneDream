@@ -12,6 +12,8 @@ import type {
   GeneratedImagesListGeneratedImagesForSceneData,
   GeneratedImagesListGeneratedImagesForSceneResponse,
   GeneratedImagesListGeneratedImagesResponse,
+  GeneratedImagesRemixGeneratedImageData,
+  GeneratedImagesRemixGeneratedImageResponse,
   GeneratedImagesStreamGeneratedImageFileData,
   GeneratedImagesStreamGeneratedImageFileResponse,
   GeneratedImagesTriggerImageGenerationData,
@@ -268,6 +270,32 @@ export class GeneratedImagesService {
         limit: data.limit,
         offset: data.offset,
       },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Remix Generated Image
+   * Trigger subtle remix prompt generation for a specific generated image.
+   * @param data The data for the request.
+   * @param data.imageId
+   * @param data.requestBody
+   * @returns GeneratedImageRemixResponse Successful Response
+   * @throws ApiError
+   */
+  public static remixGeneratedImage(
+    data: GeneratedImagesRemixGeneratedImageData,
+  ): CancelablePromise<GeneratedImagesRemixGeneratedImageResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/generated-images/{image_id}/remix",
+      path: {
+        image_id: data.imageId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },
