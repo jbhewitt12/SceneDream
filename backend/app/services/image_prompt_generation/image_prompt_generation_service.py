@@ -7,6 +7,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, MutableMapping, Sequence
 from uuid import UUID
@@ -31,6 +32,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_CHEATSHEET_PATH = (
     "backend/app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md"
 )
+REMIX_VARIANTS_COUNT = 2
 
 
 @dataclass(slots=True)
@@ -153,6 +155,10 @@ class ImagePromptGenerationService:
         "Respond only with strict JSON matching the requested array schema. "
         "Do not include commentary, markdown fences, or trailing text."
     )
+    _remix_system_instruction = (
+        "You are refining existing DALLE3 prompts. Respond only with valid JSON. "
+        "Do not include commentary, markdown, or explanations."
+    )
 
     def __init__(
         self,
@@ -237,6 +243,10 @@ class ImagePromptGenerationService:
             config=config,
         )
         variants = self._extract_variants(raw_payload, config)
+        if len(variants) != len(variant_indices):
+            raise ImagePromptGenerationServiceError(
+                "Variant count mismatch while preparing remix records"
+            )
         prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         service_payload = {
             "prompt_version": config.prompt_version,
@@ -358,12 +368,157 @@ class ImagePromptGenerationService:
             return []
         return self.generate_for_scenes(candidate_scenes, **overrides)
 
+    def generate_remix_variants(
+        self,
+        source_prompt: ImagePrompt | UUID,
+        *,
+        variants_count: int = REMIX_VARIANTS_COUNT,
+        dry_run: bool = False,
+    ) -> list[ImagePrompt] | list[ImagePromptPreview]:
+        if variants_count <= 0:
+            raise ImagePromptGenerationServiceError(
+                "variants_count must be positive for remix generation"
+            )
+
+        prompt_record = self._resolve_prompt(source_prompt)
+        scene = self._scene_repo.get(prompt_record.scene_extraction_id)
+        if scene is None:
+            raise ImagePromptGenerationServiceError(
+                f"Scene {prompt_record.scene_extraction_id} for prompt {prompt_record.id} was not found"
+            )
+
+        metadata = dict(self._config.metadata)
+        modes = metadata.get("modes")
+        if isinstance(modes, list):
+            modes_list = list(modes)
+        elif modes is None:
+            modes_list = []
+        else:
+            modes_list = [modes]
+        if "remix" not in modes_list:
+            modes_list.append("remix")
+        metadata["modes"] = modes_list
+        metadata["remix_source_prompt_id"] = str(prompt_record.id)
+
+        config = self._config.copy_with(
+            variants_count=variants_count,
+            temperature=0.7,
+            use_ranking_recommendation=False,
+            dry_run=dry_run,
+            metadata=metadata,
+        )
+
+        variant_indices = self._determine_next_variant_indices_for_scene(
+            scene.id, variants_count
+        )
+
+        remix_prompt = self._build_remix_prompt(
+            source_prompt=prompt_record,
+            variants_count=variants_count,
+        )
+        raw_payload, llm_request_id, execution_time_ms = self._invoke_llm(
+            prompt=remix_prompt,
+            config=config,
+            system_instruction=self._remix_system_instruction,
+        )
+        variants = self._extract_variants(raw_payload, config)
+
+        service_payload = {
+            "mode": "remix",
+            "source_prompt_id": str(prompt_record.id),
+            "variants_count": variants_count,
+            "model_name": config.model_name,
+            "model_vendor": config.model_vendor,
+            "temperature": config.temperature,
+            "max_output_tokens": config.max_output_tokens,
+        }
+        if config.metadata:
+            service_payload["run_metadata"] = dict(config.metadata)
+
+        remix_metadata = {
+            "remix_source_prompt_id": str(prompt_record.id),
+            "remix_generation_timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        raw_bundle = {
+            "response": raw_payload,
+            "service": service_payload,
+            "remix": remix_metadata,
+        }
+
+        records: list[dict[str, Any]] = []
+        for position, variant in enumerate(variants):
+            variant_index = variant_indices[position]
+            style_tags = list(variant.style_tags) if variant.style_tags else None
+            attributes = dict(variant.attributes)
+            records.append(
+                {
+                    "scene_extraction_id": prompt_record.scene_extraction_id,
+                    "model_vendor": config.model_vendor,
+                    "model_name": config.model_name,
+                    "prompt_version": prompt_record.prompt_version,
+                    "variant_index": variant_index,
+                    "title": variant.title,
+                    "prompt_text": variant.prompt_text,
+                    "style_tags": style_tags,
+                    "attributes": attributes,
+                    "context_window": dict(prompt_record.context_window),
+                    "raw_response": raw_bundle,
+                    "temperature": config.temperature,
+                    "max_output_tokens": config.max_output_tokens,
+                    "llm_request_id": llm_request_id,
+                    "execution_time_ms": execution_time_ms,
+                }
+            )
+
+        if config.dry_run:
+            previews: list[ImagePromptPreview] = []
+            for record in records:
+                preview_payload = dict(record["raw_response"])
+                preview_payload["prompt"] = remix_prompt
+                previews.append(
+                    ImagePromptPreview(
+                        scene_extraction_id=record["scene_extraction_id"],
+                        variant_index=record["variant_index"],
+                        title=record["title"],
+                        prompt_text=record["prompt_text"],
+                        style_tags=record["style_tags"],
+                        attributes=record["attributes"],
+                        prompt_version=record["prompt_version"],
+                        model_name=record["model_name"],
+                        model_vendor=record["model_vendor"],
+                        context_window=record["context_window"],
+                        raw_response=preview_payload,
+                        temperature=record["temperature"],
+                        max_output_tokens=record["max_output_tokens"],
+                        execution_time_ms=record["execution_time_ms"],
+                        llm_request_id=record["llm_request_id"],
+                    )
+                )
+            return previews
+
+        created = self._prompt_repo.bulk_create(
+            records,
+            commit=config.autocommit,
+            refresh=True,
+        )
+        if not config.autocommit:
+            self._session.flush()
+        return created
+
     def _resolve_scene(self, scene: SceneExtraction | UUID) -> SceneExtraction:
         if isinstance(scene, SceneExtraction):
             return scene
         resolved = self._scene_repo.get(scene)
         if resolved is None:
             raise ImagePromptGenerationServiceError(f"Scene {scene} was not found")
+        return resolved
+
+    def _resolve_prompt(self, prompt: ImagePrompt | UUID) -> ImagePrompt:
+        if isinstance(prompt, ImagePrompt):
+            return prompt
+        resolved = self._prompt_repo.get(prompt)
+        if resolved is None:
+            raise ImagePromptGenerationServiceError(f"Prompt {prompt} was not found")
         return resolved
 
     def _resolve_config(
@@ -569,11 +724,71 @@ class ImagePromptGenerationService:
         )
         return prompt
 
+    def _build_remix_prompt(
+        self,
+        *,
+        source_prompt: ImagePrompt,
+        variants_count: int,
+    ) -> str:
+        original_prompt_text = source_prompt.prompt_text.strip()
+        style_tags = source_prompt.style_tags or []
+        serialized_attributes = json.dumps(
+            source_prompt.attributes, indent=2, ensure_ascii=False
+        )
+        serialized_context = json.dumps(
+            source_prompt.context_window, indent=2, ensure_ascii=False
+        )
+        schema_example = json.dumps(
+            {
+                "title": "string or null",
+                "prompt_text": "string",
+                "style_tags": ["string"],
+                "attributes": source_prompt.attributes or {},
+            },
+            indent=2,
+        )
+        prompt_lines = [
+            "You are an elite prompt remixer for DALLE3.",
+            "Produce subtle, high-quality variations of an existing prompt without changing its core identity.",
+            "",
+            "## Remix Goals",
+            "- Preserve the same subject, composition intent, and narrative focus as the original prompt.",
+            "- Explore only small adjustments such as lighting, camera placement, atmosphere, or supporting sensory details.",
+            "- Maintain the existing style family and artistic intent. Do not change genre, time period, or medium.",
+            "- Change at most 2-3 elements per variant and ensure they remain coherent with the source.",
+            "",
+            f"Return exactly {variants_count} variants.",
+            "",
+            "## Original Prompt",
+            original_prompt_text,
+            "",
+            "## Original Style Tags",
+            ", ".join(style_tags) or "None provided",
+            "",
+            "## Original Attributes",
+            serialized_attributes,
+            "",
+            "## Scene Context Window",
+            serialized_context,
+            "",
+            "## Output Requirements",
+            "- Respond with a JSON array of objects. No markdown, comments, or trailing text.",
+            "- Each object must include: title (nullable), prompt_text, style_tags (list), attributes (object).",
+            "- prompt_text must remain self-contained and ready for DALLE3.",
+            "- style_tags should largely mirror the original list, adjusting only when necessary to reflect subtle changes.",
+            "- attributes must update only the fields affected by the variation.",
+            "- Ensure all entries are polished and free of placeholders.",
+            "",
+            f"The expected schema resembles: {schema_example}",
+        ]
+        return "\n".join(prompt_lines)
+
     def _invoke_llm(
         self,
         *,
         prompt: str,
         config: ImagePromptGenerationConfig,
+        system_instruction: str | None = None,
     ) -> tuple[Any, str | None, int]:
         attempts = max(config.retry_attempts, 0) + 1
         last_error: Exception | None = None
@@ -582,7 +797,7 @@ class ImagePromptGenerationService:
             try:
                 response = gemini_api.json_output(
                     prompt=prompt,
-                    system_instruction=self._system_instruction,
+                    system_instruction=system_instruction or self._system_instruction,
                     model=config.model_name,
                     temperature=config.temperature,
                     max_tokens=config.max_output_tokens,
@@ -677,6 +892,20 @@ class ImagePromptGenerationService:
                 }
             )
         return records
+
+    def _determine_next_variant_indices_for_scene(
+        self,
+        scene_extraction_id: UUID,
+        count: int,
+    ) -> list[int]:
+        prompts = self._prompt_repo.list_for_scene(
+            scene_extraction_id,
+            newest_first=False,
+        )
+        max_variant = -1
+        for prompt in prompts:
+            max_variant = max(max_variant, int(prompt.variant_index))
+        return [max_variant + offset + 1 for offset in range(count)]
 
     def _load_cheatsheet_text(self, path_str: str) -> str:
         if path_str in self._cheatsheet_text:
