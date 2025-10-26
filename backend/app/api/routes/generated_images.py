@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
 from app.api.deps import SessionDep
@@ -22,12 +24,20 @@ from app.schemas import (
     GeneratedImageListResponse,
     GeneratedImageRead,
     GeneratedImageWithContext,
+    GeneratedImageRemixRequest,
+    GeneratedImageRemixResponse,
     ImagePromptSummary,
     SceneSummary,
 )
 from app.services.image_generation.image_generation_service import (
     ImageGenerationService,
 )
+from app.services.image_prompt_generation.image_prompt_generation_service import (
+    ImagePromptGenerationService,
+    ImagePromptGenerationServiceError,
+    REMIX_VARIANTS_COUNT,
+)
+from models.image_prompt import ImagePrompt
 
 router = APIRouter(prefix="/generated-images", tags=["generated-images"])
 
@@ -38,10 +48,11 @@ _MAX_SCENE_LIMIT = 100
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _GENERATED_IMAGES_ROOT = (_PROJECT_ROOT / "img").resolve()
+logger = logging.getLogger(__name__)
 
 
 def _build_context(
-    record, *, include_prompt: bool, include_scene: bool
+    record: Any, *, include_prompt: bool, include_scene: bool
 ) -> GeneratedImageWithContext:
     """Build a GeneratedImageWithContext from a record with optional relationships."""
     image = GeneratedImageRead.model_validate(record)
@@ -73,6 +84,67 @@ def _resolve_image_file(storage_path: str, file_name: str) -> Path:
         raise HTTPException(status_code=404, detail="Image file not available") from exc
 
     return candidate
+
+
+async def _execute_remix_generation(
+    *,
+    source_image_id: UUID,
+    source_prompt_id: UUID,
+    variants_count: int,
+    dry_run: bool,
+) -> None:
+    """Background task to generate remix prompts and downstream images."""
+    from sqlmodel import Session
+
+    from app.core.db import engine
+
+    try:
+        with Session(engine) as background_session:
+            prompt_service = ImagePromptGenerationService(background_session)
+            prompts = prompt_service.generate_remix_variants(
+                source_prompt_id,
+                variants_count=variants_count,
+                dry_run=dry_run,
+            )
+            if dry_run:
+                logger.info(
+                    "Remix dry-run for image %s produced %d prompt previews",
+                    source_image_id,
+                    len(prompts),
+                )
+                return
+
+            persisted_prompts = cast(list[ImagePrompt], prompts)
+            prompt_ids = [prompt.id for prompt in persisted_prompts]
+            if not prompt_ids:
+                logger.info(
+                    "No remix prompts created for image %s; skipping image generation",
+                    source_image_id,
+                )
+                return
+
+            image_service = ImageGenerationService(background_session)
+            await image_service.generate_for_selection(
+                prompt_ids=prompt_ids,
+            )
+            background_session.commit()
+            logger.info(
+                "Remix generation complete for image %s using prompt IDs %s",
+                source_image_id,
+                ", ".join(str(pid) for pid in prompt_ids),
+            )
+    except ImagePromptGenerationServiceError:
+        logger.exception(
+            "Remix prompt generation failed for image %s (prompt %s)",
+            source_image_id,
+            source_prompt_id,
+        )
+    except Exception:
+        logger.exception(
+            "Unexpected error while processing remix for image %s (prompt %s)",
+            source_image_id,
+            source_prompt_id,
+        )
 
 
 @router.get("", response_model=GeneratedImageListResponse)
@@ -336,6 +408,66 @@ def list_generated_images_for_prompt(
         meta["model"] = model
 
     return GeneratedImageListResponse(data=data, meta=meta)
+
+
+@router.post(
+    "/{image_id}/remix",
+    response_model=GeneratedImageRemixResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def remix_generated_image(
+    *,
+    session: SessionDep,
+    background_tasks: BackgroundTasks,
+    image_id: UUID,
+    request: GeneratedImageRemixRequest | None = None,
+) -> GeneratedImageRemixResponse:
+    """Trigger subtle remix prompt generation for a specific generated image."""
+
+    request = (
+        request
+        if request is not None
+        else GeneratedImageRemixRequest(variants_count=None, dry_run=False)
+    )
+    image_repository = GeneratedImageRepository(session)
+    image = image_repository.get(image_id)
+    if image is None:
+        raise HTTPException(status_code=404, detail="Generated image not found")
+
+    prompt_repository = ImagePromptRepository(session)
+    prompt = prompt_repository.get(image.image_prompt_id)
+    if prompt is None:
+        raise HTTPException(
+            status_code=404, detail="Source image prompt for remix not found"
+        )
+
+    variants_count = request.variants_count or REMIX_VARIANTS_COUNT
+    dry_run = bool(request.dry_run)
+
+    try:
+        _ = ImagePromptGenerationService(session)
+        _ = ImageGenerationService(session)
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.exception("Unable to initialize remix services: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to initialize remix services",
+        ) from exc
+
+    background_tasks.add_task(
+        _execute_remix_generation,
+        source_image_id=image_id,
+        source_prompt_id=prompt.id,
+        variants_count=variants_count,
+        dry_run=dry_run,
+    )
+
+    estimated_seconds = max(variants_count * 60, 120)
+    return GeneratedImageRemixResponse(
+        remix_prompt_ids=[],
+        status="accepted",
+        estimated_completion_seconds=estimated_seconds,
+    )
 
 
 @router.post("/generate", response_model=GeneratedImageGenerateResponse)

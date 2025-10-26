@@ -336,13 +336,25 @@ Each phase should document:
 ---
 
 **Phase 1 Notes**:
-<!-- To be filled by implementing instance -->
+- Completion status: Completed 2025-10-23
+- Key findings: Added `generate_remix_variants` with remix-specific prompt builder, variant index helper, and metadata lineage while preserving existing prompt versioning.
+- Deviations: None; implementation followed plan with optional dry-run support retained.
+- Warnings/Gotchas: Service relies on Gemini JSON structure identical to standard prompts—adjust `_build_remix_prompt` if schema changes.
 
 **Phase 2 Notes**:
-<!-- To be filled by implementing instance -->
+- Completion status: Completed 2025-10-23
+- Key findings: New `/generated-images/{image_id}/remix` endpoint dispatches a background task that regenerates prompts then triggers image generation.
+- Deviations: Added defensive service instantiation check before scheduling background work.
+- Warnings/Gotchas: Background task opens a fresh SQLModel session; ensure engine configuration remains accessible for async tasks.
 
 **Phase 3 Notes**:
-<!-- To be filled by implementing instance -->
+- Completion status: Completed 2025-10-23
+- Key findings: Remix button added to `GeneratedImageCard` with loading/disable states to prevent duplicate clicks.
+- Deviations: None.
+- Warnings/Gotchas: Button state resets via component remount (keyed by image ID); no extra hooks required.
 
 **Phase 4 Notes**:
-<!-- To be filled by implementing instance -->
+- Completion status: Completed 2025-10-23
+- Key findings: Added API helper/mutation wiring, regenerated OpenAPI client, and surfaced success/error toasts.
+- Deviations: `npm run lint` currently fails due to numerous pre-existing Biome complaints in generated client files; noted in PR summary.
+- Warnings/Gotchas: Re-run `scripts/generate-client.sh` (or manual uv/npx sequence) after backend schema changes to keep client in sync.

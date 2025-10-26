@@ -129,3 +129,33 @@ class GeneratedImageGenerateResponse(BaseModel):
     generated_image_ids: list[UUID]
     count: int
     dry_run: bool
+
+
+class GeneratedImageRemixRequest(BaseModel):
+    """Request schema for triggering a remix of an existing image prompt."""
+
+    variants_count: int | None = Field(
+        None,
+        ge=1,
+        le=6,
+        description="Optional override for number of remix prompt variants to create.",
+    )
+    dry_run: bool = Field(
+        False,
+        description="If true, return previews without persisting new prompts.",
+    )
+
+
+class GeneratedImageRemixResponse(BaseModel):
+    """Response schema for remix initiation acknowledgment."""
+
+    remix_prompt_ids: list[UUID]
+    status: str = Field(
+        "accepted",
+        description="Represents the remix request status (accepted when background task scheduled).",
+    )
+    estimated_completion_seconds: int = Field(
+        150,
+        ge=0,
+        description="Rough estimate of how long the remix generation may take.",
+    )
