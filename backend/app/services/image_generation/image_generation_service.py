@@ -474,7 +474,7 @@ class ImageGenerationService:
         """Build generation tasks from prompts."""
         tasks: list[GenerationTask] = []
 
-        # Track variant indices per scene
+        # Track fallback variant indices per scene (used only if prompt.variant_index is missing)
         scene_variant_counters: dict[UUID, int] = {}
 
         for prompt in prompts:
@@ -496,10 +496,16 @@ class ImageGenerationService:
             size = map_aspect_ratio_to_size(aspect_ratio)
             style = derive_style_from_tags(prompt.style_tags, config.preferred_style)
 
-            # Get or initialize variant index for this scene
-            if scene_id not in scene_variant_counters:
-                scene_variant_counters[scene_id] = 0
-            variant_index = scene_variant_counters[scene_id]
+            if prompt.variant_index is not None:
+                variant_index = prompt.variant_index
+                scene_variant_counters[scene_id] = max(
+                    scene_variant_counters.get(scene_id, variant_index + 1),
+                    variant_index + 1,
+                )
+            else:
+                # Fallback to sequential counter if prompt lacks explicit variant index
+                variant_index = scene_variant_counters.get(scene_id, 0)
+                scene_variant_counters[scene_id] = variant_index + 1
 
             # Build storage path and filename
             storage_path = f"{config.storage_base}/{scene.book_slug}/chapter-{scene.chapter_number}"
@@ -536,9 +542,6 @@ class ImageGenerationService:
                     file_name=file_name,
                 )
             )
-
-            # Increment variant counter for this scene
-            scene_variant_counters[scene_id] += 1
 
         return tasks
 
