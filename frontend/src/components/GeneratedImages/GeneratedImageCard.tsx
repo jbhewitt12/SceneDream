@@ -1,3 +1,5 @@
+import { useState } from "react"
+
 import {
   Badge,
   Box,
@@ -8,7 +10,7 @@ import {
   Text,
 } from "@chakra-ui/react"
 
-import { FiThumbsDown, FiThumbsUp } from "react-icons/fi"
+import { FiShuffle, FiThumbsDown, FiThumbsUp } from "react-icons/fi"
 
 import type { GeneratedImageRead } from "@/api/generatedImages"
 import { buildGeneratedImageUrl } from "./url"
@@ -17,13 +19,18 @@ type GeneratedImageCardProps = {
   image: GeneratedImageRead
   onClick: () => void
   onApprovalChange?: (imageId: string, approved: boolean | null) => void
+  onRemix?: (imageId: string) => Promise<void> | void
 }
 
 const GeneratedImageCard = ({
   image,
   onClick,
   onApprovalChange,
+  onRemix,
 }: GeneratedImageCardProps) => {
+  const [isRemixing, setIsRemixing] = useState(false)
+  const [remixCompleted, setRemixCompleted] = useState(false)
+
   const fullPath = buildGeneratedImageUrl({
     id: image.id,
     storagePath: image.storage_path,
@@ -112,38 +119,76 @@ const GeneratedImageCard = ({
           </Badge>
         </HStack>
 
-        {onApprovalChange && (
+        {(onRemix || onApprovalChange) && (
           <HStack gap={2} justify="center" pt={1}>
-            <IconButton
-              aria-label="Approve image"
-              size="sm"
-              variant={image.user_approved === true ? "solid" : "ghost"}
-              colorPalette={image.user_approved === true ? "green" : "gray"}
-              onClick={(event) => {
-                event.stopPropagation()
-                onApprovalChange(
-                  image.id,
-                  image.user_approved === true ? null : true,
-                )
-              }}
-            >
-              <FiThumbsUp />
-            </IconButton>
-            <IconButton
-              aria-label="Reject image"
-              size="sm"
-              variant={image.user_approved === false ? "solid" : "ghost"}
-              colorPalette={image.user_approved === false ? "red" : "gray"}
-              onClick={(event) => {
-                event.stopPropagation()
-                onApprovalChange(
-                  image.id,
-                  image.user_approved === false ? null : false,
-                )
-              }}
-            >
-              <FiThumbsDown />
-            </IconButton>
+            {onRemix && (
+              <IconButton
+                aria-label="Remix image"
+                size="sm"
+                variant="outline"
+                colorPalette="purple"
+                isLoading={isRemixing}
+                isDisabled={isRemixing || remixCompleted}
+                title={
+                  remixCompleted
+                    ? "Remix already triggered"
+                    : "Generate subtle variations of this image"
+                }
+                onClick={async (event) => {
+                  event.stopPropagation()
+                  if (!onRemix || isRemixing || remixCompleted) {
+                    return
+                  }
+
+                  try {
+                    setIsRemixing(true)
+                    await Promise.resolve(onRemix(image.id))
+                    setRemixCompleted(true)
+                  } catch (error) {
+                    setRemixCompleted(false)
+                  } finally {
+                    setIsRemixing(false)
+                  }
+                }}
+              >
+                <FiShuffle />
+              </IconButton>
+            )}
+
+            {onApprovalChange && (
+              <>
+                <IconButton
+                  aria-label="Approve image"
+                  size="sm"
+                  variant={image.user_approved === true ? "solid" : "ghost"}
+                  colorPalette={image.user_approved === true ? "green" : "gray"}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onApprovalChange(
+                      image.id,
+                      image.user_approved === true ? null : true,
+                    )
+                  }}
+                >
+                  <FiThumbsUp />
+                </IconButton>
+                <IconButton
+                  aria-label="Reject image"
+                  size="sm"
+                  variant={image.user_approved === false ? "solid" : "ghost"}
+                  colorPalette={image.user_approved === false ? "red" : "gray"}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onApprovalChange(
+                      image.id,
+                      image.user_approved === false ? null : false,
+                    )
+                  }}
+                >
+                  <FiThumbsDown />
+                </IconButton>
+              </>
+            )}
           </HStack>
         )}
       </Stack>

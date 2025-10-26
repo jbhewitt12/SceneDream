@@ -32,6 +32,7 @@ import {
   type GeneratedImageListResponse,
   type GeneratedImageRead,
   type GeneratedImageWithContext,
+  remixImage,
   updateImageApproval,
 } from "@/api/generatedImages"
 import {
@@ -42,6 +43,7 @@ import {
   GeneratedImageCard,
   GeneratedImageModal,
 } from "@/components/GeneratedImages"
+import useCustomToast from "@/hooks/useCustomToast"
 
 const generatedImagesSearchSchema = z.object({
   book_slug: z
@@ -323,6 +325,7 @@ function GeneratedImagesGalleryPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
 
   const filtersQuery = useQuery({
     queryKey: ["scene-extractions", "filters"],
@@ -506,11 +509,30 @@ function GeneratedImagesGalleryPage() {
     },
   })
 
+  const remixMutation = useMutation<
+    Awaited<ReturnType<typeof remixImage>>,
+    Error,
+    string
+  >({
+    mutationFn: (imageId: string) => remixImage(imageId),
+    onSuccess: () => {
+      showSuccessToast("Remix started! Refresh in 2-3 minutes to see results.")
+    },
+    onError: (error: Error) => {
+      showErrorToast(error.message)
+    },
+  })
+
   const handleApprovalChange = useCallback(
     (imageId: string, approved: boolean | null) => {
       approvalMutation.mutate({ imageId, approved })
     },
     [approvalMutation],
+  )
+
+  const handleRemix = useCallback(
+    (imageId: string) => remixMutation.mutateAsync(imageId),
+    [remixMutation],
   )
 
   // Flatten all pages into a single array
@@ -604,6 +626,7 @@ function GeneratedImagesGalleryPage() {
                   handleImageClick(image.id, image.scene_extraction_id)
                 }
                 onApprovalChange={handleApprovalChange}
+                onRemix={handleRemix}
               />
             ))}
           </SimpleGrid>
