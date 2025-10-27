@@ -29,7 +29,10 @@ Usage examples:
     uv run python -m app.services.image_gen_cli images --book-slug look-to-windward-iain-m-banks --top-scenes 5
 
     # Create new prompt variants and images for top 3 ranked scenes
-    uv run python -m app.services.image_gen_cli refresh --book-slug look-to-windward-iain-m-banks --top-scenes 3 --prompts-per-scene 4
+    uv run python -m app.services.image_gen_cli refresh --book-slug look-to-windward-iain-m-banks --top-scenes 3
+
+    # Backfill prompts/images for top 5 ranked scenes missing assets
+    uv run python -m app.services.image_gen_cli backfill --book-slug look-to-windward-iain-m-banks --top-scenes 5
 
     # Dry run to preview what would happen
     uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --images-for-scenes 3 --dry-run
@@ -52,6 +55,7 @@ from dotenv import load_dotenv
 from sqlmodel import Session
 
 from app.core.db import engine
+from app.repositories.generated_image import GeneratedImageRepository
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
@@ -278,6 +282,41 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Number of concurrent image generation tasks (default: 3)",
     )
     _add_common_args(refresh)
+
+    # Backfill command - fill gaps for scenes without prompts/images
+    backfill = subparsers.add_parser(
+        "backfill",
+        help="Generate prompt variants and images for top-ranked scenes missing assets",
+    )
+    backfill.add_argument(
+        "--book-slug",
+        required=True,
+        help="Book slug to backfill prompts and images for",
+    )
+    backfill.add_argument(
+        "--top-scenes",
+        type=int,
+        required=True,
+        help="Number of top-ranked scenes to inspect for missing assets",
+    )
+    backfill.add_argument(
+        "--prompts-per-scene",
+        type=int,
+        help="Override number of prompt variants per scene (ignores ranking recommendations when provided)",
+    )
+    backfill.add_argument(
+        "--ignore-ranking-recommendations",
+        action="store_true",
+        help="Always use --prompts-per-scene value, ignoring scene complexity analysis",
+    )
+    _add_quality_args(backfill)
+    backfill.add_argument(
+        "--concurrency",
+        type=int,
+        default=3,
+        help="Number of concurrent image generation tasks (default: 3)",
+    )
+    _add_common_args(backfill)
 
     return parser
 
@@ -954,6 +993,252 @@ async def _run_images(args: argparse.Namespace) -> PipelineStats:
     return stats
 
 
+async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
+    """Create prompts and images for scenes missing both."""
+    stats = PipelineStats()
+
+    if args.top_scenes <= 0:
+        raise ValueError("--top-scenes must be a positive integer")
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    backfill_run_id = f"backfill-{timestamp}-{uuid4().hex[:8]}"
+
+    if args.prompts_per_scene is None:
+        if args.ignore_ranking_recommendations:
+            variant_msg = "ranking recommendations disabled; default prompt count"
+        else:
+            variant_msg = "using ranking recommendations (fallback: 4)"
+    else:
+        variant_msg = f"{args.prompts_per_scene} prompt variants per scene"
+        if args.ignore_ranking_recommendations:
+            variant_msg += " (ignoring ranking recommendations)"
+
+    if args.dry_run:
+        logger.info(
+            "DRY RUN: Would backfill prompts for up to %d top-ranked scenes of '%s' missing prompts/images [%s]",
+            args.top_scenes,
+            args.book_slug,
+            variant_msg,
+        )
+        logger.info(
+            "DRY RUN: Would generate images for new prompts with quality=%s, style=%s, aspect_ratio=%s, concurrency=%d",
+            args.quality,
+            args.style or "auto",
+            args.aspect_ratio or "auto",
+            args.concurrency,
+        )
+        return stats
+
+    logger.info("\n" + "=" * 60)
+    logger.info("BACKFILL: Generating prompts and images for missing scenes")
+    logger.info("=" * 60)
+
+    load_dotenv()
+
+    with Session(engine) as session:
+        ranking_repo = SceneRankingRepository(session)
+        prompt_repo = ImagePromptRepository(session)
+        image_repo = GeneratedImageRepository(session)
+
+        prompt_config_kwargs: dict[str, object] = {}
+        if args.prompts_per_scene is not None:
+            prompt_config_kwargs["variants_count"] = args.prompts_per_scene
+        if args.ignore_ranking_recommendations:
+            prompt_config_kwargs["use_ranking_recommendation"] = False
+
+        prompt_config = ImagePromptGenerationConfig(**prompt_config_kwargs)
+        prompt_service = ImagePromptGenerationService(
+            session,
+            config=prompt_config,
+        )
+
+        initial_limit = max(args.top_scenes * 10, 50)
+        fetch_limit = initial_limit
+        candidate_rankings: list = []
+
+        while True:
+            rankings = ranking_repo.list_top_rankings_for_book(
+                book_slug=args.book_slug,
+                limit=fetch_limit,
+                include_scene=True,
+            )
+
+            if not rankings:
+                logger.warning(
+                    "No rankings found for book '%s' - cannot backfill scenes",
+                    args.book_slug,
+                )
+                return stats
+
+            candidate_rankings.clear()
+            seen_scene_ids: set = set()
+
+            for ranking in rankings:
+                if len(candidate_rankings) >= args.top_scenes:
+                    break
+
+                scene = ranking.scene_extraction
+                if not scene:
+                    logger.debug(
+                        "Ranking %s missing scene reference - skipping",
+                        ranking.id,
+                    )
+                    continue
+
+                if scene.id in seen_scene_ids:
+                    continue
+
+                seen_scene_ids.add(scene.id)
+
+                if prompt_repo.has_any_for_scene(scene.id):
+                    logger.debug(
+                        "Skipping scene %s (priority=%.3f) - prompts already exist",
+                        scene.id,
+                        ranking.overall_priority or 0.0,
+                    )
+                    continue
+
+                existing_images = image_repo.list_for_scene(scene.id, limit=1)
+                if existing_images:
+                    logger.debug(
+                        "Skipping scene %s (priority=%.3f) - images already exist",
+                        scene.id,
+                        ranking.overall_priority or 0.0,
+                    )
+                    continue
+
+                candidate_rankings.append(ranking)
+
+            if len(candidate_rankings) >= args.top_scenes:
+                logger.info(
+                    "Found %d candidate scene(s) needing backfill after scanning top %d rankings",
+                    len(candidate_rankings),
+                    fetch_limit,
+                )
+                break
+
+            if len(rankings) < fetch_limit:
+                logger.info(
+                    "Scanned all %d rankings; only %d scene(s) still missing prompts/images",
+                    len(rankings),
+                    len(candidate_rankings),
+                )
+                break
+
+            previous_limit = fetch_limit
+            fetch_limit *= 2
+            logger.info(
+                "Only %d candidate scene(s) found within top %d rankings; expanding search to top %d",
+                len(candidate_rankings),
+                previous_limit,
+                fetch_limit,
+            )
+
+        if not candidate_rankings:
+            logger.info(
+                "No scenes without prompts/images found after scanning top %d rankings",
+                fetch_limit,
+            )
+            return stats
+
+        if len(candidate_rankings) < args.top_scenes:
+            logger.warning(
+                "Only %d scenes require backfill out of requested %d",
+                len(candidate_rankings),
+                args.top_scenes,
+            )
+
+        logger.info(
+            "Backfilling %d scene(s) using prompt version '%s'",
+            len(candidate_rankings),
+            prompt_config.prompt_version,
+        )
+
+        new_prompts: list = []
+        backfilled_scene_ids: set = set()
+        base_metadata = {
+            "cli": "image_gen_cli.backfill",
+            "backfill_run_id": backfill_run_id,
+            "prompt_version": prompt_config.prompt_version,
+        }
+
+        for ranking in candidate_rankings:
+            scene = ranking.scene_extraction
+            if not scene:
+                continue
+
+            logger.info(
+                "Generating prompts for scene %d (chapter %d, priority %.3f)",
+                scene.scene_number,
+                scene.chapter_number,
+                ranking.overall_priority or 0.0,
+            )
+
+            metadata = dict(base_metadata)
+            metadata["scene_ranking_id"] = str(ranking.id)
+            if ranking.overall_priority is not None:
+                metadata["ranking_priority"] = ranking.overall_priority
+
+            try:
+                prompts = prompt_service.generate_for_scene(
+                    scene,
+                    overwrite=False,
+                    dry_run=False,
+                    metadata=metadata,
+                )
+            except Exception as exc:
+                error_msg = f"Failed to generate prompts for scene {scene.id}: {exc}"
+                logger.error(error_msg)
+                stats.errors.append(error_msg)
+                continue
+
+            if not prompts:
+                logger.warning("Prompt generation returned no variants for scene %s", scene.id)
+                continue
+
+            stats.prompts_generated += len(prompts)
+            new_prompts.extend(prompts)
+            backfilled_scene_ids.add(scene.id)
+
+        if not new_prompts:
+            logger.warning("No prompts were generated during backfill - skipping images")
+            return stats
+
+        logger.info(
+            "Generated %d prompt variants across %d scene(s); generating images next",
+            stats.prompts_generated,
+            len(backfilled_scene_ids),
+        )
+
+        prompt_ids = [prompt.id for prompt in new_prompts]
+        image_service = ImageGenerationService(
+            session,
+            config=ImageGenerationConfig(
+                quality=args.quality,
+                preferred_style=args.style,
+                aspect_ratio=args.aspect_ratio,
+                concurrency=args.concurrency,
+            ),
+        )
+
+        try:
+            generated_ids = await image_service.generate_for_selection(
+                prompt_ids=prompt_ids,
+                overwrite=False,
+                quality=args.quality,
+                preferred_style=args.style,
+                aspect_ratio=args.aspect_ratio,
+                concurrency=args.concurrency,
+            )
+            stats.images_generated = len(generated_ids)
+        except Exception as exc:
+            error_msg = f"Failed to generate images for backfilled prompts: {exc}"
+            logger.error(error_msg)
+            stats.errors.append(error_msg)
+
+    return stats
+
+
 async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
     """Regenerate prompts and images for top-ranked scenes."""
     stats = PipelineStats()
@@ -1161,6 +1446,8 @@ async def async_main(argv: list[str] | None = None) -> int:
         stats = await _run_images(args)
     elif args.command == "refresh":
         stats = await _run_refresh(args)
+    elif args.command == "backfill":
+        stats = await _run_backfill(args)
     else:
         parser.error(f"Unknown command: {args.command}")
         return 2
