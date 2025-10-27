@@ -229,6 +229,14 @@ class ImagePromptGenerationService:
         if config.variants_count <= 0:
             raise ImagePromptGenerationServiceError("variants_count must be positive")
 
+        if config.allow_overwrite:
+            variant_indices = self._determine_next_variant_indices_for_scene(
+                target_scene.id,
+                config.variants_count,
+            )
+        else:
+            variant_indices = list(range(config.variants_count))
+
         if not config.allow_overwrite:
             existing = self._prompt_repo.get_latest_set_for_scene(
                 target_scene.id, config.model_name, config.prompt_version
@@ -250,7 +258,7 @@ class ImagePromptGenerationService:
         variants = self._extract_variants(raw_payload, config)
         if len(variants) != len(variant_indices):
             raise ImagePromptGenerationServiceError(
-                "Variant count mismatch while preparing remix records"
+                "Variant count mismatch while assigning variant indices"
             )
         prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         service_payload = {
@@ -274,6 +282,7 @@ class ImagePromptGenerationService:
             scene=target_scene,
             config=config,
             variants=variants,
+            variant_indices=variant_indices,
             context_window=context_window,
             raw_payload=raw_bundle,
             llm_request_id=llm_request_id,
@@ -896,6 +905,7 @@ class ImagePromptGenerationService:
         scene: SceneExtraction,
         config: ImagePromptGenerationConfig,
         variants: Sequence[_VariantModel],
+        variant_indices: Sequence[int],
         context_window: Mapping[str, Any],
         raw_payload: Mapping[str, Any],
         llm_request_id: str | None,
@@ -903,6 +913,12 @@ class ImagePromptGenerationService:
     ) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []
         for index, variant in enumerate(variants):
+            try:
+                variant_index = variant_indices[index]
+            except IndexError as exc:  # pragma: no cover - defensive
+                raise ImagePromptGenerationServiceError(
+                    "Variant indices length did not match variant payloads"
+                ) from exc
             style_tags = list(variant.style_tags) if variant.style_tags else None
             attributes = dict(variant.attributes)
             records.append(
@@ -911,7 +927,7 @@ class ImagePromptGenerationService:
                     "model_vendor": config.model_vendor,
                     "model_name": config.model_name,
                     "prompt_version": config.prompt_version,
-                    "variant_index": index,
+                    "variant_index": variant_index,
                     "title": variant.title.strip()
                     if isinstance(variant.title, str)
                     else None,
