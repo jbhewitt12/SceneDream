@@ -50,6 +50,7 @@ class ImagePrompt(SQLModel, table=True):
     prompt_version: str = Field(max_length=64, index=True)
     variant_index: int = Field(ge=0)
     title: str | None = Field(default=None, max_length=255)
+    flavour_text: str | None = Field(default=None, sa_column=Column(Text))
     prompt_text: str = Field(sa_column=Column(Text, nullable=False))
     negative_prompt: str | None = Field(default=None, sa_column=Column(Text))
     style_tags: list[str] | None = Field(
