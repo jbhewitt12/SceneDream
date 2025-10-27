@@ -12,9 +12,35 @@ from app.services.image_prompt_generation import (
     ImagePromptPreview,
 )
 from app.services.langchain import gemini_api
-
-
 from models.scene_extraction import SceneExtraction
+
+
+@pytest.fixture(autouse=True)
+def _stub_prompt_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fake_generate(self, prompts, *, dry_run=False, **kwargs):  # type: ignore[no-untyped-def]
+        results = []
+        for prompt in prompts:
+            title = (getattr(prompt, "title", None) or "Shareable Moment").strip()
+            flavour = "Test flavour text for preview."
+            if dry_run:
+                results.append(
+                    {
+                        "prompt_id": str(getattr(prompt, "id", uuid4())),
+                        "title": title,
+                        "flavour_text": flavour,
+                        "skipped": False,
+                    }
+                )
+            else:
+                setattr(prompt, "title", title)
+                setattr(prompt, "flavour_text", flavour)
+                results.append(prompt)
+        return results
+
+    monkeypatch.setattr(
+        "app.services.prompt_metadata.prompt_metadata_service.PromptMetadataGenerationService.generate_metadata_for_prompts",
+        _fake_generate,
+    )
 
 
 @pytest.fixture()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -52,6 +53,36 @@ class ImagePromptRepository:
         statement = statement.order_by(ordering, ImagePrompt.variant_index.asc())
         if include_scene:
             statement = statement.options(joinedload(ImagePrompt.scene_extraction))
+        if limit is not None:
+            statement = statement.limit(limit)
+        return list(self._session.exec(statement))
+
+    def list_for_metadata(
+        self,
+        *,
+        book_slug: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        created_after: datetime | None = None,
+        missing_metadata: bool = False,
+        include_scene: bool = False,
+    ) -> list[ImagePrompt]:
+        statement = select(ImagePrompt)
+        if book_slug:
+            statement = statement.join(
+                SceneExtraction,
+                ImagePrompt.scene_extraction_id == SceneExtraction.id,
+            ).where(SceneExtraction.book_slug == book_slug)
+        if created_after:
+            statement = statement.where(ImagePrompt.created_at >= created_after)
+        if missing_metadata:
+            statement = statement.where(ImagePrompt.flavour_text.is_(None))
+        ordering = ImagePrompt.created_at.asc()
+        statement = statement.order_by(ordering, ImagePrompt.variant_index.asc())
+        if include_scene:
+            statement = statement.options(joinedload(ImagePrompt.scene_extraction))
+        if offset is not None:
+            statement = statement.offset(offset)
         if limit is not None:
             statement = statement.limit(limit)
         return list(self._session.exec(statement))
