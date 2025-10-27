@@ -22,6 +22,10 @@ from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
 from app.services.langchain import gemini_api
+from app.services.prompt_metadata import (
+    PromptMetadataConfig,
+    PromptMetadataGenerationService,
+)
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
@@ -104,6 +108,7 @@ class ImagePromptPreview:
     scene_extraction_id: UUID
     variant_index: int
     title: str | None
+    flavour_text: str | None
     prompt_text: str
     style_tags: list[str] | None
     attributes: dict[str, Any]
@@ -276,30 +281,41 @@ class ImagePromptGenerationService:
         )
 
         if config.dry_run:
+            preview_prompts = self._instantiate_prompts_from_records(records)
+            metadata_results = self._run_metadata_generation(
+                preview_prompts,
+                dry_run=True,
+                autocommit=False,
+            )
             previews: list[ImagePromptPreview] = []
-            for record in records:
+            for index, record in enumerate(records):
                 preview_payload = dict(record["raw_response"])
                 preview_payload["prompt"] = prompt
                 preview_payload["context_excerpt"] = context_text
-                previews.append(
-                    ImagePromptPreview(
-                        scene_extraction_id=record["scene_extraction_id"],
-                        variant_index=record["variant_index"],
-                        title=record["title"],
-                        prompt_text=record["prompt_text"],
-                        style_tags=record["style_tags"],
-                        attributes=record["attributes"],
-                        prompt_version=record["prompt_version"],
-                        model_name=record["model_name"],
-                        model_vendor=record["model_vendor"],
-                        context_window=record["context_window"],
-                        raw_response=preview_payload,
-                        temperature=record["temperature"],
-                        max_output_tokens=record["max_output_tokens"],
-                        execution_time_ms=record["execution_time_ms"],
-                        llm_request_id=record["llm_request_id"],
-                    )
+                preview = ImagePromptPreview(
+                    scene_extraction_id=record["scene_extraction_id"],
+                    variant_index=record["variant_index"],
+                    title=record["title"],
+                    flavour_text=None,
+                    prompt_text=record["prompt_text"],
+                    style_tags=record["style_tags"],
+                    attributes=record["attributes"],
+                    prompt_version=record["prompt_version"],
+                    model_name=record["model_name"],
+                    model_vendor=record["model_vendor"],
+                    context_window=record["context_window"],
+                    raw_response=preview_payload,
+                    temperature=record["temperature"],
+                    max_output_tokens=record["max_output_tokens"],
+                    execution_time_ms=record["execution_time_ms"],
+                    llm_request_id=record["llm_request_id"],
                 )
+                if metadata_results and index < len(metadata_results):
+                    metadata_payload = metadata_results[index]
+                    if isinstance(metadata_payload, dict):
+                        preview.title = metadata_payload.get("title") or preview.title
+                        preview.flavour_text = metadata_payload.get("flavour_text")
+                previews.append(preview)
             return previews
 
         if config.allow_overwrite:
@@ -323,6 +339,11 @@ class ImagePromptGenerationService:
         )
         if not config.autocommit:
             self._session.flush()
+        self._run_metadata_generation(
+            created,
+            dry_run=False,
+            autocommit=config.autocommit,
+        )
         return created
 
     def generate_for_scenes(
@@ -471,29 +492,40 @@ class ImagePromptGenerationService:
             )
 
         if config.dry_run:
+            preview_prompts = self._instantiate_prompts_from_records(records)
+            metadata_results = self._run_metadata_generation(
+                preview_prompts,
+                dry_run=True,
+                autocommit=False,
+            )
             previews: list[ImagePromptPreview] = []
-            for record in records:
+            for index, record in enumerate(records):
                 preview_payload = dict(record["raw_response"])
                 preview_payload["prompt"] = remix_prompt
-                previews.append(
-                    ImagePromptPreview(
-                        scene_extraction_id=record["scene_extraction_id"],
-                        variant_index=record["variant_index"],
-                        title=record["title"],
-                        prompt_text=record["prompt_text"],
-                        style_tags=record["style_tags"],
-                        attributes=record["attributes"],
-                        prompt_version=record["prompt_version"],
-                        model_name=record["model_name"],
-                        model_vendor=record["model_vendor"],
-                        context_window=record["context_window"],
-                        raw_response=preview_payload,
-                        temperature=record["temperature"],
-                        max_output_tokens=record["max_output_tokens"],
-                        execution_time_ms=record["execution_time_ms"],
-                        llm_request_id=record["llm_request_id"],
-                    )
+                preview = ImagePromptPreview(
+                    scene_extraction_id=record["scene_extraction_id"],
+                    variant_index=record["variant_index"],
+                    title=record["title"],
+                    flavour_text=None,
+                    prompt_text=record["prompt_text"],
+                    style_tags=record["style_tags"],
+                    attributes=record["attributes"],
+                    prompt_version=record["prompt_version"],
+                    model_name=record["model_name"],
+                    model_vendor=record["model_vendor"],
+                    context_window=record["context_window"],
+                    raw_response=preview_payload,
+                    temperature=record["temperature"],
+                    max_output_tokens=record["max_output_tokens"],
+                    execution_time_ms=record["execution_time_ms"],
+                    llm_request_id=record["llm_request_id"],
                 )
+                if metadata_results and index < len(metadata_results):
+                    metadata_payload = metadata_results[index]
+                    if isinstance(metadata_payload, dict):
+                        preview.title = metadata_payload.get("title") or preview.title
+                        preview.flavour_text = metadata_payload.get("flavour_text")
+                previews.append(preview)
             return previews
 
         created = self._prompt_repo.bulk_create(
@@ -503,6 +535,11 @@ class ImagePromptGenerationService:
         )
         if not config.autocommit:
             self._session.flush()
+        self._run_metadata_generation(
+            created,
+            dry_run=False,
+            autocommit=config.autocommit,
+        )
         return created
 
     def _resolve_scene(self, scene: SceneExtraction | UUID) -> SceneExtraction:
@@ -892,6 +929,51 @@ class ImagePromptGenerationService:
                 }
             )
         return records
+
+    def _instantiate_prompts_from_records(
+        self,
+        records: Sequence[Mapping[str, Any]],
+    ) -> list[ImagePrompt]:
+        """Create transient ImagePrompt models from in-memory records."""
+        prompts: list[ImagePrompt] = []
+        for record in records:
+            prompts.append(ImagePrompt(**record))  # type: ignore[arg-type]
+        return prompts
+
+    def _run_metadata_generation(
+        self,
+        prompts: Sequence[ImagePrompt],
+        *,
+        dry_run: bool,
+        autocommit: bool,
+    ) -> list[ImagePrompt | dict[str, Any] | None] | None:
+        if not prompts:
+            return None
+        service = PromptMetadataGenerationService(
+            self._session,
+            PromptMetadataConfig(
+                fail_on_error=False,
+                dry_run=dry_run,
+            ),
+        )
+        try:
+            results = service.generate_metadata_for_prompts(
+                prompts,
+                overwrite=True,
+                dry_run=dry_run,
+            )
+            if not dry_run and autocommit:
+                self._session.commit()
+            return results
+        except Exception as exc:  # pragma: no cover - safety valve
+            logger.warning(
+                "Prompt metadata generation failed for %s prompts: %s",
+                len(prompts),
+                exc,
+            )
+            if not dry_run:
+                self._session.rollback()
+            return None
 
     def _determine_next_variant_indices_for_scene(
         self,
