@@ -31,8 +31,11 @@ Usage examples:
     # Create new prompt variants and images for top 3 ranked scenes
     uv run python -m app.services.image_gen_cli refresh --book-slug look-to-windward-iain-m-banks --top-scenes 3
 
-    # Backfill prompts/images for top 5 ranked scenes missing assets
+    # Backfill prompts/images for top 5 ranked scenes in a specific book missing images
     uv run python -m app.services.image_gen_cli backfill --book-slug look-to-windward-iain-m-banks --top-scenes 5
+
+    # Backfill globally for top 5 scenes missing images
+    uv run python -m app.services.image_gen_cli backfill --top-scenes 5
 
     # Dry run to preview what would happen
     uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --images-for-scenes 3 --dry-run
@@ -290,8 +293,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     backfill.add_argument(
         "--book-slug",
-        required=True,
-        help="Book slug to backfill prompts and images for",
+        help="Optional book slug to limit the backfill (default: scan all books)",
     )
     backfill.add_argument(
         "--top-scenes",
@@ -1013,11 +1015,15 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
         if args.ignore_ranking_recommendations:
             variant_msg += " (ignoring ranking recommendations)"
 
+    target_scope = (
+        f"book '{args.book_slug}'" if args.book_slug else "all ranked books"
+    )
+
     if args.dry_run:
         logger.info(
-            "DRY RUN: Would backfill prompts for up to %d top-ranked scenes of '%s' missing prompts/images [%s]",
+            "DRY RUN: Would backfill prompts/images for up to %d top-ranked scenes from %s missing images [%s]",
             args.top_scenes,
-            args.book_slug,
+            target_scope,
             variant_msg,
         )
         logger.info(
@@ -1031,6 +1037,7 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
 
     logger.info("\n" + "=" * 60)
     logger.info("BACKFILL: Generating prompts and images for missing scenes")
+    logger.info("Target scope: %s", target_scope)
     logger.info("=" * 60)
 
     load_dotenv()
@@ -1052,22 +1059,39 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
             config=prompt_config,
         )
 
+        blocked_warning_lookup = {
+            (warning or "").lower() for warning in prompt_config.blocked_warnings
+        }
+
+        def _blocked_warning_hits(ranking_warnings: list[str] | None) -> list[str]:
+            if not ranking_warnings:
+                return []
+            hits: list[str] = []
+            for warning in ranking_warnings:
+                normalized = str(warning or "").lower()
+                if normalized in blocked_warning_lookup:
+                    hits.append(str(warning))
+            return hits
+
         initial_limit = max(args.top_scenes * 10, 50)
         fetch_limit = initial_limit
         candidate_rankings: list = []
 
         while True:
-            rankings = ranking_repo.list_top_rankings_for_book(
-                book_slug=args.book_slug,
-                limit=fetch_limit,
-                include_scene=True,
-            )
+            if args.book_slug:
+                rankings = ranking_repo.list_top_rankings_for_book(
+                    book_slug=args.book_slug,
+                    limit=fetch_limit,
+                    include_scene=True,
+                )
+            else:
+                rankings = ranking_repo.list_top_rankings(
+                    limit=fetch_limit,
+                    include_scene=True,
+                )
 
             if not rankings:
-                logger.warning(
-                    "No rankings found for book '%s' - cannot backfill scenes",
-                    args.book_slug,
-                )
+                logger.warning("No rankings found for %s - cannot backfill scenes", target_scope)
                 return stats
 
             candidate_rankings.clear()
@@ -1090,13 +1114,19 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
 
                 seen_scene_ids.add(scene.id)
 
-                if prompt_repo.has_any_for_scene(scene.id):
-                    logger.debug(
-                        "Skipping scene %s (priority=%.3f) - prompts already exist",
-                        scene.id,
-                        ranking.overall_priority or 0.0,
-                    )
-                    continue
+                if (
+                    prompt_config.skip_scenes_with_warnings
+                    and blocked_warning_lookup
+                ):
+                    warning_hits = _blocked_warning_hits(getattr(ranking, "warnings", None))
+                    if warning_hits:
+                        logger.debug(
+                            "Skipping scene %s (priority=%.3f) due to content warnings: %s",
+                            scene.id,
+                            ranking.overall_priority or 0.0,
+                            ", ".join(warning_hits),
+                        )
+                        continue
 
                 existing_images = image_repo.list_for_scene(scene.id, limit=1)
                 if existing_images:
@@ -1119,7 +1149,7 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
 
             if len(rankings) < fetch_limit:
                 logger.info(
-                    "Scanned all %d rankings; only %d scene(s) still missing prompts/images",
+                    "Scanned all %d rankings; only %d scene(s) still missing images",
                     len(rankings),
                     len(candidate_rankings),
                 )
@@ -1136,7 +1166,7 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
 
         if not candidate_rankings:
             logger.info(
-                "No scenes without prompts/images found after scanning top %d rankings",
+                "No scenes without images found after scanning top %d rankings",
                 fetch_limit,
             )
             return stats
@@ -1155,7 +1185,8 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
         )
 
         new_prompts: list = []
-        backfilled_scene_ids: set = set()
+        prompts_for_imaging: list = []
+        scenes_targeted: set = set()
         base_metadata = {
             "cli": "image_gen_cli.backfill",
             "backfill_run_id": backfill_run_id,
@@ -1165,6 +1196,23 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
         for ranking in candidate_rankings:
             scene = ranking.scene_extraction
             if not scene:
+                continue
+
+            scenes_targeted.add(scene.id)
+
+            existing_prompts = prompt_repo.list_for_scene(
+                scene.id,
+                include_scene=True,
+            )
+            if existing_prompts:
+                prompts_for_imaging.extend(existing_prompts)
+                logger.info(
+                    "Reusing %d existing prompt(s) for scene %d (chapter %d, priority %.3f)",
+                    len(existing_prompts),
+                    scene.scene_number,
+                    scene.chapter_number,
+                    ranking.overall_priority or 0.0,
+                )
                 continue
 
             logger.info(
@@ -1198,19 +1246,28 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
 
             stats.prompts_generated += len(prompts)
             new_prompts.extend(prompts)
-            backfilled_scene_ids.add(scene.id)
+            prompts_for_imaging.extend(prompts)
 
-        if not new_prompts:
-            logger.warning("No prompts were generated during backfill - skipping images")
+        if not prompts_for_imaging:
+            logger.warning(
+                "No prompts available for candidate scenes after backfill - skipping images"
+            )
             return stats
 
         logger.info(
-            "Generated %d prompt variants across %d scene(s); generating images next",
+            "Preparing %d prompt variant(s) across %d scene(s); %d new prompt(s) generated",
+            len(prompts_for_imaging),
+            len(scenes_targeted),
             stats.prompts_generated,
-            len(backfilled_scene_ids),
         )
 
-        prompt_ids = [prompt.id for prompt in new_prompts]
+        prompt_ids: list = []
+        seen_prompt_ids: set = set()
+        for prompt in prompts_for_imaging:
+            if prompt.id in seen_prompt_ids:
+                continue
+            seen_prompt_ids.add(prompt.id)
+            prompt_ids.append(prompt.id)
         image_service = ImageGenerationService(
             session,
             config=ImageGenerationConfig(
