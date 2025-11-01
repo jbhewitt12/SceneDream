@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import re
+import shutil
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
@@ -23,9 +25,9 @@ from app.schemas import (
     GeneratedImageGenerateResponse,
     GeneratedImageListResponse,
     GeneratedImageRead,
-    GeneratedImageWithContext,
     GeneratedImageRemixRequest,
     GeneratedImageRemixResponse,
+    GeneratedImageWithContext,
     ImagePromptSummary,
     SceneSummary,
 )
@@ -33,9 +35,9 @@ from app.services.image_generation.image_generation_service import (
     ImageGenerationService,
 )
 from app.services.image_prompt_generation.image_prompt_generation_service import (
+    REMIX_VARIANTS_COUNT,
     ImagePromptGenerationService,
     ImagePromptGenerationServiceError,
-    REMIX_VARIANTS_COUNT,
 )
 from models.image_prompt import ImagePrompt
 
@@ -48,6 +50,7 @@ _MAX_SCENE_LIMIT = 100
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _GENERATED_IMAGES_ROOT = (_PROJECT_ROOT / "img").resolve()
+_LIKED_IMAGES_DIR = Path("/Users/joshhewitt/dev/SceneDream/liked_images")
 logger = logging.getLogger(__name__)
 
 
@@ -84,6 +87,45 @@ def _resolve_image_file(storage_path: str, file_name: str) -> Path:
         raise HTTPException(status_code=404, detail="Image file not available") from exc
 
     return candidate
+
+
+def _copy_to_liked_images(
+    source_file: Path,
+    prompt_title: str | None,
+    image_id: UUID,
+) -> None:
+    """Copy an approved image to the liked_images directory with formatted name."""
+
+    # Ensure liked_images directory exists
+    _LIKED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Get file extension
+    extension = source_file.suffix
+
+    # Format the title: replace spaces with dashes, remove special chars
+    if prompt_title:
+        # Convert to lowercase, replace spaces with dashes
+        safe_title = prompt_title.lower().strip()
+        # Replace spaces and multiple dashes with single dash
+        safe_title = re.sub(r"[\s_]+", "-", safe_title)
+        # Remove any characters that aren't alphanumeric, dash, or dot
+        safe_title = re.sub(r"[^a-z0-9\-.]", "", safe_title)
+        # Remove leading/trailing dashes
+        safe_title = safe_title.strip("-")
+    else:
+        safe_title = "untitled"
+
+    # Create filename: {title}-{id}{extension}
+    dest_filename = f"{safe_title}-{image_id}{extension}"
+    dest_path = _LIKED_IMAGES_DIR / dest_filename
+
+    # Copy the file
+    try:
+        shutil.copy2(source_file, dest_path)
+        logger.info(f"Copied liked image to: {dest_path}")
+    except Exception as exc:
+        logger.error(f"Failed to copy liked image {image_id}: {exc}")
+        # Don't raise - approval should still succeed even if copy fails
 
 
 async def _execute_remix_generation(
@@ -287,6 +329,22 @@ def update_image_approval(
 
     if image is None:
         raise HTTPException(status_code=404, detail="Generated image not found")
+
+    # If image is being approved (liked), copy it to the liked_images directory
+    if update.user_approved is True:
+        # Load the prompt to get the title
+        prompt_repo = ImagePromptRepository(session)
+        prompt = prompt_repo.get(image.image_prompt_id)
+
+        # Get the source file path
+        source_file = _resolve_image_file(image.storage_path, image.file_name)
+
+        # Copy to liked_images with formatted name
+        _copy_to_liked_images(
+            source_file=source_file,
+            prompt_title=prompt.title if prompt else None,
+            image_id=image_id,
+        )
 
     return GeneratedImageRead.model_validate(image)
 
