@@ -6,9 +6,11 @@ This CLI orchestrates the full pipeline from scene extraction through image gene
 3. Generate prompts for top-ranked scenes
 4. Generate images for top-ranked scenes with prompts
 
+Book paths may reference either .epub or .mobi files.
+
 Usage examples:
     # Run full pipeline with automatic variant counts from scene complexity analysis
-    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --images-for-scenes 5
+    uv run python -m app.services.image_gen_cli run --book-slug shogun-james-clavell --book-path "books/James Clavell/Shogun/Shogun - James Clavell.mobi" --images-for-scenes 5
 
     # Run full pipeline for top 10 scenes only (prompts and images)
     uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --prompts-for-scenes 10 --images-for-scenes 10

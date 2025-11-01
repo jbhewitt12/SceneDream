@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import unicodedata
 from datetime import datetime, timezone
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ import ebooklib
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from ebooklib import epub
+import mobi
 from sqlmodel import Session
 
 from app.core.db import engine
@@ -39,6 +41,9 @@ EXCESSION_EPUB_PATH = (
 )
 ENABLE_REFINEMENT = True
 REFINEMENT_BATCH_SIZE = 5
+
+MOBI_EXTENSIONS = {".mobi", ".azw", ".azw3"}
+HTML_SUFFIXES = {".html", ".htm", ".xhtml"}
 
 
 FRONT_MATTER_NAME_TOKENS = {
@@ -79,6 +84,7 @@ FRONT_MATTER_NAME_TOKENS = {
     "licence",
     "license",
     "map",
+    "note",
     "notes",
     "pref",
     "preface",
@@ -207,6 +213,10 @@ class ChapterChunk:
         return "\n\n".join(lines)
 
 
+class MobiExtractionError(RuntimeError):
+    """Raised when a MOBI file cannot be unpacked into readable content."""
+
+
 @dataclass
 class RawScene:
     chapter_number: int
@@ -248,6 +258,55 @@ class SceneExtractor:
         cleaned = {token for token in tokens if token not in generic_tokens}
         return cleaned
 
+    def _split_mobi_html_fragments(self, html: str) -> List[str]:
+        if "<mbp:pagebreak" not in html.lower():
+            return [html]
+        fragments = [
+            fragment
+            for fragment in re.split(r"<mbp:pagebreak\s*/?>", html, flags=re.IGNORECASE)
+            if fragment.strip()
+        ]
+        return fragments or [html]
+
+    def _maybe_extract_heading_from_paragraphs(
+        self, paragraphs: Sequence[str]
+    ) -> Tuple[Optional[str], List[str]]:
+        if not paragraphs:
+            return (None, [])
+        first = self._normalize_whitespace(paragraphs[0])
+        if self._looks_like_heading(first):
+            remaining = [self._normalize_whitespace(p) for p in paragraphs[1:] if p]
+            return (first, remaining)
+        return (None, list(paragraphs))
+
+    def _looks_like_heading(self, text: str) -> bool:
+        if not text:
+            return False
+        if text.upper() == text and len(text) <= 120:
+            return True
+        lower = text.lower()
+        if re.match(r"^(book|chapter|part|prologue|epilogue|interlude|act|scene)\b", lower):
+            return True
+        if not any(char in text for char in ".!?;:,"):
+            words = text.split()
+            if 1 <= len(words) <= 8 and all(word[:1].isalpha() for word in words):
+                title_case_ratio = sum(1 for word in words if word[:1].isupper())
+                if title_case_ratio == len(words):
+                    return True
+        return False
+
+    def _decorate_fragment_source_name(
+        self, base_name: str, title: Optional[str], paragraphs: Sequence[str]
+    ) -> str:
+        tokens_source = title or (paragraphs[0] if paragraphs else "")
+        if not tokens_source:
+            return base_name
+        slug_tokens = re.findall(r"[a-z0-9]+", tokens_source.lower())
+        if not slug_tokens:
+            return base_name
+        slug = "_".join(slug_tokens[:6])
+        return f"{base_name}__{slug}"
+
     def _top_level_container_classes(self, soup: BeautifulSoup) -> set[str]:
         body = soup.body
         if body is None:
@@ -285,6 +344,17 @@ class SceneExtractor:
         # Defensive fallback: skip extremely short entries that are almost certainly headings.
         if len(paragraphs) == 1 and len(paragraphs[0]) <= 40 and not has_chapter_token:
             return True
+
+        if paragraphs:
+            first_paragraph = self._normalize_whitespace(paragraphs[0]).lower()
+            if first_paragraph:
+                if any(
+                    keyword in first_paragraph for keyword in FRONT_MATTER_TITLE_KEYWORDS
+                ):
+                    if not has_chapter_token and not first_paragraph.startswith(
+                        ("chapter", "prologue", "epilogue", "part", "interlude")
+                    ):
+                        return True
 
         return False
 
@@ -398,7 +468,15 @@ class SceneExtractor:
         return stats
 
     def _load_chapters(self, book_path: Path) -> List[Chapter]:
-        book = epub.read_epub(str(book_path))
+        suffix = book_path.suffix.lower()
+        if suffix == ".epub":
+            book = epub.read_epub(str(book_path))
+            return self._load_chapters_from_epub_book(book)
+        if suffix in MOBI_EXTENSIONS:
+            return self._load_chapters_from_mobi(book_path)
+        raise ValueError(f"Unsupported book format: {book_path.suffix}")
+
+    def _load_chapters_from_epub_book(self, book: epub.EpubBook) -> List[Chapter]:
         chapters: List[Chapter] = []
         chapter_number = 1
         for spine_entry in book.spine:
@@ -435,6 +513,135 @@ class SceneExtractor:
             chapter_number += 1
         return chapters
 
+    def _load_chapters_from_mobi(self, book_path: Path) -> List[Chapter]:
+        temp_dir_path: Optional[Path] = None
+        try:
+            temp_dir_str, primary_path_str = mobi.extract(str(book_path))
+        except Exception as exc:
+            raise MobiExtractionError(
+                f"Failed to unpack MOBI file '{book_path}': {exc}"
+            ) from exc
+
+        try:
+            temp_dir_path = Path(temp_dir_str)
+            primary_path = Path(primary_path_str)
+            suffix = primary_path.suffix.lower()
+
+            if suffix == ".epub" and primary_path.exists():
+                book = epub.read_epub(str(primary_path))
+                chapters_from_epub = self._load_chapters_from_epub_book(book)
+                if chapters_from_epub:
+                    return chapters_from_epub
+                raise MobiExtractionError(
+                    f"Extracted EPUB from MOBI file '{book_path}' contained no chapters."
+                )
+
+            html_candidates: List[Path] = []
+            if suffix in HTML_SUFFIXES and primary_path.exists():
+                html_candidates.append(primary_path)
+
+            if temp_dir_path.exists():
+                html_candidates.extend(
+                    sorted(
+                        path
+                        for path in temp_dir_path.rglob("*")
+                        if path.is_file()
+                        and path.suffix.lower() in HTML_SUFFIXES
+                    )
+                )
+
+            deduped_html: List[Path] = []
+            seen: set[Path] = set()
+            for candidate in html_candidates:
+                if candidate not in seen:
+                    deduped_html.append(candidate)
+                    seen.add(candidate)
+
+            if not deduped_html:
+                raise MobiExtractionError(
+                    f"MOBI file '{book_path}' did not contain HTML or EPUB content."
+                )
+
+            chapters = self._parse_html_chapter_files(
+                deduped_html, temp_dir_path or primary_path.parent
+            )
+            if not chapters:
+                raise MobiExtractionError(
+                    f"No chapters could be parsed from MOBI file '{book_path}'."
+                )
+            return chapters
+        finally:
+            if temp_dir_path and temp_dir_path.exists():
+                shutil.rmtree(temp_dir_path, ignore_errors=True)
+
+    def _parse_html_chapter_files(
+        self, html_files: Sequence[Path], base_dir: Path
+    ) -> List[Chapter]:
+        chapters: List[Chapter] = []
+        chapter_number = 1
+        for html_path in html_files:
+            try:
+                html = html_path.read_text(encoding="utf-8", errors="ignore")
+            except OSError as exc:
+                logger.debug("Skipping unreadable MOBI HTML fragment: %s (%s)", html_path, exc)
+                continue
+            fragments = self._split_mobi_html_fragments(html)
+            total_fragments = len(fragments)
+            for fragment_index, fragment in enumerate(fragments):
+                soup = BeautifulSoup(fragment, "html.parser")
+                paragraphs = self._extract_paragraphs(soup)
+                if not paragraphs:
+                    continue
+                raw_title = self._extract_title(soup)
+                paragraphs_for_body = list(paragraphs)
+                if not raw_title:
+                    inferred_title, trimmed = self._maybe_extract_heading_from_paragraphs(
+                        paragraphs_for_body
+                    )
+                    if inferred_title:
+                        raw_title = inferred_title
+                        paragraphs_for_body = trimmed
+                if not paragraphs_for_body:
+                    # Ignore fragments that only contained a heading.
+                    continue
+                if (
+                    not raw_title
+                    and len(paragraphs_for_body) == 1
+                    and len(paragraphs_for_body[0]) < 400
+                ):
+                    # Treat brief single-paragraph fragments without titles as front-matter blurbs.
+                    continue
+                try:
+                    relative_name = str(html_path.relative_to(base_dir))
+                except ValueError:
+                    relative_name = html_path.name
+                fragment_suffix = (
+                    f"{relative_name}#fragment{fragment_index}"
+                    if total_fragments > 1
+                    else relative_name
+                )
+                decorated_name = self._decorate_fragment_source_name(
+                    fragment_suffix, raw_title, paragraphs_for_body
+                )
+                if self._should_skip_spine_item(
+                    source_name=decorated_name,
+                    title=raw_title,
+                    soup=soup,
+                    paragraphs=paragraphs_for_body,
+                ):
+                    continue
+                cleaned_title = self._clean_chapter_title(raw_title, chapter_number)
+                chapters.append(
+                    Chapter(
+                        number=chapter_number,
+                        title=cleaned_title,
+                        paragraphs=paragraphs_for_body,
+                        source_name=decorated_name,
+                    )
+                )
+                chapter_number += 1
+        return chapters
+
     def _clean_chapter_title(
         self, title: Optional[str], chapter_number: int
     ) -> str:
@@ -460,20 +667,29 @@ class SceneExtractor:
         return normalized
 
     def _extract_paragraphs(self, soup: BeautifulSoup) -> List[str]:
+        paragraphs: List[str] = []
+        for node in soup.find_all("p"):
+            text = node.get_text(" ", strip=True)
+            normalized = self._normalize_whitespace(text)
+            if normalized:
+                paragraphs.append(normalized)
+        if paragraphs:
+            return paragraphs
+
         raw_text = soup.get_text("\n")
         lines = [line.strip() for line in raw_text.splitlines()]
-        paragraphs: List[str] = []
+        collected: List[str] = []
         buffer: List[str] = []
         for line in lines:
             if not line:
                 if buffer:
-                    paragraphs.append(self._normalize_whitespace(" ".join(buffer)))
+                    collected.append(self._normalize_whitespace(" ".join(buffer)))
                     buffer = []
                 continue
             buffer.append(line)
         if buffer:
-            paragraphs.append(self._normalize_whitespace(" ".join(buffer)))
-        cleaned = [p for p in paragraphs if p]
+            collected.append(self._normalize_whitespace(" ".join(buffer)))
+        cleaned = [p for p in collected if p]
         return cleaned
 
     def _extract_title(self, soup: BeautifulSoup) -> Optional[str]:
@@ -955,7 +1171,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "preview",
         help="Extract scenes for a limited number of chapters/chunks.",
     )
-    preview.add_argument("--book", required=True, help="Path to the EPUB file.")
+    preview.add_argument(
+        "--book", required=True, help="Path to the EPUB or MOBI file."
+    )
     preview.add_argument(
         "--chapters", type=int, default=1, help="Maximum chapters to process."
     )
