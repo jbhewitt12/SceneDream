@@ -63,6 +63,8 @@ class SceneExtractionConfig:
     refinement_max_tokens: Optional[int] = None
     book_slug: Optional[str] = None
     enable_refinement: bool = ENABLE_REFINEMENT
+    resume_from_chapter: Optional[int] = None
+    resume_from_chunk: Optional[int] = None
 
 
 @dataclass
@@ -131,9 +133,33 @@ class SceneExtractor:
         chapters = self._load_chapters(resolved_book_path)
         stats = {"book_slug": book_slug, "chapters": len(chapters), "scenes": 0}
         total_chapters = len(chapters)
+        resume_chapter = self.config.resume_from_chapter
+        resume_chunk = self.config.resume_from_chunk
+        resume_active = resume_chapter is not None
         for idx, chapter in enumerate(chapters, start=1):
+            if resume_active and resume_chapter is not None:
+                if chapter.number < resume_chapter:
+                    logger.info(
+                        "Skipping chapter %s due to resume offset (resume_from_chapter=%s)",
+                        chapter.number,
+                        resume_chapter,
+                    )
+                    print(
+                        f"Skipping chapter {chapter.number}: resume checkpoint already processed"
+                    )
+                    continue
             print(f"Starting chapter {chapter.number}: {chapter.title}")
-            raw_scenes = self._extract_chapter_scenes(chapter, book_slug=book_slug)
+            chunk_start_index: Optional[int] = None
+            if resume_active and resume_chapter is not None and chapter.number == resume_chapter:
+                base_chunk = resume_chunk if resume_chunk is not None else -1
+                chunk_start_index = base_chunk + 1
+                if chunk_start_index <= 0:
+                    chunk_start_index = None
+            raw_scenes = self._extract_chapter_scenes(
+                chapter,
+                book_slug=book_slug,
+                chunk_start_index=chunk_start_index,
+            )
             refined_map = (
                 self._refine_chapter_scenes(chapter, raw_scenes)
                 if self.config.enable_refinement
@@ -158,6 +184,12 @@ class SceneExtractor:
                     idx,
                     total_chapters,
                 )
+            if (
+                resume_active
+                and resume_chapter is not None
+                and chapter.number >= resume_chapter
+            ):
+                resume_active = False
         return stats
 
     def extract_preview(
@@ -257,6 +289,7 @@ class SceneExtractor:
         *,
         chunk_limit: Optional[int] = None,
         book_slug: Optional[str] = None,
+        chunk_start_index: Optional[int] = None,
     ) -> List[RawScene]:
         chunks = self._chunk_chapter(chapter)
         if chunk_limit is not None and chunk_limit <= 0:
@@ -269,6 +302,14 @@ class SceneExtractor:
         for chunk in chunks:
             if chunk_limit is not None and processed_chunks >= chunk_limit:
                 break
+            if chunk_start_index is not None and chunk.index < chunk_start_index:
+                logger.info(
+                    "Skipping chapter %s chunk %s due to resume offset",
+                    chapter.number,
+                    chunk.index,
+                )
+                print(f"  Chunk {chunk.index}: skipped (resume checkpoint)")
+                continue
             if chunk.index in existing_chunk_indexes:
                 logger.info(
                     "Skipping chapter %s chunk %s; existing outputs detected",
