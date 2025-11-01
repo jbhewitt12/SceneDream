@@ -191,7 +191,7 @@ class PromptMetadataGenerationService:
             KEY ATTRIBUTES:
             {attribute_lines}
 
-            OPTIONAL SCENE EXCERPT (internal context, do not reproduce literally):
+            SCENE EXCERPT (internal context, do not reproduce literally):
             {scene_summary}
 
             REQUIREMENTS:
