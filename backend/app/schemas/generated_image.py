@@ -112,7 +112,6 @@ class GeneratedImageGenerateRequest(BaseModel):
     scene_ids: list[UUID] | None = None
     prompt_ids: list[UUID] | None = None
     limit: int | None = Field(None, ge=1, le=100)
-    overwrite: bool = False
     quality: str = Field("standard", pattern="^(standard|hd)$")
     preferred_style: str | None = Field(None, pattern="^(vivid|natural)$")
     aspect_ratio: str | None = Field(None, pattern="^(1:1|9:16|16:9)$")

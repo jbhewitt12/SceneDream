@@ -1283,7 +1283,6 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
         try:
             generated_ids = await image_service.generate_for_selection(
                 prompt_ids=prompt_ids,
-                overwrite=False,
                 quality=args.quality,
                 preferred_style=args.style,
                 aspect_ratio=args.aspect_ratio,
@@ -1465,7 +1464,6 @@ async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
         try:
             generated_ids = await image_service.generate_for_selection(
                 prompt_ids=prompt_ids,
-                overwrite=False,
                 quality=args.quality,
                 preferred_style=args.style,
                 aspect_ratio=args.aspect_ratio,

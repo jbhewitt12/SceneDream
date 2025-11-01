@@ -88,7 +88,6 @@ export type GeneratedImageGenerateRequest = {
   scene_ids?: string[]
   prompt_ids?: string[]
   limit?: number
-  overwrite?: boolean
   quality?: "standard" | "hd"
   preferred_style?: "vivid" | "natural"
   aspect_ratio?: "1:1" | "9:16" | "16:9"

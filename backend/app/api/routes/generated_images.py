@@ -505,7 +505,6 @@ async def trigger_image_generation(
         scene_ids=request.scene_ids,
         prompt_ids=request.prompt_ids,
         limit=request.limit,
-        overwrite=request.overwrite,
         quality=request.quality,
         preferred_style=request.preferred_style,
         aspect_ratio=request.aspect_ratio,
