@@ -4,6 +4,8 @@
 - EPUB and MOBI ingestion logic now live inside `SceneExtractor`, which exposes private helpers and format-specific quirks.
 - Upcoming pipelines (scene refinement, character tagging, audio dramatization) will need consistent read-only access to book structure and text.
 - Re-implementing parsing per service risks format drift, duplicate code paths, and inconsistent filtering of front/back matter.
+- Existing data model stores paragraph indices (`scene_paragraph_start`, `scene_paragraph_end`, `chunk_paragraph_start`, `chunk_paragraph_end`) in `scene_extractions` to link prompts/refinements back to source text.
+- Downstream services (e.g. `backend/app/services/image_prompt_generation/image_prompt_generation_service.py:643-704`) rely on those indices plus the original `source_book_path` to rebuild context windows, so numbering must stay stable for already persisted scenes.
 
 ## Objectives
 - Provide a single, well-tested API to retrieve normalized book content (metadata, chapters, paragraphs) regardless of original container.
@@ -27,6 +29,15 @@
 4. **Surface diagnostics & metadata**
    - Capture parsing warnings (skipped fragments, empty chapters) in `BookContent.metadata` for observability.
    - Expose helper utilities to compute stable chapter hashes for deduplication and integration tests.
+   - Preserve 1-based chapter numbering and relative paragraph ordering so that existing references in `scene_extractions` remain valid when other services fetch context.
+
+## Existing Consumers & Compatibility
+- `ImagePromptGenerationService._build_scene_context` (`backend/app/services/image_prompt_generation/image_prompt_generation_service.py:643-704`) loads chapters via `_load_book_context` and uses stored paragraph spans to assemble context windows for DALLE prompts. The new service must provide equivalent chapter lookups for both legacy EPUB entries and new MOBI-backed scenes.
+- `ImagePromptGenerationService._load_book_context` (`backend/app/services/image_prompt_generation/image_prompt_generation_service.py:1022-1107`) currently re-parses the EPUB directly. Refactor will replace this with calls to `BookContentService`, but functional output (chapter numbers, titles, paragraph arrays) must remain unchanged.
+- `SceneRankingService._build_prompt` (`backend/app/services/scene_ranking/scene_ranking_service.py:565-611`) embeds `scene_paragraph_span` and `chunk_paragraph_span` in the LLM prompt. Those spans are persisted in `scene_extractions` (`backend/models/scene_extraction.py:39-84`) and must stay correct when rehydrating context from the new service.
+- Frontend prompt detail views (`frontend/src/api/imagePrompts.ts:1-86`) surface `context_window.paragraph_span`, `paragraphs_before`, and `paragraphs_after`. Any changes to data shape or numbering would ripple into the UI, so backwards compatibility is mandatory.
+- `SceneExtractor._persist_chapter_scenes` (`backend/app/services/scene_extraction/scene_extraction.py:952-1041`) saves chunk/scene paragraph bounds and `chapter_source_name`. Migrating to `BookContentService` must preserve these values for previously extracted records, or provide a compatibility shim that maps old indices to the new representation.
+- Stored `source_book_path` values are reused verbatim when building prompts (`SceneExtractor._persist_chapter_scenes` sets the string; `_build_scene_context` reads it). The new service must accept both absolute and repo-relative paths and handle legacy `.epub` entries alongside new `.mobi` ones without requiring data migration.
 
 ## Architecture Outline
 - `backend/app/services/books/base.py`: shared dataclasses, abstract loader contract, cache utilities.
@@ -53,3 +64,4 @@
 4. Port MOBI loader to use shared helpers; add tests verifying Shōgun MOBI output matches EPUB structure.
 5. Wire `SceneExtractor` through `BookContentService` and remove private format-specific readers.
 6. Add CLI script updates (e.g., `mobi_preview.py`) to consume `BookContentService` for validation.
+7. Verify backwards compatibility by re-running `_build_scene_context` against existing `scene_extractions` fixtures to ensure paragraph spans resolve identically (add regression tests that compare legacy `_load_book_context` output to the new service for a sample EPUB/MOBI pair).
