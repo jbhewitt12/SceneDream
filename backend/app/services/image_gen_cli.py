@@ -395,6 +395,8 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
 
     # Auto-detect if extraction should be skipped
     skip_extraction = args.skip_extraction
+    resume_from_chapter: int | None = None
+    resume_from_chunk: int | None = None
     if not skip_extraction and book_slug and not args.dry_run:
         detection_config = SceneExtractionConfig(book_slug=book_slug)
         detection_extractor = SceneExtractor(config=detection_config)
@@ -416,6 +418,20 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
             if existing_scenes:
                 extraction_complete = False
                 missing_summary = ""
+                last_scene = max(
+                    existing_scenes,
+                    key=lambda record: (
+                        record.chapter_number or -1,
+                        record.chunk_index if record.chunk_index is not None else -1,
+                        record.scene_number or -1,
+                    ),
+                )
+                if last_scene.chapter_number is not None:
+                    resume_from_chapter = int(last_scene.chapter_number)
+                if last_scene.chunk_index is not None:
+                    resume_from_chunk = int(last_scene.chunk_index)
+                elif resume_from_chapter is not None:
+                    resume_from_chunk = -1
                 if resolved_detection_path:
                     try:
                         chapters = detection_extractor._load_chapters(
@@ -443,6 +459,19 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                             missing_indexes = sorted(expected_indexes - existing_indexes)
                             if missing_indexes:
                                 missing_by_chapter[chapter.number] = missing_indexes
+                        if resume_from_chapter is not None:
+                            cutoff_chunk = resume_from_chunk if resume_from_chunk is not None else -1
+                            filtered_missing: dict[int, list[int]] = {}
+                            for chapter_number, indexes in missing_by_chapter.items():
+                                if chapter_number < resume_from_chapter:
+                                    continue
+                                if chapter_number == resume_from_chapter:
+                                    trimmed = [idx for idx in indexes if idx > cutoff_chunk]
+                                    if trimmed:
+                                        filtered_missing[chapter_number] = trimmed
+                                else:
+                                    filtered_missing[chapter_number] = indexes
+                            missing_by_chapter = filtered_missing
                         extraction_complete = not missing_by_chapter
                         if missing_by_chapter:
                             parts = []
@@ -472,6 +501,15 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                             "Remaining chunk coverage needed (chapter: chunk indexes): %s",
                             missing_summary,
                         )
+                    if resume_from_chapter is not None:
+                        next_chunk = (
+                            (resume_from_chunk + 1) if resume_from_chunk is not None else 0
+                        )
+                        logger.info(
+                            "Extraction will resume from chapter %s starting at chunk index %s",
+                            resume_from_chapter,
+                            next_chunk,
+                        )
 
     # Step 1: Extract scenes (if not skipped)
     if not skip_extraction:
@@ -485,6 +523,8 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
             config = SceneExtractionConfig(
                 enable_refinement=True,
                 book_slug=args.book_slug,
+                resume_from_chapter=resume_from_chapter,
+                resume_from_chunk=resume_from_chunk,
             )
             extractor = SceneExtractor(config=config)
             extraction_stats = extractor.extract_book(book_path)
