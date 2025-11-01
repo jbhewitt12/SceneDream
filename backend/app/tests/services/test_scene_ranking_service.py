@@ -47,7 +47,13 @@ def scene_factory(db: Session) -> Callable[..., object]:
 
     yield _create
 
+    # Cleanup: delete rankings before scenes due to FK constraints
+    ranking_repo = SceneRankingRepository(db)
     for scene in created:
+        # Delete all rankings for this scene
+        rankings = ranking_repo.list_for_scene(scene.id)
+        for ranking in rankings:
+            db.delete(ranking)
         db.delete(scene)
     db.commit()
 
