@@ -19,8 +19,8 @@ Usage examples (run from backend/ directory):
     # Generate images for a chapter range with specific aspect ratio
     uv run python -m app.services.image_generation.main --book excession-iain-m-banks --chapter-range 1:5 --aspect-ratio 16:9
 
-    # Generate images for specific prompts with overwrite
-    uv run python -m app.services.image_generation.main --prompt-ids <uuid1>,<uuid2> --overwrite
+    # Generate images for specific prompts
+    uv run python -m app.services.image_generation.main --prompt-ids <uuid1>,<uuid2>
 """
 
 from __future__ import annotations
@@ -140,11 +140,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Number of concurrent generation tasks (default: 3).",
     )
     parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Regenerate even if image already exists.",
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Preview planned operations without executing API calls.",
@@ -223,7 +218,6 @@ async def _handle_generate(args: argparse.Namespace) -> int:
         response_format=args.response_format,
         concurrency=args.concurrency,
         dry_run=args.dry_run,
-        overwrite=args.overwrite,
         api_key=api_key,
     )
 
@@ -239,7 +233,6 @@ async def _handle_generate(args: argparse.Namespace) -> int:
                 prompt_ids=prompt_ids,
                 top_scenes=args.top_scenes,
                 limit=args.limit,
-                overwrite=args.overwrite,
                 quality=args.quality,
                 preferred_style=args.preferred_style,
                 aspect_ratio=args.aspect_ratio,

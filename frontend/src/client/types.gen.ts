@@ -28,7 +28,6 @@ export type GeneratedImageGenerateRequest = {
   scene_ids?: Array<string> | null
   prompt_ids?: Array<string> | null
   limit?: number | null
-  overwrite?: boolean
   quality?: string
   preferred_style?: string | null
   aspect_ratio?: string | null

@@ -46,7 +46,6 @@ class ImageGenerationConfig:
     )
     skip_scenes_with_warnings: bool = True
     dry_run: bool = False
-    overwrite: bool = False
     api_key: str | None = None
     storage_base: str = "img/generated"
 
@@ -63,7 +62,6 @@ class ImageGenerationConfig:
             "blocked_warnings": set(self.blocked_warnings),
             "skip_scenes_with_warnings": self.skip_scenes_with_warnings,
             "dry_run": self.dry_run,
-            "overwrite": self.overwrite,
             "api_key": self.api_key,
             "storage_base": self.storage_base,
         }
@@ -189,7 +187,6 @@ class ImageGenerationService:
         prompt_ids: list[UUID] | None = None,
         top_scenes: int | None = None,
         limit: int | None = None,
-        overwrite: bool = False,
         quality: str = "standard",
         preferred_style: str | None = None,
         aspect_ratio: str | None = None,
@@ -209,7 +206,6 @@ class ImageGenerationService:
             prompt_ids: Filter by specific image prompt IDs
             top_scenes: Generate for top N scenes by ranking (skips scenes with existing images)
             limit: Maximum number of images to generate
-            overwrite: If True, regenerate even if image exists
             quality: Image quality ("standard" or "hd")
             preferred_style: Preferred style override ("vivid" or "natural")
             aspect_ratio: Preferred aspect ratio ("1:1", "9:16", or "16:9")
@@ -231,7 +227,6 @@ class ImageGenerationService:
             response_format=response_format,
             concurrency=concurrency,
             dry_run=dry_run,
-            overwrite=overwrite,
         )
 
         # Fetch prompts based on filters
@@ -511,24 +506,23 @@ class ImageGenerationService:
             storage_path = f"{config.storage_base}/{scene.book_slug}/chapter-{scene.chapter_number}"
             file_name = f"scene-{scene.scene_number}-v{variant_index}.png"
 
-            # Check for idempotency (unless overwrite is enabled)
-            if not config.overwrite:
-                existing = self._image_repo.find_existing_by_params(
-                    image_prompt_id=prompt.id,
-                    variant_index=variant_index,
-                    provider=config.provider,
-                    model=config.model,
-                    size=size,
-                    quality=config.quality,
-                    style=style,
+            # Check for idempotency
+            existing = self._image_repo.find_existing_by_params(
+                image_prompt_id=prompt.id,
+                variant_index=variant_index,
+                provider=config.provider,
+                model=config.model,
+                size=size,
+                quality=config.quality,
+                style=style,
+            )
+            if existing:
+                logger.debug(
+                    "Skipping prompt %s (image already exists: %s)",
+                    prompt.id,
+                    existing.id,
                 )
-                if existing:
-                    logger.debug(
-                        "Skipping prompt %s (image already exists: %s)",
-                        prompt.id,
-                        existing.id,
-                    )
-                    continue
+                continue
 
             tasks.append(
                 GenerationTask(
@@ -602,18 +596,17 @@ class ImageGenerationService:
         """Generate a single image from a task."""
         try:
             # Check idempotency again (in case of race conditions)
-            if not config.overwrite:
-                existing = self._image_repo.find_existing_by_params(
-                    image_prompt_id=task.prompt.id,
-                    variant_index=task.variant_index,
-                    provider=config.provider,
-                    model=config.model,
-                    size=task.size,
-                    quality=task.quality,
-                    style=task.style,
-                )
-                if existing:
-                    return GenerationResult(task=task, skipped=True)
+            existing = self._image_repo.find_existing_by_params(
+                image_prompt_id=task.prompt.id,
+                variant_index=task.variant_index,
+                provider=config.provider,
+                model=config.model,
+                size=task.size,
+                quality=task.quality,
+                style=task.style,
+            )
+            if existing:
+                return GenerationResult(task=task, skipped=True)
 
             # Log the prompt being used
             logger.info(
