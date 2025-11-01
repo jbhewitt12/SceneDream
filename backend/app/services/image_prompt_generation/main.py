@@ -12,8 +12,8 @@ import argparse
 import json
 import logging
 import sys
+from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import Iterable, Optional
 from uuid import UUID
 
 from sqlmodel import Session
@@ -245,7 +245,7 @@ def _handle_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     parser = _build_parser()
     args = parser.parse_args(argv)

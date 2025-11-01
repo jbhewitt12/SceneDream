@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -13,6 +14,14 @@ from app.services.image_prompt_generation import (
 )
 from app.services.langchain import gemini_api
 from models.scene_extraction import SceneExtraction
+
+EXCESSION_EPUB = (
+    Path(__file__).resolve().parents[4]
+    / "books"
+    / "Iain Banks"
+    / "Excession"
+    / "Excession - Iain M. Banks.epub"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -238,7 +247,11 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(
         commit=True,
     )
 
-    config = ImagePromptGenerationConfig(variants_count=2, allow_overwrite=False)
+    config = ImagePromptGenerationConfig(
+        variants_count=2,
+        allow_overwrite=False,
+        model_name="gemini-2.5-flash",
+    )
     service = ImagePromptGenerationService(db, config=config)
     _patch_context(service, monkeypatch)
     monkeypatch.setattr(
@@ -286,7 +299,11 @@ def test_generate_for_scene_overwrites_when_allowed(
         commit=True,
     )
 
-    config = ImagePromptGenerationConfig(variants_count=2, allow_overwrite=True)
+    config = ImagePromptGenerationConfig(
+        variants_count=2,
+        allow_overwrite=True,
+        model_name="gemini-2.5-flash",
+    )
     service = ImagePromptGenerationService(db, config=config)
     _patch_context(service, monkeypatch)
     monkeypatch.setattr(gemini_api, "json_output", lambda **_: _variants())
@@ -301,3 +318,45 @@ def test_generate_for_scene_overwrites_when_allowed(
     )
 
     repository.delete_for_scene(scene.id, commit=True)
+
+
+@pytest.mark.skipif(not EXCESSION_EPUB.exists(), reason="Test EPUB not available")
+def test_build_scene_context_paragraph_numbering(
+    db: Session,
+    scene_factory,
+) -> None:
+    scene = scene_factory(
+        book_slug="excession",
+        source_book_path=str(EXCESSION_EPUB),
+        chapter_number=1,
+        chapter_title="Chapter 1",
+        scene_paragraph_start=5,
+        scene_paragraph_end=8,
+        chunk_paragraph_start=5,
+        chunk_paragraph_end=8,
+    )
+
+    service = ImagePromptGenerationService(db)
+    config = ImagePromptGenerationConfig()
+    config.context_before = 3
+    config.context_after = 1
+
+    context_window, context_text = service._build_scene_context(
+        scene=scene,
+        config=config,
+    )
+
+    expected_start = max(1, scene.scene_paragraph_start - config.context_before)
+    cached_chapters = service._book_cache[scene.source_book_path]
+    total_paragraphs = len(cached_chapters[scene.chapter_number].paragraphs)
+    expected_end = min(
+        total_paragraphs,
+        scene.scene_paragraph_end + config.context_after,
+    )
+
+    assert context_window["paragraph_span"] == [expected_start, expected_end]
+    lines = context_text.splitlines()
+    assert lines
+    assert lines[0].startswith(f"[Paragraph {expected_start}]")
+    assert lines[-1].startswith(f"[Paragraph {expected_end}]")
+    assert len(lines) == expected_end - expected_start + 1

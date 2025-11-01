@@ -6,21 +6,20 @@ import hashlib
 import json
 import logging
 import time
+from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, MutableMapping, Sequence
+from typing import Any
 from uuid import UUID
 
-import ebooklib
-from bs4 import BeautifulSoup
-from ebooklib import epub
 from pydantic import BaseModel, ValidationError
 from sqlmodel import Session
 
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
+from app.services.books import BookContentService, BookContentServiceError
 from app.services.langchain import gemini_api
 from app.services.prompt_metadata import (
     PromptMetadataConfig,
@@ -177,6 +176,7 @@ class ImagePromptGenerationService:
         self._ranking_repo = SceneRankingRepository(session)
         self._cheatsheet_text: dict[str, str] = {}
         self._book_cache: MutableMapping[str, dict[int, _ChapterContext]] = {}
+        self._book_service = BookContentService()
 
     def generate_for_scene(
         self,
@@ -1025,72 +1025,27 @@ class ImagePromptGenerationService:
     ) -> dict[int, _ChapterContext]:
         if source_book_path in self._book_cache:
             return self._book_cache[source_book_path]
-        path = Path(source_book_path)
-        if not path.is_absolute():
-            path = (_PROJECT_ROOT / path).resolve()
-        if not path.exists():
-            raise ImagePromptGenerationServiceError(
-                f"Source EPUB not found: {source_book_path}"
-            )
-        book = epub.read_epub(str(path))
+        try:
+            content = self._book_service.load_book(source_book_path)
+        except BookContentServiceError as exc:
+            raise ImagePromptGenerationServiceError(str(exc)) from exc
+
         chapters: dict[int, _ChapterContext] = {}
-        chapter_number = 1
-        for spine_entry in book.spine:
-            item_id = spine_entry[0]
-            item = book.get_item_with_id(item_id)
-            if not item or item.get_type() != ebooklib.ITEM_DOCUMENT:
-                continue
-            name = (item.get_name() or "").lower()
-            if any(skip in name for skip in ("nav", "cover", "titlepage", "toc")):
-                continue
-            html = item.get_content().decode("utf-8")
-            soup = BeautifulSoup(html, "html.parser")
-            paragraphs = self._extract_paragraphs(soup)
-            if not paragraphs:
-                continue
-            title = self._extract_title(soup) or f"Chapter {chapter_number}"
+        for chapter_number, chapter in content.chapters.items():
             chapters[chapter_number] = _ChapterContext(
-                number=chapter_number,
-                title=title,
-                paragraphs=paragraphs,
-                source_name=item.get_name() or f"chapter_{chapter_number}",
+                number=chapter.number,
+                title=chapter.title,
+                paragraphs=list(chapter.paragraphs),
+                source_name=chapter.source_name,
             )
-            chapter_number += 1
+
         if not chapters:
             raise ImagePromptGenerationServiceError(
-                f"No chapters extracted from EPUB: {source_book_path}"
+                f"No chapters extracted from book: {source_book_path}"
             )
+
         self._book_cache[source_book_path] = chapters
         return chapters
-
-    def _extract_paragraphs(self, soup: BeautifulSoup) -> list[str]:
-        raw_text = soup.get_text("\n")
-        lines = [line.strip() for line in raw_text.splitlines()]
-        paragraphs: list[str] = []
-        buffer: list[str] = []
-        for line in lines:
-            if not line:
-                if buffer:
-                    paragraphs.append(self._normalize_whitespace(" ".join(buffer)))
-                    buffer = []
-                continue
-            buffer.append(line)
-        if buffer:
-            paragraphs.append(self._normalize_whitespace(" ".join(buffer)))
-        return [p for p in paragraphs if p]
-
-    def _extract_title(self, soup: BeautifulSoup) -> str | None:
-        for selector in ("h1", "h2", "h3", "title"):
-            node = soup.find(selector)
-            if node:
-                title = node.get_text(strip=True)
-                if title:
-                    return self._normalize_whitespace(title)
-        return None
-
-    @staticmethod
-    def _normalize_whitespace(text: str) -> str:
-        return " ".join(text.split())
 
     def _scene_has_blocked_warnings(
         self,
