@@ -6,22 +6,18 @@ import json
 import logging
 import os
 import re
-import shutil
 import unicodedata
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
-import ebooklib
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from ebooklib import epub
-import mobi
 from sqlmodel import Session
 
 from app.core.db import engine
 from app.repositories.scene_extraction import SceneExtractionRepository
+from app.services.books import BookContentService, BookContentServiceError
 from app.services.langchain import gemini_api
 from app.services.scene_extraction.scene_refinement import (
     RefinedScene,
@@ -41,126 +37,6 @@ EXCESSION_EPUB_PATH = (
 )
 ENABLE_REFINEMENT = True
 REFINEMENT_BATCH_SIZE = 5
-
-MOBI_EXTENSIONS = {".mobi", ".azw", ".azw3"}
-HTML_SUFFIXES = {".html", ".htm", ".xhtml"}
-
-
-FRONT_MATTER_NAME_TOKENS = {
-    "ack",
-    "acknowledge",
-    "acknowledgement",
-    "acknowledgements",
-    "acknowledgment",
-    "acknowledgments",
-    "also",
-    "author",
-    "about",
-    "ads",
-    "advert",
-    "advertisement",
-    "afterword",
-    "alsoby",
-    "appendix",
-    "bio",
-    "colophon",
-    "con",
-    "contents",
-    "copyright",
-    "cop",
-    "cover",
-    "cov",
-    "ded",
-    "dedication",
-    "excerpt",
-    "fm",
-    "foreword",
-    "front",
-    "glossary",
-    "htp",
-    "index",
-    "intro",
-    "introduction",
-    "licence",
-    "license",
-    "map",
-    "note",
-    "notes",
-    "pref",
-    "preface",
-    "praise",
-    "promo",
-    "sample",
-    "sneak",
-    "tit",
-    "title",
-    "toc",
-}
-
-
-FRONT_MATTER_TITLE_KEYWORDS = {
-    "acknowledg",
-    "afterword",
-    "also by",
-    "about the author",
-    "about the illustrator",
-    "about the translator",
-    "appendix",
-    "colophon",
-    "contents",
-    "copyright",
-    "dedication",
-    "foreword",
-    "glossary",
-    "index",
-    "introduction",
-    "license",
-    "map",
-    "notes",
-    "preface",
-    "praise",
-}
-
-
-FRONT_MATTER_CONTAINER_CLASSES = {
-    "acknowledgepage",
-    "aboutauthor",
-    "abouttheauthor",
-    "abouttheillustrator",
-    "abouttranslator",
-    "advertisement",
-    "alsobypage",
-    "colophonpage",
-    "contents",
-    "copyrightpage",
-    "dedicationpage",
-    "frontmatterpage",
-    "glossary",
-    "halftitlepage",
-    "index",
-    "map",
-    "praisepage",
-    "tableofcontents",
-    "titlepage",
-}
-
-
-CHAPTER_NAME_TOKENS = {
-    "act",
-    "chapter",
-    "chap",
-    "ch",
-    "epil",
-    "epilogue",
-    "interlude",
-    "part",
-    "pro",
-    "prologue",
-    "scene",
-    "sec",
-    "section",
-    "volume",
-}
 
 
 SCENE_EXTRACTION_SCHEMA_TEXT = """{
@@ -213,10 +89,6 @@ class ChapterChunk:
         return "\n\n".join(lines)
 
 
-class MobiExtractionError(RuntimeError):
-    """Raised when a MOBI file cannot be unpacked into readable content."""
-
-
 @dataclass
 class RawScene:
     chapter_number: int
@@ -249,114 +121,7 @@ class SceneExtractor:
         self.config = config or SceneExtractionConfig()
         load_dotenv()
         self._refiner: Optional[SceneRefiner] = None
-
-    def _extract_name_tokens(self, source_name: str) -> set[str]:
-        stem = Path(source_name).stem.lower()
-        tokens = set(re.findall(r"[a-z]+", stem))
-        # Trim obviously generic tokens that do not help classification.
-        generic_tokens = {"text", "section", "xhtml", "html"}
-        cleaned = {token for token in tokens if token not in generic_tokens}
-        return cleaned
-
-    def _split_mobi_html_fragments(self, html: str) -> List[str]:
-        if "<mbp:pagebreak" not in html.lower():
-            return [html]
-        fragments = [
-            fragment
-            for fragment in re.split(r"<mbp:pagebreak\s*/?>", html, flags=re.IGNORECASE)
-            if fragment.strip()
-        ]
-        return fragments or [html]
-
-    def _maybe_extract_heading_from_paragraphs(
-        self, paragraphs: Sequence[str]
-    ) -> Tuple[Optional[str], List[str]]:
-        if not paragraphs:
-            return (None, [])
-        first = self._normalize_whitespace(paragraphs[0])
-        if self._looks_like_heading(first):
-            remaining = [self._normalize_whitespace(p) for p in paragraphs[1:] if p]
-            return (first, remaining)
-        return (None, list(paragraphs))
-
-    def _looks_like_heading(self, text: str) -> bool:
-        if not text:
-            return False
-        if text.upper() == text and len(text) <= 120:
-            return True
-        lower = text.lower()
-        if re.match(r"^(book|chapter|part|prologue|epilogue|interlude|act|scene)\b", lower):
-            return True
-        if not any(char in text for char in ".!?;:,"):
-            words = text.split()
-            if 1 <= len(words) <= 8 and all(word[:1].isalpha() for word in words):
-                title_case_ratio = sum(1 for word in words if word[:1].isupper())
-                if title_case_ratio == len(words):
-                    return True
-        return False
-
-    def _decorate_fragment_source_name(
-        self, base_name: str, title: Optional[str], paragraphs: Sequence[str]
-    ) -> str:
-        tokens_source = title or (paragraphs[0] if paragraphs else "")
-        if not tokens_source:
-            return base_name
-        slug_tokens = re.findall(r"[a-z0-9]+", tokens_source.lower())
-        if not slug_tokens:
-            return base_name
-        slug = "_".join(slug_tokens[:6])
-        return f"{base_name}__{slug}"
-
-    def _top_level_container_classes(self, soup: BeautifulSoup) -> set[str]:
-        body = soup.body
-        if body is None:
-            return set()
-        classes: set[str] = set()
-        for child in body.find_all(recursive=False):
-            for cls in child.get("class", []):
-                classes.add(cls.lower())
-        return classes
-
-    def _should_skip_spine_item(
-        self,
-        *,
-        source_name: str,
-        title: Optional[str],
-        soup: BeautifulSoup,
-        paragraphs: Sequence[str],
-    ) -> bool:
-        name_tokens = self._extract_name_tokens(source_name)
-        has_chapter_token = bool(name_tokens & CHAPTER_NAME_TOKENS)
-        if name_tokens & FRONT_MATTER_NAME_TOKENS and not has_chapter_token:
-            return True
-
-        normalized_title = self._normalize_whitespace(title).lower() if title else ""
-        if normalized_title:
-            if any(keyword in normalized_title for keyword in FRONT_MATTER_TITLE_KEYWORDS):
-                chapter_title_markers = {"chapter", "prologue", "epilogue", "part", "interlude"}
-                if not any(marker in normalized_title for marker in chapter_title_markers):
-                    return True
-
-        container_classes = self._top_level_container_classes(soup)
-        if container_classes & FRONT_MATTER_CONTAINER_CLASSES and not has_chapter_token:
-            return True
-
-        # Defensive fallback: skip extremely short entries that are almost certainly headings.
-        if len(paragraphs) == 1 and len(paragraphs[0]) <= 40 and not has_chapter_token:
-            return True
-
-        if paragraphs:
-            first_paragraph = self._normalize_whitespace(paragraphs[0]).lower()
-            if first_paragraph:
-                if any(
-                    keyword in first_paragraph for keyword in FRONT_MATTER_TITLE_KEYWORDS
-                ):
-                    if not has_chapter_token and not first_paragraph.startswith(
-                        ("chapter", "prologue", "epilogue", "part", "interlude")
-                    ):
-                        return True
-
-        return False
+        self._book_service = BookContentService()
 
     def extract_book(
         self, book_path: Union[str, os.PathLike[str]]
@@ -468,238 +233,23 @@ class SceneExtractor:
         return stats
 
     def _load_chapters(self, book_path: Path) -> List[Chapter]:
-        suffix = book_path.suffix.lower()
-        if suffix == ".epub":
-            book = epub.read_epub(str(book_path))
-            return self._load_chapters_from_epub_book(book)
-        if suffix in MOBI_EXTENSIONS:
-            return self._load_chapters_from_mobi(book_path)
-        raise ValueError(f"Unsupported book format: {book_path.suffix}")
+        """Load chapters for the given book path using the shared BookContentService."""
+        try:
+            content = self._book_service.load_book(book_path)
+        except BookContentServiceError as exc:
+            raise RuntimeError(f"Failed to load chapters from {book_path}: {exc}") from exc
 
-    def _load_chapters_from_epub_book(self, book: epub.EpubBook) -> List[Chapter]:
         chapters: List[Chapter] = []
-        chapter_number = 1
-        for spine_entry in book.spine:
-            item_id = spine_entry[0]
-            item = book.get_item_with_id(item_id)
-            if not item or item.get_type() != ebooklib.ITEM_DOCUMENT:
-                continue
-            name = (item.get_name() or "").lower()
-            if any(skip in name for skip in ("nav", "cover", "titlepage", "toc")):
-                continue
-            html = item.get_content().decode("utf-8")
-            soup = BeautifulSoup(html, "html.parser")
-            paragraphs = self._extract_paragraphs(soup)
-            if not paragraphs:
-                continue
-            raw_title = self._extract_title(soup)
-            if self._should_skip_spine_item(
-                source_name=item.get_name() or "",
-                title=raw_title,
-                soup=soup,
-                paragraphs=paragraphs,
-            ):
-                logger.debug("Skipping front/back matter item: %s", item.get_name())
-                continue
-            title = self._clean_chapter_title(raw_title, chapter_number)
+        for chapter_number, book_chapter in sorted(content.chapters.items()):
             chapters.append(
                 Chapter(
-                    number=chapter_number,
-                    title=title,
-                    paragraphs=paragraphs,
-                    source_name=item.get_name() or f"chapter_{chapter_number}",
+                    number=book_chapter.number,
+                    title=book_chapter.title,
+                    paragraphs=list(book_chapter.paragraphs),
+                    source_name=book_chapter.source_name,
                 )
             )
-            chapter_number += 1
         return chapters
-
-    def _load_chapters_from_mobi(self, book_path: Path) -> List[Chapter]:
-        temp_dir_path: Optional[Path] = None
-        try:
-            temp_dir_str, primary_path_str = mobi.extract(str(book_path))
-        except Exception as exc:
-            raise MobiExtractionError(
-                f"Failed to unpack MOBI file '{book_path}': {exc}"
-            ) from exc
-
-        try:
-            temp_dir_path = Path(temp_dir_str)
-            primary_path = Path(primary_path_str)
-            suffix = primary_path.suffix.lower()
-
-            if suffix == ".epub" and primary_path.exists():
-                book = epub.read_epub(str(primary_path))
-                chapters_from_epub = self._load_chapters_from_epub_book(book)
-                if chapters_from_epub:
-                    return chapters_from_epub
-                raise MobiExtractionError(
-                    f"Extracted EPUB from MOBI file '{book_path}' contained no chapters."
-                )
-
-            html_candidates: List[Path] = []
-            if suffix in HTML_SUFFIXES and primary_path.exists():
-                html_candidates.append(primary_path)
-
-            if temp_dir_path.exists():
-                html_candidates.extend(
-                    sorted(
-                        path
-                        for path in temp_dir_path.rglob("*")
-                        if path.is_file()
-                        and path.suffix.lower() in HTML_SUFFIXES
-                    )
-                )
-
-            deduped_html: List[Path] = []
-            seen: set[Path] = set()
-            for candidate in html_candidates:
-                if candidate not in seen:
-                    deduped_html.append(candidate)
-                    seen.add(candidate)
-
-            if not deduped_html:
-                raise MobiExtractionError(
-                    f"MOBI file '{book_path}' did not contain HTML or EPUB content."
-                )
-
-            chapters = self._parse_html_chapter_files(
-                deduped_html, temp_dir_path or primary_path.parent
-            )
-            if not chapters:
-                raise MobiExtractionError(
-                    f"No chapters could be parsed from MOBI file '{book_path}'."
-                )
-            return chapters
-        finally:
-            if temp_dir_path and temp_dir_path.exists():
-                shutil.rmtree(temp_dir_path, ignore_errors=True)
-
-    def _parse_html_chapter_files(
-        self, html_files: Sequence[Path], base_dir: Path
-    ) -> List[Chapter]:
-        chapters: List[Chapter] = []
-        chapter_number = 1
-        for html_path in html_files:
-            try:
-                html = html_path.read_text(encoding="utf-8", errors="ignore")
-            except OSError as exc:
-                logger.debug("Skipping unreadable MOBI HTML fragment: %s (%s)", html_path, exc)
-                continue
-            fragments = self._split_mobi_html_fragments(html)
-            total_fragments = len(fragments)
-            for fragment_index, fragment in enumerate(fragments):
-                soup = BeautifulSoup(fragment, "html.parser")
-                paragraphs = self._extract_paragraphs(soup)
-                if not paragraphs:
-                    continue
-                raw_title = self._extract_title(soup)
-                paragraphs_for_body = list(paragraphs)
-                if not raw_title:
-                    inferred_title, trimmed = self._maybe_extract_heading_from_paragraphs(
-                        paragraphs_for_body
-                    )
-                    if inferred_title:
-                        raw_title = inferred_title
-                        paragraphs_for_body = trimmed
-                if not paragraphs_for_body:
-                    # Ignore fragments that only contained a heading.
-                    continue
-                if (
-                    not raw_title
-                    and len(paragraphs_for_body) == 1
-                    and len(paragraphs_for_body[0]) < 400
-                ):
-                    # Treat brief single-paragraph fragments without titles as front-matter blurbs.
-                    continue
-                try:
-                    relative_name = str(html_path.relative_to(base_dir))
-                except ValueError:
-                    relative_name = html_path.name
-                fragment_suffix = (
-                    f"{relative_name}#fragment{fragment_index}"
-                    if total_fragments > 1
-                    else relative_name
-                )
-                decorated_name = self._decorate_fragment_source_name(
-                    fragment_suffix, raw_title, paragraphs_for_body
-                )
-                if self._should_skip_spine_item(
-                    source_name=decorated_name,
-                    title=raw_title,
-                    soup=soup,
-                    paragraphs=paragraphs_for_body,
-                ):
-                    continue
-                cleaned_title = self._clean_chapter_title(raw_title, chapter_number)
-                chapters.append(
-                    Chapter(
-                        number=chapter_number,
-                        title=cleaned_title,
-                        paragraphs=paragraphs_for_body,
-                        source_name=decorated_name,
-                    )
-                )
-                chapter_number += 1
-        return chapters
-
-    def _clean_chapter_title(
-        self, title: Optional[str], chapter_number: int
-    ) -> str:
-        fallback = f"Chapter {chapter_number}"
-        if not title:
-            return fallback
-
-        normalized = self._normalize_whitespace(title)
-        if not normalized:
-            return fallback
-
-        # Treat long, multi-sentence headings as body text that was wrapped in a heading tag.
-        punctuation_hits = sum(normalized.count(mark) for mark in ".!?")
-        if len(normalized) > 200 or punctuation_hits >= 2:
-            logger.debug(
-                "Discarding verbose chapter title for chapter %s (len=%s, sentences=%s)",
-                chapter_number,
-                len(normalized),
-                punctuation_hits,
-            )
-            return fallback
-
-        return normalized
-
-    def _extract_paragraphs(self, soup: BeautifulSoup) -> List[str]:
-        paragraphs: List[str] = []
-        for node in soup.find_all("p"):
-            text = node.get_text(" ", strip=True)
-            normalized = self._normalize_whitespace(text)
-            if normalized:
-                paragraphs.append(normalized)
-        if paragraphs:
-            return paragraphs
-
-        raw_text = soup.get_text("\n")
-        lines = [line.strip() for line in raw_text.splitlines()]
-        collected: List[str] = []
-        buffer: List[str] = []
-        for line in lines:
-            if not line:
-                if buffer:
-                    collected.append(self._normalize_whitespace(" ".join(buffer)))
-                    buffer = []
-                continue
-            buffer.append(line)
-        if buffer:
-            collected.append(self._normalize_whitespace(" ".join(buffer)))
-        cleaned = [p for p in collected if p]
-        return cleaned
-
-    def _extract_title(self, soup: BeautifulSoup) -> Optional[str]:
-        for selector in ("h1", "h2", "h3", "title"):
-            node = soup.find(selector)
-            if node:
-                title = node.get_text(separator=" ", strip=True)
-                if title:
-                    return self._normalize_whitespace(title)
-        return None
 
     def _extract_chapter_scenes(
         self,
@@ -1157,10 +707,6 @@ class SceneExtractor:
         candidate = re.sub(r"[^a-z0-9-]", "-", candidate)
         candidate = re.sub(r"-+", "-", candidate).strip("-")
         return candidate or "scene"
-
-    def _normalize_whitespace(self, value: str) -> str:
-        return " ".join(value.split())
-
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Scene extraction CLI entry point")
