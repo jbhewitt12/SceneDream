@@ -9,6 +9,7 @@ node_modules/
 # Books folder
 /books/
 /img/
+/liked_images/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
