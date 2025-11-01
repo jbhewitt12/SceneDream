@@ -21,7 +21,29 @@ class _CacheEntry:
 
 
 class BookContentService:
-    """Service for loading and caching book content from EPUB and MOBI files."""
+    """
+    BookContentService provides normalized access to book content from EPUB and MOBI files.
+
+    Usage:
+        service = BookContentService()
+        content = service.load_book("books/my-book.epub")
+
+        for chapter in content.chapters.values():
+            print(f"Chapter {chapter.number}: {chapter.title}")
+            print(f"  Paragraphs: {len(chapter.paragraphs)}")
+
+    Features:
+        - Auto-detects format (EPUB, MOBI, AZW) based on file extension
+        - In-memory caching keyed by file path and checksum to avoid repeated I/O
+        - Filters common front matter while preserving chapter numbering
+        - Provides deterministic chapter and paragraph ordering (1-indexed)
+
+    Backward Compatibility:
+        Paragraph numbering matches the legacy SceneExtractor behavior so existing
+        `scene_extractions` records remain valid. Chapters are numbered from 1 and the
+        paragraph list for each chapter maps directly to the 1-indexed paragraph spans
+        used throughout downstream services.
+    """
 
     def __init__(self, *, project_root: Path | None = None) -> None:
         self._epub_loader = EpubBookLoader()

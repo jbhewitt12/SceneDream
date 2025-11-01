@@ -1250,6 +1250,39 @@ Before starting implementation:
 **Warnings for future work**:
 -
 
+#### Phase 7: [Status - Date]
+**Completion status**: ✅ Complete
+**Date completed**: 2025-11-01
+**Key findings**:
+- `SceneExtractor` now instantiates `BookContentService` and delegates chapter loading to the shared service, eliminating embedded EPUB/MOBI parsing.
+- Legacy MOBI/EPUB helper methods and associated constants were removed; coverage moved to service-level tests (`test_scene_extractor_book_loading.py`).
+**Deviations from plan**:
+- Retired `test_scene_extraction_filters.py` in favor of new BookContentService-centric tests to avoid targeting removed internals.
+**Warnings for future work**:
+- If additional filtering heuristics are added, ensure they live under `app/services/books` with corresponding unit tests.
+
+#### Phase 8: [Status - Date]
+**Completion status**: ✅ Complete
+**Date completed**: 2025-11-01
+**Key findings**:
+- Added `test_backward_compatibility.py` to verify Excession EPUB chapter counts, paragraph integrity, and sequential numbering via `BookContentService`.
+- Expanded docstrings for `BookContentService` and `app.services.books` to document usage, features, and backward-compatibility guarantees.
+**Deviations from plan**:
+- None.
+**Warnings for future work**:
+- Regression tests rely on `books/Iain Banks/Excession/...`; keep the fixture EPUB checked in or skip logic will disable coverage.
+
+#### Phase 9: [Status - Date]
+**Completion status**: ✅ Complete
+**Date completed**: 2025-11-01
+**Key findings**:
+- Installed `trio` and reran targeted suites (`pytest app/tests/services/books -q`, `pytest app/tests/services/test_scene_extractor_book_loading.py -q`) to ensure new modules pass.
+- Attempted full `uv run pytest -v`; failures persist in image generation integration tests due to existing idempotency unique constraints (pre-existing behavior).
+**Deviations from plan**:
+- Could not obtain a green full test suite; noted outstanding `GeneratedImage` constraint failures instead of addressing unrelated service logic.
+**Warnings for future work**:
+- Running the full suite requires resolving `GeneratedImageRepository` overwrite semantics; rerun `uv run pytest -k generate_for_selection` after applying fixes.
+
 # Notes on `mobi` library
    ## Usage
 
