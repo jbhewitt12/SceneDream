@@ -396,16 +396,82 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
     # Auto-detect if extraction should be skipped
     skip_extraction = args.skip_extraction
     if not skip_extraction and book_slug and not args.dry_run:
+        detection_config = SceneExtractionConfig(book_slug=book_slug)
+        detection_extractor = SceneExtractor(config=detection_config)
+        resolved_detection_path: Path | None = None
+        if book_path:
+            try:
+                resolved_detection_path = detection_extractor._resolve_book_path(
+                    book_path
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Unable to resolve book path '%s' when checking extraction completeness: %s",
+                    book_path,
+                    exc,
+                )
         with Session(engine) as session:
             scene_repo = SceneExtractionRepository(session)
             existing_scenes = scene_repo.list_for_book(book_slug)
             if existing_scenes:
-                logger.info(
-                    "Auto-detected %d existing scenes for book '%s' - skipping extraction",
-                    len(existing_scenes),
-                    book_slug,
-                )
-                skip_extraction = True
+                extraction_complete = False
+                missing_summary = ""
+                if resolved_detection_path:
+                    try:
+                        chapters = detection_extractor._load_chapters(
+                            resolved_detection_path
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Unable to load chapters from '%s' when checking extraction completeness: %s",
+                            resolved_detection_path,
+                            exc,
+                        )
+                    else:
+                        missing_by_chapter = {}
+                        for chapter in chapters:
+                            expected_indexes = {
+                                chunk.index
+                                for chunk in detection_extractor._chunk_chapter(chapter)
+                            }
+                            if not expected_indexes:
+                                continue
+                            existing_indexes = scene_repo.chunk_indexes_for_chapter(
+                                book_slug=book_slug,
+                                chapter_number=chapter.number,
+                            )
+                            missing_indexes = sorted(expected_indexes - existing_indexes)
+                            if missing_indexes:
+                                missing_by_chapter[chapter.number] = missing_indexes
+                        extraction_complete = not missing_by_chapter
+                        if missing_by_chapter:
+                            parts = []
+                            for chapter_number, indexes in sorted(
+                                missing_by_chapter.items()
+                            ):
+                                display = ", ".join(str(index) for index in indexes[:5])
+                                if len(indexes) > 5:
+                                    display += "…"
+                                parts.append(f"{chapter_number}: {display}")
+                            missing_summary = "; ".join(parts)
+                if extraction_complete:
+                    logger.info(
+                        "Auto-detected %d existing scenes for book '%s' - skipping extraction",
+                        len(existing_scenes),
+                        book_slug,
+                    )
+                    skip_extraction = True
+                else:
+                    logger.info(
+                        "Found %d existing scene(s) for book '%s' but extraction is incomplete; continuing extraction",
+                        len(existing_scenes),
+                        book_slug,
+                    )
+                    if missing_summary:
+                        logger.info(
+                            "Remaining chunk coverage needed (chapter: chunk indexes): %s",
+                            missing_summary,
+                        )
 
     # Step 1: Extract scenes (if not skipped)
     if not skip_extraction:
