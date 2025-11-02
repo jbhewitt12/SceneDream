@@ -1,35 +1,37 @@
 # Repository Guidelines
 
-SceneDream is a project that uses AI to extract scenes from books and generate images and videos inspired by them.
-
-It will be local development only for now.
-
-See `plan.md` for a rough outline of the plan.
+SceneDream orchestrates an end-to-end pipeline that ingests EPUB novels, extracts cinematic scenes, ranks them, develops DALL·E 3-ready prompts, and renders images. Everything runs locally for fast iteration and experimentation.
 
 This project is built with the FastAPI Template.
 
 ## Key files
 
-- `backend/app/services/scene_extraction/scene_extraction.py`
-- `backend/app/services/langchain/gemini_api.py`
+- `backend/app/services/scene_extraction/scene_extraction.py` — core extractor that chunks EPUBs, calls Gemini, and persists scene metadata.
+- `backend/app/services/scene_extraction/scene_refinement.py` — optional Grok-powered refinement pass that flags keep/discard decisions and annotates scenes.
+- `backend/app/services/scene_ranking/scene_ranking_service.py` — applies weighted multi-model scoring to prioritize scenes ready for prompting.
+- `backend/app/services/image_prompt_generation/image_prompt_generation_service.py` — builds structured DALL·E 3 prompt variants with context windows and style metadata.
+- `backend/app/services/image_generation/image_generation_service.py` & `backend/app/services/image_generation/dalle_image_api.py` — orchestrate image creation, storage, and retries; the CLI entrypoint lives in `backend/app/services/image_gen_cli.py`.
+- `backend/app/services/langchain/gemini_api.py` & `backend/app/services/langchain/xai_api.py` — LangChain wrappers around Gemini 2.5 Pro and xAI Grok used across extraction, refinement, and ranking.
 
 ## Project Structure & Module Organization
-- `backend/app` hosts FastAPI services, domain repositories, and `schemas` for DTOs; tests live in `backend/app/tests`.
-- `backend/models` stores SQLModel definitions used by Alembic migrations in `backend/app/alembic`.
-- `frontend/src` contains React/Chakra UI features, with shared utilities under `src/lib`; browser E2E specs sit in `frontend/tests`.
-- `books/` holds EPUB inputs for scene extraction; `scripts/` provides automation for build/test pipelines; static assets live in `img/`.
+- `backend/app` bundles the FastAPI app: `api/routes` exposes REST resources for scenes, rankings, prompts, and generated images; `services/*` holds the pipeline stages plus EPUB tooling; `repositories/` centralize SQLModel persistence; `schemas/` defines DTOs; tests for both API and services live in `backend/app/tests`.
+- `backend/models` defines SQLModel tables (`SceneExtraction`, `SceneRanking`, `ImagePrompt`, `GeneratedImage`) consumed by Alembic migrations in `backend/app/alembic`.
+- `frontend/src` houses the React + Chakra UI client: `routes/_layout/*` renders dashboards for each pipeline stage, `api/` & `client/` contain the generated OpenAPI SDK, while `components/`, `hooks/`, and `theme/` provide shared UI primitives.
+- `books/` stores EPUB inputs and chapter artifacts consumed by the extraction services; `img/` accumulates generated assets (notably `img/generated/<book>/...`).
+- `scripts/` contains automation like `generate-client.sh`, Docker test harnesses (`test.sh`, `test-local.sh`), and deployment helpers.
 
 ## Build, Test, and Development Commands
 - `docker compose watch` spins up the full stack with live reload.
 - `cd backend && uv run fastapi dev app/main.py` runs the API locally after stopping the compose backend service.
 - `cd frontend && npm run dev` serves the Vite app on `5173`; stop the Docker frontend first if running.
-- `cd backend && uv run bash scripts/test.sh` executes pytest with coverage; add `--keyword <pattern>` to target specific suites.
+- `cd backend && uv run bash scripts/test.sh` executes pytest with coverage and HTML reports; pass extra pytest flags at the end.
+- Pipeline CLIs: from `backend/`, use `uv run python -m app.services.scene_extraction.main ...`, `uv run python -m app.services.scene_ranking.main rank ...`, and `uv run python -m app.services.image_generation.main ...` for staged or end-to-end runs.
 
 ## Coding Style & Naming Conventions
-- Python code follows 4-space indentation with `ruff` and `ruff format`; run `uv run bash scripts/lint.sh` before committing.
-- Keep SQLModel classes in `PascalCase`, repository methods in `snake_case`, and JSON keys camelCase to match frontend expectations.
-- Frontend TypeScript uses Biome (configured in `frontend/biome.json`) with 2-space indentation; format via `npm run lint`.
+- Python code uses 4-space indentation with linting/type checks enforced by `uv run bash scripts/lint.sh` (runs mypy, ruff check, and ruff format).
+- Keep SQLModel classes in PascalCase (`SceneExtraction`, `SceneRanking`, `ImagePrompt`, `GeneratedImage`), repository methods in snake_case, and JSON keys camelCase to match frontend expectations.
+- Frontend TypeScript follows Biome (configured in `frontend/biome.json`) with 2-space indentation; run `npm run lint` to format and organize imports.
 
 ## Testing Guidelines
-- Only write unit tests for backend logic that doesn't call external APIs.
-- Don't do frontend E2E tests.
+- Backend tests live in `backend/app/tests`; prefer unit and service tests that stub external LLM/image calls, and mark any live API smoke tests (e.g. `test_gemini_api_live.py`) with `pytest.mark.integration` so they auto-skip without credentials.
+- Never do frontend E2E tests.
