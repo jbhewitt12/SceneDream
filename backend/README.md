@@ -95,7 +95,7 @@ Nevertheless, if it doesn't detect a change but a syntax error, it will just sto
 To test the backend run:
 
 ```console
-$ bash ./scripts/test.sh
+$ uv run pytest
 ```
 
 The tests run with Pytest, modify and add tests to `./backend/app/tests/`.
