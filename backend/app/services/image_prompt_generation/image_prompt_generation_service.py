@@ -551,6 +551,126 @@ class ImagePromptGenerationService:
         )
         return created
 
+    def create_custom_remix_variant(
+        self,
+        source_prompt: ImagePrompt | UUID,
+        custom_prompt_text: str,
+        *,
+        dry_run: bool = False,
+    ) -> ImagePrompt | ImagePromptPreview:
+        prompt_record = self._resolve_prompt(source_prompt)
+
+        if not custom_prompt_text or not custom_prompt_text.strip():
+            raise ImagePromptGenerationServiceError(
+                "Custom prompt text must not be empty"
+            )
+
+        scene = self._scene_repo.get(prompt_record.scene_extraction_id)
+        if scene is None:
+            raise ImagePromptGenerationServiceError(
+                f"Scene {prompt_record.scene_extraction_id} for prompt {prompt_record.id} was not found"
+            )
+
+        variant_index = self._determine_next_variant_indices_for_scene(scene.id, 1)[0]
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        record: dict[str, Any] = {
+            "scene_extraction_id": prompt_record.scene_extraction_id,
+            "model_vendor": prompt_record.model_vendor,
+            "model_name": prompt_record.model_name,
+            "prompt_version": prompt_record.prompt_version,
+            "variant_index": variant_index,
+            "title": None,
+            "flavour_text": None,
+            "prompt_text": custom_prompt_text,
+            "negative_prompt": prompt_record.negative_prompt,
+            "style_tags": list(prompt_record.style_tags)
+            if prompt_record.style_tags
+            else None,
+            "attributes": dict(prompt_record.attributes),
+            "notes": None,
+            "context_window": dict(prompt_record.context_window),
+            "raw_response": {
+                "custom_remix": True,
+                "custom_remix_source_prompt_id": str(prompt_record.id),
+                "custom_remix_timestamp": timestamp,
+                "custom_prompt_text": custom_prompt_text,
+            },
+            "temperature": (
+                prompt_record.temperature
+                if prompt_record.temperature is not None
+                else self._config.temperature
+            ),
+            "max_output_tokens": prompt_record.max_output_tokens,
+            "llm_request_id": None,
+            "execution_time_ms": 0,
+        }
+
+        if dry_run:
+            preview_prompts = self._instantiate_prompts_from_records([record])
+            metadata_results = self._run_metadata_generation(
+                preview_prompts,
+                dry_run=True,
+                autocommit=False,
+            )
+            preview_prompt = preview_prompts[0]
+            preview = ImagePromptPreview(
+                scene_extraction_id=preview_prompt.scene_extraction_id,
+                variant_index=preview_prompt.variant_index,
+                title=preview_prompt.title,
+                flavour_text=preview_prompt.flavour_text,
+                prompt_text=preview_prompt.prompt_text,
+                style_tags=preview_prompt.style_tags,
+                attributes=preview_prompt.attributes,
+                prompt_version=preview_prompt.prompt_version,
+                model_name=preview_prompt.model_name,
+                model_vendor=preview_prompt.model_vendor,
+                context_window=preview_prompt.context_window,
+                raw_response=preview_prompt.raw_response,
+                temperature=float(preview_prompt.temperature or 0.0),
+                max_output_tokens=preview_prompt.max_output_tokens,
+                execution_time_ms=preview_prompt.execution_time_ms
+                if preview_prompt.execution_time_ms is not None
+                else 0,
+                llm_request_id=preview_prompt.llm_request_id,
+            )
+            if metadata_results:
+                metadata_payload = metadata_results[0]
+                if isinstance(metadata_payload, ImagePrompt):
+                    preview.title = metadata_payload.title
+                    preview.flavour_text = metadata_payload.flavour_text
+                elif isinstance(metadata_payload, dict):
+                    preview.title = metadata_payload.get("title") or preview.title
+                    preview.flavour_text = metadata_payload.get("flavour_text")
+            logger.info(
+                "Custom remix preview generated for prompt %s (variant_index=%s)",
+                prompt_record.id,
+                variant_index,
+            )
+            return preview
+
+        created = self._prompt_repo.bulk_create(
+            [record],
+            commit=self._config.autocommit,
+            refresh=True,
+        )
+        if not self._config.autocommit:
+            self._session.flush()
+        self._run_metadata_generation(
+            created,
+            dry_run=False,
+            autocommit=self._config.autocommit,
+        )
+        prompt = created[0]
+        logger.info(
+            "Custom remix variant %s created for prompt %s (variant_index=%s, text_length=%s)",
+            prompt.id,
+            prompt_record.id,
+            prompt.variant_index,
+            len(custom_prompt_text),
+        )
+        return prompt
+
     def _resolve_scene(self, scene: SceneExtraction | UUID) -> SceneExtraction:
         if isinstance(scene, SceneExtraction):
             return scene

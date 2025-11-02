@@ -1958,6 +1958,56 @@
         }
       }
     },
+    "/api/v1/generated-images/{image_id}/custom-remix": {
+      "post": {
+        "tags": ["generated-images"],
+        "summary": "Custom Remix Generated Image",
+        "description": "Trigger a custom remix using user-supplied prompt text for a generated image.",
+        "operationId": "generated-images-custom_remix_generated_image",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Image Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratedImageCustomRemixRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedImageCustomRemixResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/generated-images/generate": {
       "post": {
         "tags": ["generated-images"],
@@ -2071,6 +2121,46 @@
         "title": "GeneratedImageApprovalUpdate",
         "description": "Schema for updating image approval status."
       },
+      "GeneratedImageCustomRemixRequest": {
+        "properties": {
+          "custom_prompt_text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Custom Prompt Text",
+            "description": "User-provided prompt text to use for the custom remix variant."
+          }
+        },
+        "type": "object",
+        "required": ["custom_prompt_text"],
+        "title": "GeneratedImageCustomRemixRequest",
+        "description": "Request schema for initiating a custom remix with user-edited prompt text."
+      },
+      "GeneratedImageCustomRemixResponse": {
+        "properties": {
+          "custom_prompt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Custom Prompt Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Represents the custom remix request status (accepted when background task scheduled).",
+            "default": "accepted"
+          },
+          "estimated_completion_seconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Estimated Completion Seconds",
+            "description": "Approximate time until the custom remix image is generated.",
+            "default": 60
+          }
+        },
+        "type": "object",
+        "required": ["custom_prompt_id"],
+        "title": "GeneratedImageCustomRemixResponse",
+        "description": "Response schema for custom remix initiation acknowledgment."
+      },
       "GeneratedImageGenerateRequest": {
         "properties": {
           "book_slug": {
@@ -2115,11 +2205,6 @@
               { "type": "null" }
             ],
             "title": "Limit"
-          },
-          "overwrite": {
-            "type": "boolean",
-            "title": "Overwrite",
-            "default": false
           },
           "quality": {
             "type": "string",

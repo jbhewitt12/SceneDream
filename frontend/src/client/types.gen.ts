@@ -20,6 +20,31 @@ export type GeneratedImageApprovalUpdate = {
 }
 
 /**
+ * Request schema for initiating a custom remix with user-edited prompt text.
+ */
+export type GeneratedImageCustomRemixRequest = {
+  /**
+   * User-provided prompt text to use for the custom remix variant.
+   */
+  custom_prompt_text: string
+}
+
+/**
+ * Response schema for custom remix initiation acknowledgment.
+ */
+export type GeneratedImageCustomRemixResponse = {
+  custom_prompt_id: string
+  /**
+   * Represents the custom remix request status (accepted when background task scheduled).
+   */
+  status?: string
+  /**
+   * Approximate time until the custom remix image is generated.
+   */
+  estimated_completion_seconds?: number
+}
+
+/**
  * Request schema for triggering image generation.
  */
 export type GeneratedImageGenerateRequest = {
@@ -506,6 +531,14 @@ export type GeneratedImagesRemixGeneratedImageData = {
 
 export type GeneratedImagesRemixGeneratedImageResponse =
   GeneratedImageRemixResponse
+
+export type GeneratedImagesCustomRemixGeneratedImageData = {
+  imageId: string
+  requestBody: GeneratedImageCustomRemixRequest
+}
+
+export type GeneratedImagesCustomRemixGeneratedImageResponse =
+  GeneratedImageCustomRemixResponse
 
 export type GeneratedImagesTriggerImageGenerationData = {
   requestBody: GeneratedImageGenerateRequest

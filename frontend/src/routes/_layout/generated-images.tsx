@@ -32,6 +32,7 @@ import {
   type GeneratedImageListResponse,
   type GeneratedImageRead,
   type GeneratedImageWithContext,
+  customRemixImage,
   remixImage,
   updateImageApproval,
 } from "@/api/generatedImages"
@@ -523,6 +524,23 @@ function GeneratedImagesGalleryPage() {
     },
   })
 
+  const customRemixMutation = useMutation<
+    Awaited<ReturnType<typeof customRemixImage>>,
+    Error,
+    { imageId: string; customPromptText: string }
+  >({
+    mutationFn: ({ imageId, customPromptText }) =>
+      customRemixImage(imageId, customPromptText),
+    onSuccess: () => {
+      showSuccessToast(
+        "Custom remix started! Refresh in 1-2 minutes to see results.",
+      )
+    },
+    onError: (error: Error) => {
+      showErrorToast(error.message)
+    },
+  })
+
   const handleApprovalChange = useCallback(
     (imageId: string, approved: boolean | null) => {
       approvalMutation.mutate({ imageId, approved })
@@ -533,6 +551,12 @@ function GeneratedImagesGalleryPage() {
   const handleRemix = useCallback(
     (imageId: string) => remixMutation.mutateAsync(imageId),
     [remixMutation],
+  )
+
+  const handleCustomRemix = useCallback(
+    (imageId: string, customPromptText: string) =>
+      customRemixMutation.mutateAsync({ imageId, customPromptText }),
+    [customRemixMutation],
   )
 
   // Flatten all pages into a single array
@@ -665,6 +689,7 @@ function GeneratedImagesGalleryPage() {
         }))}
         onNavigate={handleNavigate}
         onApprovalChange={handleApprovalChange}
+        onCustomRemix={handleCustomRemix}
       />
     </Container>
   )
