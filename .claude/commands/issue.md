@@ -41,7 +41,7 @@ Before creating any plan, you MUST thoroughly explore and understand the relevan
 ## General Guidelines
 
 - There is no test database or testnet.
-- Don't add any steps that involve manually testing the frontend.
+- NEVER add any steps that involve manually testing the frontend.
 
 ## Creating the Issue Plan
 
