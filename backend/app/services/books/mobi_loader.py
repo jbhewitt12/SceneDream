@@ -14,6 +14,7 @@ from .epub_loader import EpubBookLoader
 from .html_utils import (
     extract_paragraphs,
     is_front_matter,
+    is_front_matter_content,
     looks_like_heading,
     normalize_whitespace,
 )
@@ -155,6 +156,7 @@ class MobiBookLoader:
         """Parse HTML files into sequential chapters."""
         chapters: dict[int, BookChapter] = {}
         chapter_number = 1
+        pending_heading: str | None = None
 
         for html_path in html_files:
             try:
@@ -171,8 +173,13 @@ class MobiBookLoader:
                 if not paragraphs:
                     continue
 
+                if is_front_matter_content(paragraphs):
+                    continue
+
                 title, body_paragraphs = self._extract_heading_from_paragraphs(paragraphs)
                 if not body_paragraphs:
+                    if title and looks_like_heading(title):
+                        pending_heading = normalize_whitespace(title)
                     continue
 
                 source_name = self._build_source_name(
@@ -189,8 +196,11 @@ class MobiBookLoader:
                     continue
                 if title and is_front_matter(title):
                     continue
+                if is_front_matter_content(body_paragraphs, heading=title):
+                    continue
 
-                final_title = title or f"Chapter {chapter_number}"
+                final_title = pending_heading or title or f"Chapter {chapter_number}"
+                pending_heading = None
                 chapters[chapter_number] = BookChapter(
                     number=chapter_number,
                     title=final_title,

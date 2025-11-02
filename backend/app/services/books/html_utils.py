@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from bs4 import BeautifulSoup
@@ -55,6 +55,87 @@ FRONT_MATTER_TOKENS: set[str] = {
     "tit",
     "title",
     "toc",
+}
+
+FRONT_MATTER_SECTION_NAMES: set[str] = {
+    "acknowledgments",
+    "acknowledgements",
+    "acknowledgment",
+    "acknowledgement",
+    "about the author",
+    "also by",
+    "books by",
+    "copyright",
+    "contents",
+    "dedication",
+    "table of contents",
+    "title page",
+}
+
+FRONT_MATTER_PREFIXES: tuple[str, ...] = (
+    "copyright",
+    "all rights reserved",
+    "no part of this publication",
+    "this is a work of fiction",
+    "isbn",
+    "library of congress",
+    "cover design",
+    "printed in",
+    "first edition",
+    "visit our web site",
+    "visit our website",
+    "orbit is an imprint",
+    "hachette book group",
+    "acknowledgment",
+    "acknowledgement",
+    "acknowledgments",
+    "acknowledgements",
+    "table of contents",
+    "contents",
+    "about the author",
+    "praise for",
+    "also by",
+    "books by",
+)
+
+FRONT_MATTER_PHRASES: tuple[str, ...] = (
+    "table of contents",
+    "all rights reserved",
+    "no part of this publication",
+    "this is a work of fiction",
+    "copyright page",
+    "cover design",
+    "first edition",
+    "library of congress",
+    "for more information",
+    "visit our web site",
+    "visit our website",
+    "hachette book group",
+    "orbit is an imprint",
+    "praise for",
+    "also by",
+    "books by",
+    "acknowledgments",
+    "acknowledgements",
+)
+
+FRONT_MATTER_CONTENT_TOKENS: set[str] = {
+    "rights",
+    "isbn",
+    "acknowledgments",
+    "acknowledgements",
+    "dedication",
+    "copyright",
+    "publisher",
+    "imprint",
+    "advertisement",
+    "advertisements",
+    "appendix",
+    "glossary",
+    "index",
+    "contents",
+    "permission",
+    "reproduction",
 }
 
 
@@ -148,3 +229,93 @@ def is_front_matter(
     if not name_tokens:
         return False
     return bool(set(tokens) & name_tokens)
+
+
+def _tokenize(text: str) -> list[str]:
+    return re.findall(r"[a-z]+", text.lower())
+
+
+def is_front_matter_content(
+    paragraphs: Sequence[str],
+    *,
+    heading: str | None = None,
+) -> bool:
+    """Heuristically determine if paragraph content is front/back matter."""
+    if not paragraphs:
+        return False
+
+    heading_value = normalize_whitespace(heading).lower() if heading else None
+    if heading_value:
+        if heading_value in FRONT_MATTER_SECTION_NAMES:
+            return True
+        if set(_tokenize(heading_value)) & FRONT_MATTER_TOKENS:
+            return True
+
+    processed: list[tuple[str, str]] = [
+        (normalized, normalized.lower())
+        for normalized in (
+            normalize_whitespace(paragraph) for paragraph in paragraphs if paragraph
+        )
+        if normalized
+    ]
+    if not processed:
+        return False
+
+    raw_window = [original for original, _ in processed[:20]]
+    window = [lower for _, lower in processed[:20]]
+
+    for candidate in window[:6]:
+        for prefix in FRONT_MATTER_PREFIXES:
+            if candidate.startswith(prefix):
+                return True
+
+    window_text = " ".join(window[:8])
+    if any(phrase in window_text for phrase in FRONT_MATTER_PHRASES):
+        return True
+
+    tokens = _tokenize(" ".join(window[:8]))
+    if not tokens:
+        return False
+
+    matches = [token for token in tokens if token in FRONT_MATTER_CONTENT_TOKENS]
+    if len(matches) >= 3:
+        return True
+
+    unique_matches = set(matches)
+    if len(unique_matches) >= 2 and len(matches) / max(len(tokens), 1) >= 0.2:
+        return True
+
+    catalog_titles = sum(
+        1 for original in raw_window if _looks_like_catalog_title(original)
+    )
+    if catalog_titles >= 5 and catalog_titles / max(len(raw_window), 1) >= 0.5:
+        return True
+
+    if raw_window:
+        first_line = raw_window[0]
+        first_lower = window[0]
+        if len(raw_window) <= 6 and len(first_line) <= 60:
+            if first_lower.startswith(("for ", "to ", "with thanks", "with gratitude", "dedicated to")):
+                return True
+            if first_lower in {"for", "dedication"}:
+                return True
+        if first_lower.startswith("by ") and catalog_titles >= 3:
+            return True
+
+    return False
+
+
+def _looks_like_catalog_title(value: str) -> bool:
+    if not value:
+        return False
+    cleaned = value.strip()
+    if not cleaned or len(cleaned) > 60:
+        return False
+    if any(char in cleaned for char in ":;!?"):
+        return False
+    words = re.findall(r"[A-Za-z]+", cleaned)
+    if not words or len(words) > 8:
+        return False
+    if any(word[:1].islower() for word in words):
+        return False
+    return True

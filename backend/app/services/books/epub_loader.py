@@ -9,7 +9,14 @@ from bs4 import BeautifulSoup
 from ebooklib import epub
 
 from .base import BookChapter, BookContent, BookMetadata
-from .html_utils import extract_paragraphs, extract_title, is_front_matter
+from .html_utils import (
+    extract_paragraphs,
+    extract_title,
+    is_front_matter,
+    is_front_matter_content,
+    looks_like_heading,
+    normalize_whitespace,
+)
 
 
 class EpubBookLoader:
@@ -52,6 +59,7 @@ class EpubBookLoader:
         """Extract chapters from the EPUB spine order."""
         chapters: dict[int, BookChapter] = {}
         chapter_number = 1
+        pending_heading: str | None = None
 
         for spine_entry in book.spine:
             item_id = spine_entry[0]
@@ -70,15 +78,31 @@ class EpubBookLoader:
 
             html = item.get_content().decode("utf-8")
             soup = BeautifulSoup(html, "html.parser")
+            title = extract_title(soup)
             paragraphs = extract_paragraphs(soup)
             if not paragraphs:
                 continue
 
-            title = extract_title(soup) or f"Chapter {chapter_number}"
+            if title and is_front_matter(title):
+                continue
+
+            if is_front_matter_content(paragraphs, heading=title):
+                continue
+
+            if len(paragraphs) == 1 and looks_like_heading(paragraphs[0]):
+                pending_heading = normalize_whitespace(paragraphs[0])
+                continue
+
+            final_title = (
+                pending_heading
+                or title
+                or f"Chapter {chapter_number}"
+            )
+            pending_heading = None
 
             chapters[chapter_number] = BookChapter(
                 number=chapter_number,
-                title=title,
+                title=final_title,
                 paragraphs=paragraphs,
                 source_name=source_name,
             )
