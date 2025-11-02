@@ -20,6 +20,9 @@ This project is built with the FastAPI Template.
 - `books/` stores EPUB inputs and chapter artifacts consumed by the extraction services; `img/` accumulates generated assets (notably `img/generated/<book>/...`).
 - `scripts/` contains automation like `generate-client.sh` and deployment helpers.
 
+## Concurrency Rule
+- All new FastAPI endpoints must be implemented as async, non-blocking handlers so concurrent requests stay responsive; offload CPU-bound work to background tasks or executors to avoid blocking the event loop.
+
 ## Build, Test, and Development Commands
 - `docker compose watch` spins up the full stack with live reload.
 - `cd backend && uv run fastapi dev app/main.py` runs the API locally after stopping the compose backend service.
