@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
-"""Test metadata generation on random image prompts."""
+"""
+Test metadata generation on random image prompts.
+
+To run test: 
+```
+uv run python app/services/prompt_metadata/check_metadata_generation.py 5
+```
+"""
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
@@ -110,6 +118,11 @@ Examples:
     print(f"🌡️  Temperature: {args.temperature}")
     print()
 
+    return asyncio.run(_run_prompt_checks(args))
+
+
+async def _run_prompt_checks(args: argparse.Namespace) -> int:
+    """Execute the metadata generation checks asynchronously."""
     with Session(engine) as session:
         # Select random prompts
         statement = (
@@ -143,7 +156,7 @@ Examples:
         # Generate metadata for each prompt
         for i, prompt in enumerate(prompts, 1):
             # Always generate fresh metadata (overwrite=True) but never save (dry_run=True)
-            metadata = service.generate_metadata_for_prompt(
+            metadata = await service.generate_metadata_for_prompt(
                 prompt,
                 dry_run=True,  # Never save to database
                 overwrite=True,  # Always generate, don't return cached metadata

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -58,7 +59,7 @@ class PromptMetadataGenerationService:
         self._config = config or PromptMetadataConfig()
         self._prompt_repo = ImagePromptRepository(session)
 
-    def generate_metadata_for_prompt(
+    async def generate_metadata_for_prompt(
         self,
         prompt: ImagePrompt | UUID,
         *,
@@ -88,7 +89,7 @@ class PromptMetadataGenerationService:
 
         prompt_payload = self._build_metadata_prompt(target_prompt)
         try:
-            metadata = self._invoke_llm(
+            metadata = await self._invoke_llm(
                 payload=prompt_payload,
                 prompt_id=target_prompt.id,
             )
@@ -135,7 +136,7 @@ class PromptMetadataGenerationService:
 
         return target_prompt
 
-    def generate_metadata_for_prompts(
+    async def generate_metadata_for_prompts(
         self,
         prompts: Sequence[ImagePrompt | UUID],
         *,
@@ -145,7 +146,7 @@ class PromptMetadataGenerationService:
         """Generate metadata for a batch of prompts."""
         results: list[ImagePrompt | dict[str, Any] | None] = []
         for prompt in prompts:
-            result = self.generate_metadata_for_prompt(
+            result = await self.generate_metadata_for_prompt(
                 prompt,
                 overwrite=overwrite,
                 dry_run=dry_run,
@@ -212,7 +213,7 @@ class PromptMetadataGenerationService:
             scene_summary=scene_summary or "N/A",
         )
 
-    def _invoke_llm(
+    async def _invoke_llm(
         self,
         *,
         payload: str,
@@ -223,7 +224,7 @@ class PromptMetadataGenerationService:
         for attempt in range(1, attempts + 1):
             start_time = time.perf_counter()
             try:
-                response = gemini_api.json_output(
+                response = await gemini_api.json_output(
                     prompt=payload,
                     system_instruction=self._system_instruction,
                     model=self._config.model_name,
@@ -247,7 +248,7 @@ class PromptMetadataGenerationService:
                 )
                 if attempt >= attempts:
                     break
-                time.sleep(max(self._config.retry_backoff_seconds, 0))
+                await asyncio.sleep(max(self._config.retry_backoff_seconds, 0))
         assert last_error is not None
         raise PromptMetadataGenerationServiceError(
             f"Gemini metadata generation failed after {attempts} attempts"
