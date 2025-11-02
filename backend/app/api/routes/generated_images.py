@@ -181,7 +181,7 @@ async def _execute_remix_generation(
     try:
         with Session(engine) as background_session:
             prompt_service = ImagePromptGenerationService(background_session)
-            prompts = prompt_service.generate_remix_variants(
+            prompts = await prompt_service.generate_remix_variants(
                 source_prompt_id,
                 variants_count=variants_count,
                 dry_run=dry_run,
@@ -701,7 +701,7 @@ async def custom_remix_generated_image(
         ) from exc
 
     try:
-        custom_prompt = prompt_service.create_custom_remix_variant(
+        custom_prompt = await prompt_service.create_custom_remix_variant(
             prompt,
             custom_prompt_text,
             dry_run=False,

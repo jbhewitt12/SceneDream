@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,7 +29,7 @@ EXCESSION_EPUB = (
 
 @pytest.fixture(autouse=True)
 def _stub_prompt_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _fake_generate(self, prompts, *, dry_run=False, **kwargs):  # type: ignore[no-untyped-def]
+    async def _fake_generate(self, prompts, *, dry_run=False, **kwargs):  # type: ignore[no-untyped-def]
         results = []
         for prompt in prompts:
             title = (getattr(prompt, "title", None) or "Shareable Moment").strip()
@@ -215,13 +216,13 @@ def test_generate_for_scene_creates_prompts(
 
     captured_prompt: dict[str, str] = {}
 
-    def fake_json_output(**kwargs: object) -> list[dict[str, object]]:
+    async def fake_json_output(**kwargs: object) -> list[dict[str, object]]:
         captured_prompt["prompt"] = kwargs.get("prompt", "")  # type: ignore[arg-type]
         return _variants()
 
     monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
 
-    results = service.generate_for_scene(scene)
+    results = asyncio.run(service.generate_for_scene(scene))
 
     assert len(results) == 2
     assert captured_prompt["prompt"].startswith("You are an elite prompt engineer")
@@ -244,9 +245,13 @@ def test_generate_for_scene_dry_run_returns_previews(
     config = ImagePromptGenerationConfig(dry_run=True, variants_count=2)
     service = ImagePromptGenerationService(db, config=config)
     _patch_context(service, monkeypatch)
-    monkeypatch.setattr(gemini_api, "json_output", lambda **_: _variants())
 
-    results = service.generate_for_scene(scene)
+    async def fake_json_output(**_: object) -> list[dict[str, object]]:
+        return _variants()
+
+    monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
+
+    results = asyncio.run(service.generate_for_scene(scene))
 
     assert all(isinstance(item, ImagePromptPreview) for item in results)
     preview = results[0]
@@ -297,13 +302,12 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(
     )
     service = ImagePromptGenerationService(db, config=config)
     _patch_context(service, monkeypatch)
-    monkeypatch.setattr(
-        gemini_api,
-        "json_output",
-        lambda **_: pytest.fail("json_output should not be invoked"),
-    )
+    async def fail_json_output(**_: object) -> list[dict[str, object]]:
+        pytest.fail("json_output should not be invoked")
 
-    results = service.generate_for_scene(scene)
+    monkeypatch.setattr(gemini_api, "json_output", fail_json_output)
+
+    results = asyncio.run(service.generate_for_scene(scene))
 
     assert results == existing
     repository.delete_for_scene(scene.id, commit=True)
@@ -317,7 +321,7 @@ def test_create_custom_remix_variant_persists_prompt(
     service = ImagePromptGenerationService(db)
 
     edited_text = "Close-up portrait of the rooftop scout with neon reflections."
-    created = service.create_custom_remix_variant(base_prompt, edited_text)
+    created = asyncio.run(service.create_custom_remix_variant(base_prompt, edited_text))
 
     assert isinstance(created, ImagePrompt)
     assert created.scene_extraction_id == scene.id
@@ -342,7 +346,7 @@ def test_create_custom_remix_variant_rejects_empty_text(
     service = ImagePromptGenerationService(db)
 
     with pytest.raises(ImagePromptGenerationServiceError):
-        service.create_custom_remix_variant(base_prompt, "   ")
+        asyncio.run(service.create_custom_remix_variant(base_prompt, "   "))
 
 
 def test_create_custom_remix_variant_dry_run_returns_preview(
@@ -352,10 +356,12 @@ def test_create_custom_remix_variant_dry_run_returns_preview(
     base_prompt = _create_prompt(db, scene)
     service = ImagePromptGenerationService(db)
 
-    preview = service.create_custom_remix_variant(
-        base_prompt,
-        "Wide shot of the scout overlooking traffic trails.",
-        dry_run=True,
+    preview = asyncio.run(
+        service.create_custom_remix_variant(
+            base_prompt,
+            "Wide shot of the scout overlooking traffic trails.",
+            dry_run=True,
+        )
     )
 
     assert isinstance(preview, ImagePromptPreview)
@@ -408,9 +414,13 @@ def test_generate_for_scene_overwrites_when_allowed(
     )
     service = ImagePromptGenerationService(db, config=config)
     _patch_context(service, monkeypatch)
-    monkeypatch.setattr(gemini_api, "json_output", lambda **_: _variants())
 
-    results = service.generate_for_scene(scene)
+    async def fake_json_output(**_: object) -> list[dict[str, object]]:
+        return _variants()
+
+    monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
+
+    results = asyncio.run(service.generate_for_scene(scene))
 
     assert len(results) == 2
     stored = repository.list_for_scene(scene.id)

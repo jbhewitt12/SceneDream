@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -14,6 +15,7 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.repositories.scene_extraction import SceneExtractionRepository
@@ -240,7 +242,7 @@ class SceneRankingService:
         """Return the hash for the normalized weight configuration."""
         return self.compute_weight_hash(self.effective_weight_config())
 
-    def rank_scene(
+    async def rank_scene(
         self,
         scene: SceneExtraction | UUID,
         *,
@@ -307,7 +309,7 @@ class SceneRankingService:
         )
         start_time = time.perf_counter()
         try:
-            raw_response = self._invoke_llm(prompt=prompt, config=config)
+            raw_response = await self._invoke_llm(prompt=prompt, config=config)
         except Exception as exc:  # pragma: no cover - depends on external API
             logger.error("LLM call failed for scene %s: %s", target_scene.id, exc)
             if config.fail_on_error:
@@ -379,35 +381,54 @@ class SceneRankingService:
                 complexity_rationale=parsed.complexity_rationale,
                 distinct_visual_moments=distinct_moments,
             )
-        ranking = self._ranking_repo.create(
-            data={
-                "scene_extraction_id": target_scene.id,
-                "model_vendor": config.model_vendor,
-                "model_name": config.model_name,
-                "prompt_version": config.prompt_version,
-                "justification": parsed.justification,
-                "scores": scores,
-                "overall_priority": overall_priority,
-                "weight_config": weight_cfg,
-                "weight_config_hash": weight_hash,
-                "warnings": warnings,
-                "character_tags": character_tags,
-                "raw_response": raw_payload,
-                "execution_time_ms": execution_time_ms,
-                "temperature": config.temperature,
-                "llm_request_id": llm_request_id,
-                "recommended_prompt_count": parsed.recommended_prompt_count,
-                "complexity_rationale": parsed.complexity_rationale,
-                "distinct_visual_moments": distinct_moments,
-            },
-            commit=config.autocommit,
-            refresh=True,
-        )
+        try:
+            ranking = self._ranking_repo.create(
+                data={
+                    "scene_extraction_id": target_scene.id,
+                    "model_vendor": config.model_vendor,
+                    "model_name": config.model_name,
+                    "prompt_version": config.prompt_version,
+                    "justification": parsed.justification,
+                    "scores": scores,
+                    "overall_priority": overall_priority,
+                    "weight_config": weight_cfg,
+                    "weight_config_hash": weight_hash,
+                    "warnings": warnings,
+                    "character_tags": character_tags,
+                    "raw_response": raw_payload,
+                    "execution_time_ms": execution_time_ms,
+                    "temperature": config.temperature,
+                    "llm_request_id": llm_request_id,
+                    "recommended_prompt_count": parsed.recommended_prompt_count,
+                    "complexity_rationale": parsed.complexity_rationale,
+                    "distinct_visual_moments": distinct_moments,
+                },
+                commit=config.autocommit,
+                refresh=True,
+            )
+        except IntegrityError as exc:
+            self._session.rollback()
+            if not config.allow_overwrite:
+                existing = self._ranking_repo.get_unique_run(
+                    scene_extraction_id=target_scene.id,
+                    model_name=config.model_name,
+                    prompt_version=config.prompt_version,
+                    weight_config_hash=weight_hash,
+                )
+                if existing is not None:
+                    logger.info(
+                        "Reusing existing ranking for scene %s (model=%s prompt=%s)",
+                        target_scene.id,
+                        config.model_name,
+                        config.prompt_version,
+                    )
+                    return existing
+            raise
         if not config.autocommit:
             self._session.flush()
         return ranking
 
-    def rank_scenes(
+    async def rank_scenes(
         self,
         scenes: Sequence[SceneExtraction | UUID],
         *,
@@ -420,7 +441,7 @@ class SceneRankingService:
         results: list[SceneRanking | SceneRankingPreview | None] = []
         total_scenes = len(scenes)
         for idx, scene in enumerate(scenes, start=1):
-            result = self.rank_scene(
+            result = await self.rank_scene(
                 scene,
                 prompt_version=prompt_version,
                 weight_config=weight_config,
@@ -665,12 +686,12 @@ class SceneRankingService:
             )
         return "\n".join(prompt_parts)
 
-    def _invoke_llm(self, *, prompt: str, config: SceneRankingConfig) -> dict[str, Any]:
+    async def _invoke_llm(self, *, prompt: str, config: SceneRankingConfig) -> dict[str, Any]:
         last_error: Exception | None = None
         attempts = max(config.retry_attempts, 0)
         for attempt in range(attempts + 1):
             try:
-                return gemini_api.json_output(
+                return await gemini_api.json_output(
                     prompt=prompt,
                     system_instruction=config.system_instruction,
                     model=config.model_name,
@@ -683,7 +704,7 @@ class SceneRankingService:
                 if attempt >= attempts:
                     break
                 sleep_seconds = config.retry_backoff_seconds * (attempt + 1)
-                time.sleep(max(sleep_seconds, 0.0))
+                await asyncio.sleep(max(sleep_seconds, 0.0))
         assert last_error is not None
         raise last_error
 

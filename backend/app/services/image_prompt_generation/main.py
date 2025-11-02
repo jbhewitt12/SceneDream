@@ -9,6 +9,7 @@ Usage examples:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 import sys
@@ -189,7 +190,7 @@ def _summarize_prompts(
     }
 
 
-def _handle_run(args: argparse.Namespace) -> int:
+async def _handle_run(args: argparse.Namespace) -> int:
     config_kwargs: dict[str, object] = {}
     if args.model_name:
         config_kwargs["model_name"] = args.model_name
@@ -228,7 +229,7 @@ def _handle_run(args: argparse.Namespace) -> int:
         results: list[dict[str, object]] = []
         for scene in candidate_scenes:
             try:
-                prompts = service.generate_for_scene(
+                prompts = await service.generate_for_scene(
                     scene,
                     dry_run=args.dry_run,
                     overwrite=args.overwrite,
@@ -251,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "run":
-        return _handle_run(args)
+        return asyncio.run(_handle_run(args))
     parser.error("Unknown command")
     return 2
 

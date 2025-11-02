@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -80,7 +81,7 @@ def _parse_timestamp(value: str | None) -> datetime | None:
         raise SystemExit(f"Invalid --created-after value: {value}") from exc
 
 
-def _handle_backfill(args: argparse.Namespace) -> int:
+async def _handle_backfill(args: argparse.Namespace) -> int:
     created_after = _parse_timestamp(args.created_after)
     with Session(engine) as session:
         repository = ImagePromptRepository(session)
@@ -116,7 +117,7 @@ def _handle_backfill(args: argparse.Namespace) -> int:
         skipped = 0
 
         for batch in _batched(prompts, args.batch_size):
-            results = service.generate_metadata_for_prompts(
+            results = await service.generate_metadata_for_prompts(
                 batch,
                 overwrite=args.overwrite,
                 dry_run=args.dry_run,
@@ -153,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     if args.command == "backfill":
-        return _handle_backfill(args)
+        return asyncio.run(_handle_backfill(args))
     parser.error("Unknown command")
     return 2
 

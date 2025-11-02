@@ -584,7 +584,12 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                 resume_from_chunk=resume_from_chunk,
             )
             extractor = SceneExtractor(config=config)
-            extraction_stats = extractor.extract_book(book_path)
+            loop = asyncio.get_running_loop()
+            extraction_stats = await loop.run_in_executor(
+                None,
+                extractor.extract_book,
+                book_path,
+            )
             stats.scenes_extracted = extraction_stats.get("scenes", 0)
             logger.info("Extracted %d scenes", stats.scenes_extracted)
     else:
@@ -652,7 +657,7 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                 else:
                     for scene in scenes_to_rank:
                         try:
-                            result = ranking_service.rank_scene(
+                            result = await ranking_service.rank_scene(
                                 scene,
                                 overwrite=False,
                                 dry_run=False,
@@ -848,7 +853,7 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                             continue
 
                         try:
-                            prompts = prompt_service.generate_for_scene(
+                            prompts = await prompt_service.generate_for_scene(
                                 scene,
                                 dry_run=False,
                                 overwrite=False,
@@ -937,7 +942,12 @@ async def _run_extract(args: argparse.Namespace) -> PipelineStats:
         book_slug=args.book_slug,
     )
     extractor = SceneExtractor(config=config)
-    extraction_stats = extractor.extract_book(book_path)
+    loop = asyncio.get_running_loop()
+    extraction_stats = await loop.run_in_executor(
+        None,
+        extractor.extract_book,
+        book_path,
+    )
     stats.scenes_extracted = extraction_stats.get("scenes", 0)
 
     logger.info("Extraction complete: %d scenes", stats.scenes_extracted)
@@ -982,7 +992,7 @@ async def _run_rank(args: argparse.Namespace) -> PipelineStats:
 
         for scene in scenes_to_rank:
             try:
-                result = ranking_service.rank_scene(
+                result = await ranking_service.rank_scene(
                     scene,
                     overwrite=args.overwrite,
                     dry_run=False,
@@ -1106,7 +1116,7 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
                         continue
 
                 try:
-                    prompts = prompt_service.generate_for_scene(
+                    prompts = await prompt_service.generate_for_scene(
                         scene,
                         dry_run=False,
                         overwrite=args.overwrite,
@@ -1411,7 +1421,7 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
                 metadata["ranking_priority"] = ranking.overall_priority
 
             try:
-                prompts = prompt_service.generate_for_scene(
+                prompts = await prompt_service.generate_for_scene(
                     scene,
                     overwrite=False,
                     dry_run=False,
@@ -1595,7 +1605,7 @@ async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
                 metadata["ranking_priority"] = ranking.overall_priority
 
             try:
-                new_variants = prompt_service.generate_for_scene(
+                new_variants = await prompt_service.generate_for_scene(
                     scene,
                     prompt_version=prompt_version,
                     overwrite=False,

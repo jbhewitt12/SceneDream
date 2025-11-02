@@ -226,7 +226,7 @@ def test_custom_remix_endpoint_schedules_async_task(
     )
     monkeypatch.setattr(
         "app.api.routes.generated_images.ImagePromptGenerationService.create_custom_remix_variant",
-        MagicMock(return_value=custom_prompt),
+        AsyncMock(return_value=custom_prompt),
     )
 
     response = client.post(
