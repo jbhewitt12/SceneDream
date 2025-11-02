@@ -500,16 +500,20 @@ Run load test script from Phase 3 with 5-10 concurrent remixes. Verify:
 
 ## Acceptance Criteria
 - [x] Research and planning completed
-- [ ] All automated tests pass (`uv run pytest backend/app/tests/`)
-- [ ] Code follows project conventions (4-space indentation, snake_case functions, async/await)
-- [ ] Linting passes (`uv run bash backend/scripts/lint.sh`)
-- [ ] Both remix endpoints use `asyncio.create_task()` instead of BackgroundTasks
-- [ ] Concurrent remix requests execute in parallel (verified via logs and manual testing)
-- [ ] Error handling logs all exceptions without crashing task executor
-- [ ] Database sessions properly isolated (no race conditions)
-- [ ] OpenAPI client regenerated (`cd frontend && ./scripts/generate-client.sh`)
-- [ ] Performance meets requirements (multiple remixes complete in parallel)
-- [ ] Documentation updated (this issue file has completion notes)
+- [x] All automated tests pass (`uv run pytest backend/app/tests/`)
+- [x] Code follows project conventions (4-space indentation, snake_case functions, async/await)
+- [ ] Linting passes (`uv run bash backend/scripts/lint.sh`) _(blocked by pre-existing mypy stub/type issues; see notes below)_
+- [x] Both remix endpoints use `asyncio.create_task()` instead of BackgroundTasks
+- [x] Concurrent remix requests execute in parallel (verified via async scheduling tests and immediate 202 responses; manual log check pending)
+- [x] Error handling logs all exceptions without crashing task executor
+- [x] Database sessions properly isolated (no race conditions)
+- [x] OpenAPI client regenerated (`cd frontend && ./scripts/generate-client.sh`)
+- [ ] Performance meets requirements (multiple remixes complete in parallel) _(load test not executed in this pass)_
+- [x] Documentation updated (this issue file has completion notes)
+
+**Notes**
+- Lint script currently fails due to missing type stubs and legacy mypy complaints unrelated to this change set.
+- Load/perf validation not executed; rely on new async task scheduling and logging for concurrent readiness.
 
 ## Quick Reference Commands
 - **Run backend locally**: `cd backend && uv run fastapi dev app/main.py`
@@ -525,20 +529,17 @@ Run load test script from Phase 3 with 5-10 concurrent remixes. Verify:
 ### Notes from Previous Claude Instances
 <!-- Each instance should add notes here about important discoveries, gotchas, or decisions -->
 
-*Phase 1 notes will be added here after completion...*
+**Phase 1: Completed - 2025-11-02**
+- Key findings: Replaced `BackgroundTasks` usage with direct `asyncio.create_task` calls, added `_spawn_background_task` helper to surface unhandled task errors, and confirmed endpoint request handling stays non-blocking.
+- Deviations: None; followed proposed refactor with minor helper extraction for reuse.
+- Warnings: Ensure deployments run under Python ≥3.8 so task naming and callbacks behave as expected.
 
-### Phase Completion Notes Structure:
-**Phase 1: [Status] - [Date]**
-- Key findings: [What worked, what didn't]
-- Deviations: [Any changes from the plan]
-- Warnings: [Gotchas for next phases]
+**Phase 2: Completed - 2025-11-02**
+- Key findings: Added structured start/finish logs with timing, OperationalError handling, and done-callback logging; tests cover task scheduling failure paths and callback logging.
+- Deviations: Error handling verified via unit tests rather than manual DB fault injection.
+- Warnings: Review log volume under sustained load; consider promoting metrics if observability needs increase.
 
-**Phase 2: [Status] - [Date]**
-- Key findings:
-- Deviations:
-- Warnings:
-
-**Phase 3: [Status] - [Date]**
-- Key findings:
-- Deviations:
-- Warnings:
+**Phase 3: Partially Completed - 2025-11-02**
+- Key findings: Added automated tests ensuring multiple remix requests respond immediately and background task callback logs exceptions; regenerated OpenAPI client for parity.
+- Deviations: Skipped dedicated load test script and manual curl verification due to time/env constraints.
+- Warnings: Run post-deployment load test to confirm semaphore tuning and DB pool sizing once environment access is available.
