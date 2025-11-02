@@ -372,17 +372,6 @@ Document all external systems/services this feature touches:
    - Test `create_custom_remix_variant()` with valid inputs (verify prompt record created)
    - Test `create_custom_remix_variant()` with empty text (verify error raised)
    - Test variant_index incrementing (verify continues from max for scene)
-2. **Integration Tests**:
-   - Test `/custom-remix` endpoint with valid image ID and text (verify 202 response)
-   - Test `/custom-remix` endpoint with invalid image ID (verify 404)
-   - Test `/custom-remix` endpoint with empty text (verify 400)
-3. **Manual Verification** (5 minutes):
-   - Open modal for a generated image
-   - Edit prompt text in textarea
-   - Click "Remix with Edits" button
-   - Verify toast appears with success message
-   - Refresh page after 1 minute
-   - Verify new variant appears with edited prompt text
 
 ## Acceptance Criteria
 - [ ] All automated tests pass
