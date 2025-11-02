@@ -1,17 +1,20 @@
 import {
   Badge,
   Box,
+  Button,
   HStack,
   IconButton,
   Image,
   Stack,
   Text,
+  Textarea,
 } from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
-import { useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   FiChevronLeft,
   FiChevronRight,
+  FiEdit3,
   FiThumbsDown,
   FiThumbsUp,
 } from "react-icons/fi"
@@ -35,6 +38,7 @@ type GeneratedImageModalProps = {
   allImages?: Array<{ id: string; scene_extraction_id: string }>
   onNavigate?: (imageId: string, sceneId: string) => void
   onApprovalChange?: (imageId: string, approved: boolean | null) => void
+  onCustomRemix?: (imageId: string, customPromptText: string) => Promise<void>
 }
 
 const GeneratedImageModal = ({
@@ -45,6 +49,7 @@ const GeneratedImageModal = ({
   allImages = [],
   onNavigate,
   onApprovalChange,
+  onCustomRemix,
 }: GeneratedImageModalProps) => {
   // Fetch the current image details with context
   const imageQuery = useQuery({
@@ -68,8 +73,16 @@ const GeneratedImageModal = ({
   const sceneImages = sceneImagesQuery.data?.data ?? []
   const currentImage = imageQuery.data
   const isLoading = imageQuery.isLoading || imageQuery.isFetching
+  const promptText = currentImage?.prompt?.prompt_text ?? ""
 
-  const handlePreviousVariant = () => {
+  const [editedPromptText, setEditedPromptText] = useState<string>("")
+  const [isRemixing, setIsRemixing] = useState(false)
+
+  useEffect(() => {
+    setEditedPromptText(promptText)
+  }, [promptText])
+
+  const handlePreviousVariant = useCallback(() => {
     if (sceneImages.length === 0 || !imageId || !onNavigate) return
     const currentIndex = sceneImages.findIndex((img) => img.id === imageId)
     if (currentIndex === -1) return
@@ -79,9 +92,9 @@ const GeneratedImageModal = ({
     if (newImage) {
       onNavigate(newImage.id, newImage.scene_extraction_id)
     }
-  }
+  }, [sceneImages, imageId, onNavigate])
 
-  const handleNextVariant = () => {
+  const handleNextVariant = useCallback(() => {
     if (sceneImages.length === 0 || !imageId || !onNavigate) return
     const currentIndex = sceneImages.findIndex((img) => img.id === imageId)
     if (currentIndex === -1) return
@@ -90,49 +103,45 @@ const GeneratedImageModal = ({
     if (newImage) {
       onNavigate(newImage.id, newImage.scene_extraction_id)
     }
-  }
+  }, [sceneImages, imageId, onNavigate])
 
-  const handlePreviousScene = () => {
+  const handlePreviousScene = useCallback(() => {
     if (allImages.length === 0 || !imageId || !onNavigate) return
     const currentGalleryIndex = allImages.findIndex((img) => img.id === imageId)
     if (currentGalleryIndex === -1) return
 
-    // Find the previous image that has a different scene_extraction_id
     for (let i = currentGalleryIndex - 1; i >= 0; i--) {
       if (allImages[i].scene_extraction_id !== sceneId) {
         onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
         return
       }
     }
-    // If no previous scene found, wrap to the last scene
     for (let i = allImages.length - 1; i > currentGalleryIndex; i--) {
       if (allImages[i].scene_extraction_id !== sceneId) {
         onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
         return
       }
     }
-  }
+  }, [allImages, imageId, onNavigate, sceneId])
 
-  const handleNextScene = () => {
+  const handleNextScene = useCallback(() => {
     if (allImages.length === 0 || !imageId || !onNavigate) return
     const currentGalleryIndex = allImages.findIndex((img) => img.id === imageId)
     if (currentGalleryIndex === -1) return
 
-    // Find the next image that has a different scene_extraction_id
     for (let i = currentGalleryIndex + 1; i < allImages.length; i++) {
       if (allImages[i].scene_extraction_id !== sceneId) {
         onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
         return
       }
     }
-    // If no next scene found, wrap to the first scene
     for (let i = 0; i < currentGalleryIndex; i++) {
       if (allImages[i].scene_extraction_id !== sceneId) {
         onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
         return
       }
     }
-  }
+  }, [allImages, imageId, onNavigate, sceneId])
 
   // Keyboard navigation
   useEffect(() => {
@@ -156,7 +165,13 @@ const GeneratedImageModal = ({
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, imageId, sceneId, sceneImages, allImages, onNavigate])
+  }, [
+    isOpen,
+    handlePreviousVariant,
+    handleNextVariant,
+    handlePreviousScene,
+    handleNextScene,
+  ])
 
   const fullPath = currentImage
     ? buildGeneratedImageUrl({
@@ -169,6 +184,25 @@ const GeneratedImageModal = ({
   const currentIndex = imageId
     ? sceneImages.findIndex((img) => img.id === imageId)
     : -1
+  const isEditedPromptInvalid =
+    !editedPromptText.trim() || editedPromptText === promptText
+  const isCustomRemixDisabled =
+    isRemixing || isEditedPromptInvalid || !onCustomRemix
+
+  const handleCustomRemix = async () => {
+    if (!onCustomRemix || !currentImage?.image?.id) return
+    if (isEditedPromptInvalid) return
+
+    setIsRemixing(true)
+    try {
+      await onCustomRemix(currentImage.image.id, editedPromptText)
+      setEditedPromptText(promptText)
+    } catch (error) {
+      console.error("Custom remix failed", error)
+    } finally {
+      setIsRemixing(false)
+    }
+  }
 
   return (
     <DialogRoot
@@ -354,14 +388,32 @@ const GeneratedImageModal = ({
                           ))}
                         </HStack>
                       )}
-                    <Text
+                    <Textarea
+                      value={editedPromptText}
+                      onChange={(event) =>
+                        setEditedPromptText(event.target.value)
+                      }
                       fontSize="sm"
-                      whiteSpace="pre-wrap"
                       fontFamily="mono"
                       color="fg.muted"
-                    >
-                      {currentImage.prompt.prompt_text}
-                    </Text>
+                      minH="200px"
+                      resize="vertical"
+                      isDisabled={isRemixing}
+                    />
+                    <HStack justify="flex-end" mt={2}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        colorPalette="purple"
+                        leftIcon={<FiEdit3 />}
+                        isLoading={isRemixing}
+                        loadingText="Remixing"
+                        onClick={handleCustomRemix}
+                        isDisabled={isCustomRemixDisabled}
+                      >
+                        Remix with Edits
+                      </Button>
+                    </HStack>
                   </Box>
                 )}
 

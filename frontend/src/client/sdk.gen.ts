@@ -4,6 +4,8 @@ import type { CancelablePromise } from "./core/CancelablePromise"
 import { OpenAPI } from "./core/OpenAPI"
 import { request as __request } from "./core/request"
 import type {
+  GeneratedImagesCustomRemixGeneratedImageData,
+  GeneratedImagesCustomRemixGeneratedImageResponse,
   GeneratedImagesGetGeneratedImageData,
   GeneratedImagesGetGeneratedImageResponse,
   GeneratedImagesListGeneratedImagesData,
@@ -291,6 +293,32 @@ export class GeneratedImagesService {
     return __request(OpenAPI, {
       method: "POST",
       url: "/api/v1/generated-images/{image_id}/remix",
+      path: {
+        image_id: data.imageId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Custom Remix Generated Image
+   * Trigger a custom remix using user-supplied prompt text for a generated image.
+   * @param data The data for the request.
+   * @param data.imageId
+   * @param data.requestBody
+   * @returns GeneratedImageCustomRemixResponse Successful Response
+   * @throws ApiError
+   */
+  public static customRemixGeneratedImage(
+    data: GeneratedImagesCustomRemixGeneratedImageData,
+  ): CancelablePromise<GeneratedImagesCustomRemixGeneratedImageResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/generated-images/{image_id}/custom-remix",
       path: {
         image_id: data.imageId,
       },

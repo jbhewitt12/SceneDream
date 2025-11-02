@@ -158,3 +158,28 @@ class GeneratedImageRemixResponse(BaseModel):
         ge=0,
         description="Rough estimate of how long the remix generation may take.",
     )
+
+
+class GeneratedImageCustomRemixRequest(BaseModel):
+    """Request schema for initiating a custom remix with user-edited prompt text."""
+
+    custom_prompt_text: str = Field(
+        ...,
+        min_length=1,
+        description="User-provided prompt text to use for the custom remix variant.",
+    )
+
+
+class GeneratedImageCustomRemixResponse(BaseModel):
+    """Response schema for custom remix initiation acknowledgment."""
+
+    custom_prompt_id: UUID
+    status: str = Field(
+        "accepted",
+        description="Represents the custom remix request status (accepted when background task scheduled).",
+    )
+    estimated_completion_seconds: int = Field(
+        60,
+        ge=0,
+        description="Approximate time until the custom remix image is generated.",
+    )

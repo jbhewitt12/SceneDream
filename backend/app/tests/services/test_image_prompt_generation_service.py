@@ -10,9 +10,11 @@ from app.repositories import ImagePromptRepository, SceneExtractionRepository
 from app.services.image_prompt_generation import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationService,
+    ImagePromptGenerationServiceError,
     ImagePromptPreview,
 )
 from app.services.langchain import gemini_api
+from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
 EXCESSION_EPUB = (
@@ -162,6 +164,47 @@ def _patch_context(
     )
 
 
+def _create_prompt(
+    db: Session,
+    scene: SceneExtraction,
+    *,
+    variant_index: int = 0,
+) -> ImagePrompt:
+    repository = ImagePromptRepository(db)
+    return repository.create(
+        data={
+            "scene_extraction_id": scene.id,
+            "model_vendor": "google",
+            "model_name": "gemini-2.5-flash",
+            "prompt_version": "image-prompts-v1",
+            "variant_index": variant_index,
+            "title": "Original prompt",
+            "flavour_text": "Original flavour",
+            "prompt_text": "Wide shot of a scout on a rooftop garden.",
+            "negative_prompt": None,
+            "style_tags": ["cinematic"],
+            "attributes": {"camera": "mirrorless"},
+            "notes": None,
+            "context_window": {
+                "chapter_number": scene.chapter_number,
+                "paragraph_span": [2, 4],
+                "paragraphs_before": 2,
+                "paragraphs_after": 1,
+            },
+            "raw_response": {
+                "response": [],
+                "service": {"mode": "baseline"},
+            },
+            "temperature": 0.4,
+            "max_output_tokens": 8192,
+            "llm_request_id": "test-llm-request",
+            "execution_time_ms": 1200,
+        },
+        commit=True,
+        refresh=True,
+    )
+
+
 def test_generate_for_scene_creates_prompts(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -264,6 +307,65 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(
 
     assert results == existing
     repository.delete_for_scene(scene.id, commit=True)
+
+
+def test_create_custom_remix_variant_persists_prompt(
+    db: Session, scene_factory
+) -> None:
+    scene = scene_factory()
+    base_prompt = _create_prompt(db, scene)
+    service = ImagePromptGenerationService(db)
+
+    edited_text = "Close-up portrait of the rooftop scout with neon reflections."
+    created = service.create_custom_remix_variant(base_prompt, edited_text)
+
+    assert isinstance(created, ImagePrompt)
+    assert created.scene_extraction_id == scene.id
+    assert created.variant_index == base_prompt.variant_index + 1
+    assert created.prompt_text == edited_text
+    assert created.style_tags == base_prompt.style_tags
+    assert created.attributes == base_prompt.attributes
+    assert created.raw_response["custom_remix"] is True
+    assert created.raw_response["custom_prompt_text"] == edited_text
+    assert created.title == "Shareable Moment"
+
+    repository = ImagePromptRepository(db)
+    stored_prompts = repository.list_for_scene(scene.id, newest_first=False)
+    assert any(prompt.id == created.id for prompt in stored_prompts)
+
+
+def test_create_custom_remix_variant_rejects_empty_text(
+    db: Session, scene_factory
+) -> None:
+    scene = scene_factory()
+    base_prompt = _create_prompt(db, scene)
+    service = ImagePromptGenerationService(db)
+
+    with pytest.raises(ImagePromptGenerationServiceError):
+        service.create_custom_remix_variant(base_prompt, "   ")
+
+
+def test_create_custom_remix_variant_dry_run_returns_preview(
+    db: Session, scene_factory
+) -> None:
+    scene = scene_factory()
+    base_prompt = _create_prompt(db, scene)
+    service = ImagePromptGenerationService(db)
+
+    preview = service.create_custom_remix_variant(
+        base_prompt,
+        "Wide shot of the scout overlooking traffic trails.",
+        dry_run=True,
+    )
+
+    assert isinstance(preview, ImagePromptPreview)
+    assert preview.variant_index == base_prompt.variant_index + 1
+    assert preview.raw_response["custom_remix"] is True
+    assert preview.prompt_text.endswith("traffic trails.")
+
+    repository = ImagePromptRepository(db)
+    stored_prompts = repository.list_for_scene(scene.id)
+    assert stored_prompts == [base_prompt]
 
 
 def test_generate_for_scene_overwrites_when_allowed(

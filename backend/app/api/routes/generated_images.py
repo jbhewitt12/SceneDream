@@ -21,6 +21,8 @@ from app.repositories import (
 )
 from app.schemas import (
     GeneratedImageApprovalUpdate,
+    GeneratedImageCustomRemixRequest,
+    GeneratedImageCustomRemixResponse,
     GeneratedImageGenerateRequest,
     GeneratedImageGenerateResponse,
     GeneratedImageListResponse,
@@ -186,6 +188,50 @@ async def _execute_remix_generation(
             "Unexpected error while processing remix for image %s (prompt %s)",
             source_image_id,
             source_prompt_id,
+        )
+
+
+async def _execute_custom_remix_generation(
+    *,
+    source_image_id: UUID,
+    source_prompt_id: UUID,
+    custom_prompt_id: UUID,
+    custom_prompt_text: str,
+) -> None:
+    """Background task to generate an image for a custom remix prompt."""
+    from sqlmodel import Session
+
+    from app.core.db import engine
+
+    try:
+        with Session(engine) as background_session:
+            prompt = background_session.get(ImagePrompt, custom_prompt_id)
+            if prompt is None:
+                logger.warning(
+                    "Custom remix prompt %s not found for image %s (source prompt %s)",
+                    custom_prompt_id,
+                    source_image_id,
+                    source_prompt_id,
+                )
+                return
+
+            image_service = ImageGenerationService(background_session)
+            await image_service.generate_for_selection(
+                prompt_ids=[custom_prompt_id],
+            )
+            background_session.commit()
+            logger.info(
+                "Custom remix image generation complete for image %s (new prompt %s, text_length=%s)",
+                source_image_id,
+                custom_prompt_id,
+                len(custom_prompt_text),
+            )
+    except Exception:
+        logger.exception(
+            "Unexpected error while processing custom remix for image %s (source prompt %s, custom prompt %s)",
+            source_image_id,
+            source_prompt_id,
+            custom_prompt_id,
         )
 
 
@@ -525,6 +571,91 @@ async def remix_generated_image(
         remix_prompt_ids=[],
         status="accepted",
         estimated_completion_seconds=estimated_seconds,
+    )
+
+
+@router.post(
+    "/{image_id}/custom-remix",
+    response_model=GeneratedImageCustomRemixResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def custom_remix_generated_image(
+    *,
+    session: SessionDep,
+    background_tasks: BackgroundTasks,
+    image_id: UUID,
+    request: GeneratedImageCustomRemixRequest,
+) -> GeneratedImageCustomRemixResponse:
+    """Trigger a custom remix using user-supplied prompt text for a generated image."""
+
+    image_repository = GeneratedImageRepository(session)
+    image = image_repository.get(image_id)
+    if image is None:
+        raise HTTPException(status_code=404, detail="Generated image not found")
+
+    prompt_repository = ImagePromptRepository(session)
+    prompt = prompt_repository.get(image.image_prompt_id)
+    if prompt is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Source image prompt for custom remix not found",
+        )
+
+    custom_prompt_text = request.custom_prompt_text
+    if not custom_prompt_text or not custom_prompt_text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Custom prompt text must not be empty",
+        )
+
+    try:
+        prompt_service = ImagePromptGenerationService(session)
+        _ = ImageGenerationService(session)
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.exception("Unable to initialize custom remix services: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to initialize custom remix services",
+        ) from exc
+
+    try:
+        custom_prompt = prompt_service.create_custom_remix_variant(
+            prompt,
+            custom_prompt_text,
+            dry_run=False,
+        )
+    except ImagePromptGenerationServiceError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    if not isinstance(custom_prompt, ImagePrompt):  # pragma: no cover - safety valve
+        raise HTTPException(
+            status_code=500,
+            detail="Custom remix prompt creation failed",
+        )
+
+    background_tasks.add_task(
+        _execute_custom_remix_generation,
+        source_image_id=image_id,
+        source_prompt_id=prompt.id,
+        custom_prompt_id=custom_prompt.id,
+        custom_prompt_text=custom_prompt_text,
+    )
+
+    logger.info(
+        "Custom remix requested for image %s (prompt %s, custom prompt %s, text_length=%s)",
+        image_id,
+        prompt.id,
+        custom_prompt.id,
+        len(custom_prompt_text),
+    )
+
+    return GeneratedImageCustomRemixResponse(
+        custom_prompt_id=custom_prompt.id,
+        status="accepted",
+        estimated_completion_seconds=60,
     )
 
 
