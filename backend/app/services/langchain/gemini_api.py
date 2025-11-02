@@ -11,6 +11,8 @@
 # - Error handling is minimal; add try-except blocks as needed in production.
 # - Comments are provided for each function to explain usage, parameters, and return values,
 #   so a coding agent can easily understand and extend the code.
+# - Methods have been converted to asynchronous versions for concurrency in environments like FastAPI.
+# - Assumes latest LangChain where async support for ChatGoogleGenerativeAI is functional.
 
 import logging
 import os
@@ -24,13 +26,27 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool  # For defining tools if needed
 from pydantic import BaseModel
-
-from .retry_utils import retry_with_backoff
+from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
 
 DEFAULT_FLASH_MODEL = "gemini-flash-latest"
 DEFAULT_PRO_MODEL = "gemini-pro-latest"
 
 logger = logging.getLogger(__name__)
+
+
+async def retry_with_backoff(async_func, *args, **kwargs):
+    """
+    Asynchronous retry wrapper with exponential backoff.
+    Retries the async function on exceptions.
+    """
+    retrying = AsyncRetrying(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        reraise=True
+    )
+    async for attempt in retrying:
+        with attempt:
+            return await async_func(*args, **kwargs)
 
 
 def _coerce_content_to_text(payload: Any) -> str:
@@ -74,7 +90,7 @@ def _get_llm(
     )
 
 
-def simple_call(
+async def simple_call(
     prompt: str,
     model: str = DEFAULT_FLASH_MODEL,
     temperature: float = 0.7,
@@ -86,7 +102,7 @@ def simple_call(
     Useful for basic text generation or completion tasks.
 
     Example usage:
-    response = simple_call("Write a short poem about AI.")
+    response = await simple_call("Write a short poem about AI.")
     print(response)
 
     :param prompt: The input prompt string.
@@ -97,11 +113,11 @@ def simple_call(
     :return: The generated text response as a string.
     """
     llm = _get_llm(model, temperature, max_tokens, **kwargs)
-    response = retry_with_backoff(llm.invoke, prompt)
+    response = await retry_with_backoff(llm.ainvoke, prompt)
     return response.content
 
 
-def chat_call(
+async def chat_call(
     messages: List[Dict[str, str]],
     model: str = DEFAULT_FLASH_MODEL,
     temperature: float = 0.7,
@@ -117,7 +133,7 @@ def chat_call(
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "What is the capital of France?"}
     ]
-    response = chat_call(messages)
+    response = await chat_call(messages)
     print(response)
 
     :param messages: List of dicts with 'role' (system/user/assistant) and 'content'.
@@ -141,11 +157,11 @@ def chat_call(
         else:
             raise ValueError(f"Unsupported role: {role}")
 
-    response = retry_with_backoff(llm.invoke, lc_messages)
+    response = await retry_with_backoff(llm.ainvoke, lc_messages)
     return response.content
 
 
-def call_with_tools(
+async def call_with_tools(
     prompt: str,
     tools: List[Any],
     model: str = DEFAULT_PRO_MODEL,
@@ -163,7 +179,7 @@ def call_with_tools(
     def add(a: int, b: int) -> int:
         return a + b
 
-    response = call_with_tools("What is 2 + 3?", tools=[add])
+    response = await call_with_tools("What is 2 + 3?", tools=[add])
     if response.tool_calls:
         # Handle tool execution here
         pass
@@ -178,11 +194,11 @@ def call_with_tools(
     """
     llm = _get_llm(model, temperature, max_tokens, **kwargs)
     llm_with_tools = llm.bind_tools(tools)
-    response = retry_with_backoff(llm_with_tools.invoke, prompt)
+    response = await retry_with_backoff(llm_with_tools.ainvoke, prompt)
     return response
 
 
-def structured_output(
+async def structured_output(
     prompt: str,
     schema: Type[BaseModel],
     method: str = "default",
@@ -200,7 +216,7 @@ def structured_output(
         name: str
         age: int
 
-    result = structured_output("Extract info: John is 30 years old.", Person)
+    result = await structured_output("Extract info: John is 30 years old.", Person)
     print(result.name, result.age)
 
     :param prompt: The input prompt string.
@@ -218,11 +234,11 @@ def structured_output(
     else:
         structured_llm = llm.with_structured_output(schema)
 
-    result = retry_with_backoff(structured_llm.invoke, prompt)
+    result = await retry_with_backoff(structured_llm.ainvoke, prompt)
     return result
 
 
-def json_output(
+async def json_output(
     prompt: str,
     system_instruction: str = "Respond only with valid JSON.",
     model: str = DEFAULT_PRO_MODEL,
@@ -235,7 +251,7 @@ def json_output(
     Parses the response to a Python dict.
 
     Example usage:
-    response = json_output("List 3 fruits as JSON array.")
+    response = await json_output("List 3 fruits as JSON array.")
     print(response)  # e.g., {"fruits": ["apple", "banana", "cherry"]}
 
     :param prompt: The input prompt string.
@@ -256,7 +272,7 @@ def json_output(
         **kwargs,
     )
     messages = [SystemMessage(content=system_instruction), HumanMessage(content=prompt)]
-    response = retry_with_backoff(llm.invoke, messages)
+    response = await retry_with_backoff(llm.ainvoke, messages)
     content = _coerce_content_to_text(response.content).strip()
     if content.startswith("```"):
         lines = content.splitlines()
