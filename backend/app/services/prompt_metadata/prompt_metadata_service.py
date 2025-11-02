@@ -44,9 +44,9 @@ class PromptMetadataGenerationService:
     _system_instruction = (
         "You craft social-media-ready microcopy for AI-generated artwork. "
         "Respond only with a JSON object containing `title` and `flavour_text` keys. "
-        "Titles must be 1-5 words. Flavour text must be 1 sentence (<=20 words total). "
+        "Titles must be 1-5 words. Flavour text must be a single sentence (8-16 words). "
         "Never reference licensed character names, book titles, author names, or direct plot details. "
-        "Lean into imaginative mood and atmosphere without sounding cringe or clickbait."
+        "Write flavour text like a Magic: The Gathering card—clever, intriguing, mysterious, or wry rather than literal."
     )
 
     def __init__(
@@ -196,10 +196,11 @@ class PromptMetadataGenerationService:
 
             REQUIREMENTS:
             1. Title must be 1-5 evocative words without punctuation except hyphens.
-            2. Flavour text must be 1-2 sentences (max 60 words) suitable for Instagram or TikTok captions.
+            2. Flavour text must be a single sentence (8-16 words) that lands as interesting, funny, or mysterious.
             3. Never mention character names, author names, or book titles. Use descriptive, archetypal language instead.
             4. Capture the mood, color, and energy implied by the prompt without copying its wording verbatim.
             5. Keep things cool, modern, and hype without sounding clickbait or cringe.
+            6. Let the flavour text read like an MTG-style whisper, sly prophecy, or wry aside rather than a literal caption.
 
             Respond ONLY with JSON: {{"title": "<string>", "flavour_text": "<string>"}}
             """
