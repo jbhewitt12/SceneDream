@@ -232,6 +232,14 @@ class SceneRankingService:
     def config(self) -> SceneRankingConfig:
         return self._config
 
+    def effective_weight_config(self) -> dict[str, float]:
+        """Return the normalized weight configuration for the active service config."""
+        return self._normalize_weight_config(self._config.weight_config)
+
+    def effective_weight_hash(self) -> str:
+        """Return the hash for the normalized weight configuration."""
+        return self.compute_weight_hash(self.effective_weight_config())
+
     def rank_scene(
         self,
         scene: SceneExtraction | UUID,
@@ -268,7 +276,7 @@ class SceneRankingService:
             )
             return None
         weight_cfg = self._normalize_weight_config(config.weight_config)
-        weight_hash = self._compute_weight_hash(weight_cfg)
+        weight_hash = self.compute_weight_hash(weight_cfg)
         if not config.allow_overwrite:
             existing = self._ranking_repo.get_unique_run(
                 scene_extraction_id=target_scene.id,
@@ -464,7 +472,8 @@ class SceneRankingService:
             )
         return normalized
 
-    def _compute_weight_hash(self, weight_config: Mapping[str, float]) -> str:
+    @staticmethod
+    def compute_weight_hash(weight_config: Mapping[str, float]) -> str:
         ordered = {key: weight_config[key] for key in sorted(weight_config)}
         payload = json.dumps(ordered, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()

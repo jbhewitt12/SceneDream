@@ -372,6 +372,63 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _filter_scenes_for_ranking(
+    *,
+    session: Session,
+    scenes: list,
+    book_slug: str,
+    ranking_service: SceneRankingService,
+    overwrite: bool,
+    limit: int | None = None,
+) -> list:
+    """Return the subset of scenes that still require ranking."""
+    if not scenes:
+        return []
+
+    selected = scenes
+    if not overwrite:
+        ranking_repo = SceneRankingRepository(session)
+        weight_hash = ranking_service.effective_weight_hash()
+        ranked_ids = ranking_repo.list_ranked_scene_ids_for_book(
+            book_slug=book_slug,
+            model_name=ranking_service.config.model_name,
+            prompt_version=ranking_service.config.prompt_version,
+            weight_config_hash=weight_hash,
+        )
+        if ranked_ids:
+            total_scenes = len(scenes)
+            total_ranked = sum(1 for scene in scenes if scene.id in ranked_ids)
+            if total_ranked:
+                logger.info(
+                    "%d of %d scenes already ranked for '%s' with current configuration.",
+                    total_ranked,
+                    total_scenes,
+                    book_slug,
+                )
+            first_unranked_index = next(
+                (idx for idx, scene in enumerate(scenes) if scene.id not in ranked_ids),
+                None,
+            )
+            if first_unranked_index is None:
+                logger.info(
+                    "No unranked scenes remain for '%s'; skipping ranking step.",
+                    book_slug,
+                )
+                return []
+            resume_scene = scenes[first_unranked_index]
+            if first_unranked_index > 0:
+                logger.info(
+                    "Resuming ranking at chapter %d scene %d.",
+                    resume_scene.chapter_number,
+                    resume_scene.scene_number,
+                )
+            selected = [scene for scene in scenes if scene.id not in ranked_ids]
+
+    if limit and limit > 0:
+        selected = selected[:limit]
+
+    return selected
+
 async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
     """Run the complete pipeline."""
     stats = PipelineStats()
@@ -580,16 +637,20 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
             with Session(engine) as session:
                 scene_repo = SceneExtractionRepository(session)
                 scenes = scene_repo.list_for_book(book_slug)
+                ranking_config = SceneRankingConfig()
+                ranking_service = SceneRankingService(session, config=ranking_config)
+                scenes_to_rank = _filter_scenes_for_ranking(
+                    session=session,
+                    scenes=scenes,
+                    book_slug=book_slug,
+                    ranking_service=ranking_service,
+                    overwrite=False,
+                )
 
-                if not scenes:
-                    logger.warning("No scenes found for book: %s", book_slug)
+                if not scenes_to_rank:
+                    logger.info("No scenes require ranking for book: %s", book_slug)
                 else:
-                    ranking_config = SceneRankingConfig()
-                    ranking_service = SceneRankingService(
-                        session, config=ranking_config
-                    )
-
-                    for scene in scenes:
+                    for scene in scenes_to_rank:
                         try:
                             result = ranking_service.rank_scene(
                                 scene,
@@ -895,9 +956,6 @@ async def _run_rank(args: argparse.Namespace) -> PipelineStats:
         scene_repo = SceneExtractionRepository(session)
         scenes = scene_repo.list_for_book(args.book_slug)
 
-        if args.limit and args.limit > 0:
-            scenes = scenes[: args.limit]
-
         if not scenes:
             logger.warning("No scenes found for book: %s", args.book_slug)
             return stats
@@ -905,7 +963,24 @@ async def _run_rank(args: argparse.Namespace) -> PipelineStats:
         ranking_config = SceneRankingConfig()
         ranking_service = SceneRankingService(session, config=ranking_config)
 
-        for scene in scenes:
+        scenes_to_rank = _filter_scenes_for_ranking(
+            session=session,
+            scenes=scenes,
+            book_slug=args.book_slug,
+            ranking_service=ranking_service,
+            overwrite=args.overwrite,
+            limit=args.limit,
+        )
+
+        if not scenes_to_rank:
+            logger.info(
+                "No scenes require ranking for book: %s (overwrite=%s)",
+                args.book_slug,
+                args.overwrite,
+            )
+            return stats
+
+        for scene in scenes_to_rank:
             try:
                 result = ranking_service.rank_scene(
                     scene,

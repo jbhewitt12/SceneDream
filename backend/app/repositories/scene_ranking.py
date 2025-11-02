@@ -117,6 +117,44 @@ class SceneRankingRepository:
         statement = statement.limit(limit)
         return list(self._session.exec(statement))
 
+    def list_ranked_scene_ids_for_book(
+        self,
+        *,
+        book_slug: str,
+        model_name: str,
+        prompt_version: str,
+        weight_config_hash: str,
+    ) -> set[UUID]:
+        statement = (
+            select(SceneRanking.scene_extraction_id)
+            .join(
+                SceneExtraction, SceneRanking.scene_extraction_id == SceneExtraction.id
+            )
+            .where(SceneExtraction.book_slug == book_slug)
+            .where(SceneRanking.model_name == model_name)
+            .where(SceneRanking.prompt_version == prompt_version)
+            .where(SceneRanking.weight_config_hash == weight_config_hash)
+        )
+        records = self._session.exec(statement).all()
+        ranked: set[UUID] = set()
+        for record in records:
+            if record is None:
+                continue
+            if isinstance(record, UUID):
+                ranked.add(record)
+                continue
+            if isinstance(record, tuple):
+                candidate = record[0] if record else None
+                if isinstance(candidate, UUID):
+                    ranked.add(candidate)
+            else:
+                try:
+                    candidate = UUID(str(record))
+                except Exception:
+                    continue
+                ranked.add(candidate)
+        return ranked
+
     def list_top_rankings(
         self,
         *,
