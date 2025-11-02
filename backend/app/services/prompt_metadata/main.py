@@ -38,8 +38,8 @@ def _build_parser() -> argparse.ArgumentParser:
     backfill.add_argument(
         "--limit",
         type=int,
-        default=100,
-        help="Maximum number of prompts to process (default: 100).",
+        default=None,
+        help="Maximum number of prompts to process (default: all).",
     )
     backfill.add_argument(
         "--batch-size",
