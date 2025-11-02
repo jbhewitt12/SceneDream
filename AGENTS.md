@@ -18,13 +18,13 @@ This project is built with the FastAPI Template.
 - `backend/models` defines SQLModel tables (`SceneExtraction`, `SceneRanking`, `ImagePrompt`, `GeneratedImage`) consumed by Alembic migrations in `backend/app/alembic`.
 - `frontend/src` houses the React + Chakra UI client: `routes/_layout/*` renders dashboards for each pipeline stage, `api/` & `client/` contain the generated OpenAPI SDK, while `components/`, `hooks/`, and `theme/` provide shared UI primitives.
 - `books/` stores EPUB inputs and chapter artifacts consumed by the extraction services; `img/` accumulates generated assets (notably `img/generated/<book>/...`).
-- `scripts/` contains automation like `generate-client.sh`, Docker test harnesses (`test.sh`, `test-local.sh`), and deployment helpers.
+- `scripts/` contains automation like `generate-client.sh` and deployment helpers.
 
 ## Build, Test, and Development Commands
 - `docker compose watch` spins up the full stack with live reload.
 - `cd backend && uv run fastapi dev app/main.py` runs the API locally after stopping the compose backend service.
 - `cd frontend && npm run dev` serves the Vite app on `5173`; stop the Docker frontend first if running.
-- `cd backend && uv run bash scripts/test.sh` executes pytest with coverage and HTML reports; pass extra pytest flags at the end.
+- `cd backend && uv run pytest` executes pytest with coverage and HTML reports; pass extra pytest flags at the end.
 - Pipeline CLIs: from `backend/`, use `uv run python -m app.services.scene_extraction.main ...`, `uv run python -m app.services.scene_ranking.main rank ...`, and `uv run python -m app.services.image_generation.main ...` for staged or end-to-end runs.
 
 ## Coding Style & Naming Conventions
