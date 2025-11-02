@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -178,7 +179,7 @@ class ImagePromptGenerationService:
         self._book_cache: MutableMapping[str, dict[int, _ChapterContext]] = {}
         self._book_service = BookContentService()
 
-    def generate_for_scene(
+    async def generate_for_scene(
         self,
         scene: SceneExtraction | UUID,
         *,
@@ -251,7 +252,7 @@ class ImagePromptGenerationService:
             context_text=context_text,
             context_window=context_window,
         )
-        raw_payload, llm_request_id, execution_time_ms = self._invoke_llm(
+        raw_payload, llm_request_id, execution_time_ms = await self._invoke_llm(
             prompt=prompt,
             config=config,
         )
@@ -291,7 +292,7 @@ class ImagePromptGenerationService:
 
         if config.dry_run:
             preview_prompts = self._instantiate_prompts_from_records(records)
-            metadata_results = self._run_metadata_generation(
+            metadata_results = await self._run_metadata_generation(
                 preview_prompts,
                 dry_run=True,
                 autocommit=False,
@@ -348,14 +349,14 @@ class ImagePromptGenerationService:
         )
         if not config.autocommit:
             self._session.flush()
-        self._run_metadata_generation(
+        await self._run_metadata_generation(
             created,
             dry_run=False,
             autocommit=config.autocommit,
         )
         return created
 
-    def generate_for_scenes(
+    async def generate_for_scenes(
         self,
         scenes: Sequence[SceneExtraction | UUID],
         **overrides: Any,
@@ -363,7 +364,7 @@ class ImagePromptGenerationService:
         results: list[list[ImagePrompt] | list[ImagePromptPreview] | None] = []
         for scene in scenes:
             try:
-                result = self.generate_for_scene(scene, **overrides)
+                result = await self.generate_for_scene(scene, **overrides)
             except Exception as exc:  # pragma: no cover - defensive logging
                 if self._config.fail_on_error or overrides.get("fail_on_error"):
                     raise
@@ -373,7 +374,7 @@ class ImagePromptGenerationService:
             results.append(result)
         return results
 
-    def generate_for_book(
+    async def generate_for_book(
         self,
         book_slug: str,
         *,
@@ -396,9 +397,9 @@ class ImagePromptGenerationService:
             candidate_scenes = candidate_scenes[:top_n]
         if not candidate_scenes:
             return []
-        return self.generate_for_scenes(candidate_scenes, **overrides)
+        return await self.generate_for_scenes(candidate_scenes, **overrides)
 
-    def generate_remix_variants(
+    async def generate_remix_variants(
         self,
         source_prompt: ImagePrompt | UUID,
         *,
@@ -446,7 +447,7 @@ class ImagePromptGenerationService:
             source_prompt=prompt_record,
             variants_count=variants_count,
         )
-        raw_payload, llm_request_id, execution_time_ms = self._invoke_llm(
+        raw_payload, llm_request_id, execution_time_ms = await self._invoke_llm(
             prompt=remix_prompt,
             config=config,
             system_instruction=self._remix_system_instruction,
@@ -502,7 +503,7 @@ class ImagePromptGenerationService:
 
         if config.dry_run:
             preview_prompts = self._instantiate_prompts_from_records(records)
-            metadata_results = self._run_metadata_generation(
+            metadata_results = await self._run_metadata_generation(
                 preview_prompts,
                 dry_run=True,
                 autocommit=False,
@@ -544,14 +545,14 @@ class ImagePromptGenerationService:
         )
         if not config.autocommit:
             self._session.flush()
-        self._run_metadata_generation(
+        await self._run_metadata_generation(
             created,
             dry_run=False,
             autocommit=config.autocommit,
         )
         return created
 
-    def create_custom_remix_variant(
+    async def create_custom_remix_variant(
         self,
         source_prompt: ImagePrompt | UUID,
         custom_prompt_text: str,
@@ -608,7 +609,7 @@ class ImagePromptGenerationService:
 
         if dry_run:
             preview_prompts = self._instantiate_prompts_from_records([record])
-            metadata_results = self._run_metadata_generation(
+            metadata_results = await self._run_metadata_generation(
                 preview_prompts,
                 dry_run=True,
                 autocommit=False,
@@ -656,7 +657,7 @@ class ImagePromptGenerationService:
         )
         if not self._config.autocommit:
             self._session.flush()
-        self._run_metadata_generation(
+        await self._run_metadata_generation(
             created,
             dry_run=False,
             autocommit=self._config.autocommit,
@@ -949,7 +950,7 @@ class ImagePromptGenerationService:
         ]
         return "\n".join(prompt_lines)
 
-    def _invoke_llm(
+    async def _invoke_llm(
         self,
         *,
         prompt: str,
@@ -961,7 +962,7 @@ class ImagePromptGenerationService:
         for attempt in range(1, attempts + 1):
             start_time = time.perf_counter()
             try:
-                response = gemini_api.json_output(
+                response = await gemini_api.json_output(
                     prompt=prompt,
                     system_instruction=system_instruction or self._system_instruction,
                     model=config.model_name,
@@ -985,7 +986,7 @@ class ImagePromptGenerationService:
                 )
                 if attempt >= attempts:
                     break
-                time.sleep(max(config.retry_backoff_seconds, 0))
+                await asyncio.sleep(max(config.retry_backoff_seconds, 0))
         assert last_error is not None
         if config.fail_on_error:
             raise ImagePromptGenerationServiceError(
@@ -1076,7 +1077,7 @@ class ImagePromptGenerationService:
             prompts.append(ImagePrompt(**record))  # type: ignore[arg-type]
         return prompts
 
-    def _run_metadata_generation(
+    async def _run_metadata_generation(
         self,
         prompts: Sequence[ImagePrompt],
         *,
@@ -1093,7 +1094,7 @@ class ImagePromptGenerationService:
             ),
         )
         try:
-            results = service.generate_metadata_for_prompts(
+            results = await service.generate_metadata_for_prompts(
                 prompts,
                 overwrite=True,
                 dry_run=dry_run,

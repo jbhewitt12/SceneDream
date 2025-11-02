@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 import logging
@@ -323,11 +324,13 @@ class SceneExtractor:
             )
             prompt = self._build_chunk_prompt(chunk)
             try:
-                response = gemini_api.json_output(
-                    prompt=prompt,
-                    system_instruction=self._gemini_system_instruction(),
-                    model=self.config.gemini_model,
-                    temperature=self.config.gemini_temperature,
+                response = asyncio.run(
+                    gemini_api.json_output(
+                        prompt=prompt,
+                        system_instruction=self._gemini_system_instruction(),
+                        model=self.config.gemini_model,
+                        temperature=self.config.gemini_temperature,
+                    )
                 )
             except Exception as exc:
                 logger.error(

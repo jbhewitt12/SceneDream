@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 
 import pytest
@@ -85,10 +86,13 @@ def test_rank_scene_creates_ranking(
 ) -> None:
     scene = scene_factory()
 
-    monkeypatch.setattr(gemini_api, "json_output", lambda **_: _mock_response(6.5))
+    async def fake_json_output(**_: object) -> dict[str, object]:
+        return _mock_response(6.5)
+
+    monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
 
     service = SceneRankingService(db)
-    result = service.rank_scene(scene)
+    result = asyncio.run(service.rank_scene(scene))
 
     assert isinstance(result, SceneRanking)
     assert pytest.approx(result.overall_priority, 0.001) == 6.5
@@ -109,10 +113,13 @@ def test_rank_scene_dry_run_returns_preview(
 ) -> None:
     scene = scene_factory(book_slug="dry-run-book")
 
-    monkeypatch.setattr(gemini_api, "json_output", lambda **_: _mock_response(7.2))
+    async def fake_json_output(**_: object) -> dict[str, object]:
+        return _mock_response(7.2)
+
+    monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
 
     service = SceneRankingService(db)
-    preview = service.rank_scene(scene, dry_run=True)
+    preview = asyncio.run(service.rank_scene(scene, dry_run=True))
 
     assert isinstance(preview, SceneRankingPreview)
     assert preview.overall_priority == 7.2

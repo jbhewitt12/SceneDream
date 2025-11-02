@@ -8,6 +8,7 @@ Usage examples:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 import sys
@@ -222,7 +223,7 @@ def _summarize_result(result: SceneRanking | SceneRankingPreview) -> dict[str, o
     return base
 
 
-def _handle_rank(args: argparse.Namespace) -> int:
+async def _handle_rank(args: argparse.Namespace) -> int:
     try:
         weight_overrides = _parse_weights(args.weight)
     except ValueError as exc:
@@ -268,7 +269,7 @@ def _handle_rank(args: argparse.Namespace) -> int:
         results: list[dict[str, object]] = []
         for scene in scenes:
             try:
-                outcome = service.rank_scene(
+                outcome = await service.rank_scene(
                     scene,
                     dry_run=args.dry_run,
                     overwrite=args.overwrite,
@@ -296,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "rank":
-        return _handle_rank(args)
+        return asyncio.run(_handle_rank(args))
     parser.error("Unknown command")
     return 2
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from textwrap import dedent
@@ -83,13 +84,15 @@ class SceneRefiner:
             return {}
         prompt = self._build_refinement_prompt(chapter, scenes)
         try:
-            payload = gemini_api.structured_output(
-                prompt=prompt,
-                schema=_RefinementResponse,
-                method="json_mode",
-                model=self._model,
-                temperature=self._temperature,
-                max_tokens=self._max_tokens,
+            payload = asyncio.run(
+                gemini_api.structured_output(
+                    prompt=prompt,
+                    schema=_RefinementResponse,
+                    method="json_mode",
+                    model=self._model,
+                    temperature=self._temperature,
+                    max_tokens=self._max_tokens,
+                )
             )
         except Exception as exc:
             chapter_number = getattr(chapter, "number", "?")
