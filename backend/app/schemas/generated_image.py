@@ -65,6 +65,8 @@ class ImagePromptSummary(BaseModel):
     """Summary of image prompt for context."""
 
     id: UUID
+    title: str | None = None
+    flavour_text: str | None = None
     prompt_text: str
     style_tags: list[str] | None = None
     attributes: dict[str, Any] = Field(default_factory=dict)
@@ -97,10 +99,17 @@ class GeneratedImageWithContext(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class GeneratedImageListItem(GeneratedImageRead):
+    """List item representation of a generated image including prompt metadata."""
+
+    prompt_title: str | None = None
+    prompt_flavour_text: str | None = None
+
+
 class GeneratedImageListResponse(BaseModel):
     """Collection response for generated images with optional metadata."""
 
-    data: list[GeneratedImageRead]
+    data: list[GeneratedImageListItem]
     meta: dict[str, Any] = Field(default_factory=dict)
 
 
