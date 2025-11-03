@@ -2,6 +2,7 @@ import {
   type ImagePromptListResponse,
   type ImagePromptRead,
   ImagePromptsService,
+  OpenAPI,
 } from "@/client"
 
 export type ImagePromptAttributes = Record<string, unknown>
@@ -16,6 +17,26 @@ export type ImagePromptContextWindow = {
 
 export type ImagePrompt = Omit<ImagePromptRead, "context_window"> & {
   context_window: ImagePromptContextWindow
+}
+
+export type MetadataVariant = {
+  title: string | null
+  flavour_text: string | null
+}
+
+export type MetadataGenerationResponse = {
+  prompt_id: string
+  variants: MetadataVariant[]
+  count: number
+}
+
+export type MetadataUpdateRequest = {
+  title?: string | null
+  flavour_text?: string | null
+}
+
+export type ImagePromptMetadataRead = ImagePromptRead & {
+  flavour_text?: string | null
 }
 
 const toIntegerTuple = (value: unknown): [number, number] | null => {
@@ -82,6 +103,65 @@ const sanitizeText = (value?: string | null) => {
   }
   const trimmed = value.trim()
   return trimmed.length ? trimmed : undefined
+}
+
+const buildUrl = (path: string) => {
+  const base = OpenAPI.BASE ?? ""
+  if (base) {
+    const sanitizedBase = base.replace(/\/+$/, "")
+    return `${sanitizedBase}${path}`
+  }
+  return path
+}
+
+export const generatePromptMetadata = async (
+  promptId: string,
+  variantsCount = 5,
+): Promise<MetadataGenerationResponse> => {
+  const url = buildUrl(
+    `/api/v1/image-prompts/${encodeURIComponent(promptId)}/metadata/generate`,
+  )
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ variants_count: variantsCount }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    const message = body || `${response.status} ${response.statusText}`
+    throw new Error(`Failed to generate metadata: ${message}`)
+  }
+
+  return (await response.json()) as MetadataGenerationResponse
+}
+
+export const updatePromptMetadata = async (
+  promptId: string,
+  metadata: MetadataUpdateRequest,
+): Promise<ImagePromptMetadataRead> => {
+  const url = buildUrl(
+    `/api/v1/image-prompts/${encodeURIComponent(promptId)}/metadata`,
+  )
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(metadata),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    const message = body || `${response.status} ${response.statusText}`
+    throw new Error(`Failed to update metadata: ${message}`)
+  }
+
+  return (await response.json()) as ImagePromptMetadataRead
 }
 
 export type ScenePromptListParams = {

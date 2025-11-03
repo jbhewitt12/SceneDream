@@ -840,6 +840,30 @@ Before starting implementation:
 - **Deviations**: Added 422 error guard when both metadata fields are omitted to avoid timestamp-only updates.
 - **Tests**: Not run; manual API verification still outstanding.
 
+#### Phase 3 (completed 2025-11-03)
+- **Status**: ✅ Completed
+- **Highlights**: Added metadata variant/update types plus `generatePromptMetadata()` and `updatePromptMetadata()` helpers with shared `buildUrl` utility and error handling tailored for React Query consumers.
+- **Deviations**: Introduced `ImagePromptMetadataRead` union because the generated OpenAPI models still omit the `flavour_text` field; fetch wrappers now cast to that extended shape.
+- **Tests**: Deferred to Phase 6 (no standalone verification needed).
+
+#### Phase 4 (completed 2025-11-03)
+- **Status**: ✅ Completed
+- **Highlights**: Created `MetadataRegenerationModal` with optimistic React Query cache updates, toast feedback, retry affordances, and clean cancellation handling for in-flight generation requests.
+- **Deviations**: Rendered icons inline instead of using `leftIcon` props to keep compatibility with the stricter Chakra v3 typings surfaced by `tsc`.
+- **Tests**: Deferred to Phase 6; no manual UI exercise performed yet.
+
+#### Phase 5 (completed 2025-11-03)
+- **Status**: ✅ Completed
+- **Highlights**: Wired regeneration controls into `GeneratedImageModal`, synchronized modal state resets on parent close, and plumbed prompt/image identifiers down to the new modal.
+- **Deviations**: Mirrored Chakra prop adjustments from Phase 4 (inline icons, `disabled`/`loading` props) so the integration compiles against current UI typings.
+- **Tests**: Deferred to Phase 6.
+
+#### Phase 6 (completed 2025-11-03)
+- **Status**: ⚠️ Completed with caveats
+- **Highlights**: Attempted `npm run lint` and `npm run build`; both surfaced long-standing issues outside this change set (Biome rewrites on generated client files and Chakra v3 prop API mismatches across existing components).
+- **Deviations**: Reverted Biome's auto-edits to the generated client to avoid unrelated churn; no further remediation applied for the pre-existing lint/build breaks.
+- **Tests**: `npm run lint` *(fails due to hundreds of existing Biome findings across `frontend/src/client/**/*`)*; `npm run build` *(fails on existing Chakra component typing mismatches such as `leftIcon`, `isLoading`, `noOfLines`, etc.)*.
+
 ### Phase Completion Notes Structure:
 Each phase should document:
 - Completion status
