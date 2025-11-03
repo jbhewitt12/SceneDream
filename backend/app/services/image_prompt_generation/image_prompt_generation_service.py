@@ -376,6 +376,61 @@ class ImagePromptGenerationService:
         )
         return created
 
+    def render_prompt_template(
+        self,
+        scene: SceneExtraction | UUID,
+        *,
+        prompt_version: str | None = None,
+        variants_count: int | None = None,
+        temperature: float | None = None,
+        max_output_tokens: int | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> tuple[str, ImagePromptGenerationConfig, Mapping[str, Any], str]:
+        """
+        Build the full prompt text exactly as it will be sent to the LLM.
+
+        Returns a tuple of (prompt_text, resolved_config, context_window, context_excerpt).
+        """
+        target_scene = self._resolve_scene(scene)
+        config = self._resolve_config(
+            prompt_version=prompt_version,
+            variants_count=variants_count,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            overwrite=None,
+            dry_run=None,
+            metadata=metadata,
+        )
+
+        if config.skip_scenes_with_warnings and self._scene_has_blocked_warnings(
+            target_scene, config
+        ):
+            problematic_warnings = self._get_problematic_warnings(target_scene, config)
+            raise ImagePromptGenerationServiceError(
+                "Scene has blocked warnings: " + ", ".join(problematic_warnings)
+            )
+
+        final_count, count_rationale = self._determine_variant_count(
+            target_scene, config
+        )
+        merged_metadata = dict(config.metadata)
+        merged_metadata["variant_count_source"] = count_rationale
+        resolved_config = config.copy_with(
+            variants_count=final_count,
+            metadata=merged_metadata,
+        )
+
+        context_window, context_text = self._build_scene_context(
+            target_scene, resolved_config
+        )
+        prompt = self._build_prompt(
+            scene=target_scene,
+            config=resolved_config,
+            context_text=context_text,
+            context_window=context_window,
+        )
+        return prompt, resolved_config, context_window, context_text
+
     async def generate_for_scenes(
         self,
         scenes: Sequence[SceneExtraction | UUID],
