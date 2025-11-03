@@ -1,54 +1,70 @@
 ## DALL·E 3 Multi-Genre Prompting Cheatsheet
 
 ### Core Formula
-Subject or focal moment + Style or medium + Setting and atmosphere + Lighting + Composition or camera note
+Subject or focal moment + stylised medium or technique + setting and atmosphere + lighting + composition or camera note + purposeful palette clue
 
 ### Essentials to Capture
-- **Subject**: Who or what is primary, defining traits, clothing or props, emotion, action.
-- **Style or medium**: Illustration, watercolor, oil painting, digital matte, cinematic photo, etc.; add optional artist or movement cues.
-- **Setting and atmosphere**: Location, period, cultural details, weather, sensory details that anchor the world.
-- **Lighting**: Time of day, key light sources, contrast level, color temperature, shadows or highlights.
-- **Composition**: Shot size, angle, depth of field, framing, foreground or background anchors.
+- **Subject**: Who or what is primary, signature traits, symbolic props, body language, emotion, or motion that defines the beat.
+- **Stylised medium**: Commit to a distinct treatment (e.g. textile tapestry, stained glass mosaic, sumi-e ink wash, vaporwave collage, kinetic light sculpture, chalk pastel mural, blueprint cutaway). Avoid photorealistic, live-action, or cinematic realism terminology.
+- **Setting and atmosphere**: Location, era, cultural anchors, weather, ambient motion, and sensory details that ground the world.
+- **Lighting**: Dominant sources, color temperature, contrast, and how illumination reinforces mood.
+- **Composition**: Shot size, angle, lens behaviour, focal depth, and framing devices that guide the viewer.
+- **Palette**: Palette temperature or spectrum that amplifies the emotional intent (radiant golds, glacial teals, ember reds).
+
+### Style Inspiration Pools
+Keep a rotating list of mediums across analog, digital, and experimental disciplines. Roll across it for every variant to keep the set eclectic:
+- Textile tapestry, embroidered relief, macrame mural
+- Stained glass mosaic, cloisonne enamel, Art Nouveau poster
+- Ukiyo-e woodblock, sumi-e animation, ink wash scroll
+- Chalk pastel mural, charcoal monotype, impasto oil knife painting
+- Blueprint schematic cutaway, retrofuturist airbrush, neon hologram overlay
+- Paper diorama, stop-motion maquette, clay bas-relief
+- Generative particle art, glitchwave collage, kinetic light sculpture
 
 ### Genre Adaptors
-- **Fantasy or historical**: Lean into tangible materials (weathered leather, embroidered linen, ancient stone), natural light (torches, moonlight), folklore motifs, lived-in textures.
-- **Science fiction or futuristic**: Precise technology language, advanced materials, novel light sources (holograms, plasma glow), scale cues that show vast or alien spaces.
-- **Contemporary or slice-of-life**: Recognizable locations, everyday objects, authentic body language, natural light and color palettes that match the mood (warm kitchen morning, overcast street).
-- **Mystery, thriller, or drama**: Mood-first descriptions, selective lighting (spotlight, chiaroscuro), focus on tension in posture or environment details.
+- **Mythic or historical**: Anchor in tactile materials (weathered linen, carved obsidian), torch or moonlit glow, folklore iconography. Keep tone reverent or awe-struck.
+- **Science fiction or futuristic**: Use precise tech nouns (ionic thrusters, mycelial data lattice), atmospheric phenomena (ionised mist, aurora static), and non-threatening wonder (curious explorers, contemplative androids).
+- **Contemporary or slice-of-life**: Highlight intimate gestures, beloved routines, cozy architecture. Stylise through mediums like risograph print, gouache storyboard, or ceramic tile mosaic.
+- **Mystery or drama**: Channel intrigue through chiaroscuro lighting, layered shadows, symbolic objects, and controlled tension rather than panic.
+- **Whimsy or surreal**: Combine poetic metaphors with coherent visual anchors (levitating gardens rendered as kinetic paper sculpture, dreams painted as aurora loom embroidery).
 
-### Mood and Atmosphere Cues
-- Pair mood words with concrete imagery (serene lake at dawn, frantic newsroom under fluorescents).
-- Mention weather or ambient elements (mist, snowfall, buzzing neon, dust motes) to set tone.
-- Suggest palette direction: Warm gold, desaturated blues, high-contrast monochrome.
+### Mood, Atmosphere, and Tone
+- Pair mood words with tangible imagery (serene tide humming with bioluminescence, jubilant market strewn with saffron banners).
+- Express intensity via environment, scale, and light; avoid verbs that suggest harm (cowering, screaming, engulfed).
+- When civilians or children appear, frame them as curious, celebratory, or protected.
+- Let awe, serenity, purposeful dynamism, or ritualistic focus dominate the emotional palette.
 
 ### Composition and Camera Toolkit
-- Shot size: Extreme close-up, portrait, mid-shot, wide landscape, bird's-eye, worm's-eye.
-- Lens hints: 35 mm street perspective, 85 mm portrait compression, 16 mm sweeping wide.
-- Movement cues: Panning motion blur, dynamic diagonal framing, subject framed by doorway or foliage.
+- Shot vocabulary: macro close-up, shoulder portrait, mid-action diagonal, panoramic vista, bird's-eye cartography, worm's-eye monumentality.
+- Lens cues: 16 mm sweeping wide, 35 mm street reportage, 50 mm balanced narrative, tilt-shift miniature, fisheye portal.
+- Framing moves: negative space crescents, layered silhouettes, leading lines from architecture or flora, floating perspective grids.
+- Prefer aspect ratios that historically perform well (1:1, 3:4, 21:9, or 9:16) unless the excerpt dictates otherwise; justify the choice in attributes.
 
 ### Optimizing for DALL·E 3
-- Avoid prompts requesting real people, copyrighted characters, or text in images, as DALL·E 3 may not render these accurately.
-- Use explicit style terms (e.g., “photorealistic,” “cartoon,” “3D render”) to override default vibrant or painterly tendencies.
-- For photorealistic results, explicitly state “photorealistic” and avoid ambiguous terms like “realistic” alone.
-- For muted or gritty aesthetics, emphasize textures and lighting (e.g., “dusty, low-contrast”).
+- Use explicit stylised medium language; forbid the words photorealistic, photorealism, live-action, or cinematic from prompt_text and style_tags.
+- Introduce sensory hooks (salt spray, myrrh smoke, resonant chimes) and material adjectives (lacquered brass, vellum parchment).
+- Keep prompts 28-42 words: enough room for specificity without meandering.
 
-### LLM Prompt Generation Tips
-- Follow the Core Formula strictly and limit prompts to 20-40 words for clarity.
-- Choose a specific genre and mood (e.g., “fantasy, serene”) to avoid generic outputs.
-- Avoid extraneous details; focus on the primary subject and key atmosphere.
+### Prompt Construction Tips
+- Start by diagnosing mood, genre, and sensory anchors from the excerpt; jot 2-3 candidate focal angles (character focus, environmental sweep, symbolic close-up).
+- Roll across the style inspiration pool so each variant owns a different medium and era.
+- Thread the chosen medium into prompt_text, style_tags, and attributes.style_intent with clear justification.
+- Use decisive verbs (glides, braids, reverberates) and tangible nouns (gilded rigging, mycelial conduits) instead of filler adjectives.
+- Mention palette, light source, aspect ratio, and camera behaviour inline to make the prompt self-contained.
 
 ### Common Pitfalls to Avoid
-- Overcrowding the frame with too many focal points; prioritize 1-2 key subjects.
-- Vague adjectives without tangible nouns; replace “beautiful” with specific descriptors.
-- Contradictions (bright noon sun with star-filled sky) unless intentionally surreal.
-- Negations like “no text” or “not blurry”; describe the desired positive outcome instead.
+- Repeating the same medium, palette, or composition across variants.
+- Leaning on negative phrasing or harm vocabulary; describe the desired positive state instead.
+- Mixing contradictory cues (noon sun with starlit sky) unless intentionally surreal and explained.
+- Forgetting to tie stylistic flourishes back to story details, resulting in arbitrary aesthetics.
+- Leaving out aspect ratio or camera language, which reduces specificity.
 
 ### Quick Templates
-- **Character moment**: “[Adjective] [subject] [verb phrase] in [setting detail]; [mood] lighting from [source]; [style/medium]; [shot type] with [lens or composition cue].”
-- **Expansive setting**: “Wide view of [environment] featuring [signature elements]; [atmosphere]; [lighting] casting [shadow or highlight]; [style/medium]; [camera angle].”
-- **Intimate detail**: “Close-up of [object or gesture] against [background]; [texture adjectives]; lit by [light source]; [style]; [depth of field cue].”
+- **Character moment**: “[Stylised medium] portrayal of [adjective] [subject] [verb phrase] within [setting detail]; [lighting + palette] bathing the scene; [camera angle] using [lens cue]; aspect ratio [ratio].”
+- **Expansive setting**: “Sweeping [medium] panorama of [environment] threaded with [signature elements]; [atmosphere sensory cue]; luminous [light source]; composited as [composition note]; aspect ratio [ratio].”
+- **Symbolic detail**: “Macro [medium] study of [object or gesture] against [background texture]; [palette direction] hues brushed with [light source]; [camera move] focusing depth-of-field; aspect ratio [ratio].”
 
-### Example Prompts Across Genres (approx. 30-40 words)
-- “Golden-hour portrait of a village healer grinding herbs beside a timber cottage; embroidered cloak catching the light; watercolor illustration, warm diffused glow, 50 mm lens look, soft depth of field, gentle pastoral palette.”
-- “Rain-slick megacity street with a bike courier weaving through holographic traffic; neon signage reflecting on puddles; digital concept art, wide cinematic frame, cool magenta and cyan palette, low-angle view, subtle motion blur.”
-- “Cozy neighborhood diner at dawn as friends share coffee in a corner booth; steam on the window, retro chrome fixtures; photo style, natural sunrise lighting, candid snapshot framing, muted teal and amber colors.”
+### Example Prompts (32-40 words)
+- “Kinetic light sculpture vision of twin airships gliding above a turquoise canyon, rigging woven with luminous glyphs, dusk backlight, 21:9 wide sweep, 16 mm lens drift, palette of teal vapor and amber cinders.”
+- “Sumi-e animation tableau of a wandering archivist cataloguing floating seed lanterns along a midnight river, mist curls shimmering, lantern glow reflecting indigo ink washes, 3:4 vertical framing, 35 mm lens poise, tranquil jade and saffron palette.”
+- “Textile tapestry close-up of children weaving constellation threads across a lunar observatory loom, silver dust motes swirling, auroral uplighting, 1:1 square composition, tilt-shift focus, palette of pearl, violet, and ember gold.”

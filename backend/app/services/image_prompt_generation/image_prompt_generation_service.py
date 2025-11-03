@@ -837,24 +837,32 @@ class ImagePromptGenerationService:
         ]
         metadata_block = "\n".join(metadata_lines)
         guidance = (
-            "Transform the excerpt into world-class DALLE3 prompts that read like senior concept art direction. "
-            "Anchor every variant in the scene's emotional core and weave in concrete sensory cues (textures, weather, ambient sounds) that make the moment feel inhabitable. "
-            "Favor evocative verbs and precise nouns over vague adjectives, highlighting movement, tension, or stillness as appropriate. "
-            "Respect the excerpt's cultural and temporal signals while elevating them with imaginative yet coherent embellishments."
+            "Transform the excerpt into elite DALLE3 prompts that read like avant-garde concept art direction without leaning on photorealism. "
+            "Let each variant amplify the scene's emotional core with concrete sensory cues - textures, ambient motion, symbolic props, weather, and soundscapes - so the moment feels inhabitable. "
+            "Scale can be intimate or colossal; choose what the excerpt implies while steering the tone toward wonder, curiosity, or serene tension instead of fear. "
+            "If people appear, portray them with agency or calm observation, avoiding language of harm or panic while still honoring the story's stakes. "
+            "Respect cultural and temporal signals and elevate them with imaginative yet coherent embellishments that keep the moment uplifting."
         )
         style_strategy = (
-            "- Diagnose the dominant mood, genre, and sensory anchors in the excerpt before writing prompts.\n"
-            "- Brainstorm at least three distinct visual treatments that could elevate the scene (e.g., painterly illustration, stylized animation, analog film photography, surreal collage, moody charcoal sketch, 3D cinematic render).\n"
-            "- Assign one treatment to each variant; never repeat the same medium, art movement, or stylistic era across variants.\n"
-            "- Balance the set with both photorealistic and non-photorealistic approaches when they suit the story, embracing bold experimentation that heightens the scene's core emotion.\n"
-            "- Fuse palette, texture, lighting, and composition choices directly with narrative details so every style feels purposeful rather than arbitrary."
+            "- Diagnose the dominant mood, genre signifiers, and sensory anchors in the excerpt before writing prompts.\n"
+            "- Assemble a style pool spanning at least six distinct mediums such as textile tapestry, stained glass mosaic, ukiyo-e woodblock, chalk pastel mural, blueprint cutaway, kinetic light sculpture, paper diorama, neon hologram, ceramic relief, generative particle art, sumi-e animation, or vaporwave collage.\n"
+            "- Simulate rolling a die across that pool and assign a unique treatment to each variant; never repeat the same medium, art movement, or stylistic era across variants.\n"
+            "- Explicitly avoid photorealistic, live-action, or cinematic realism terminology in both prompt_text and style_tags; lean into stylised renderings that still suit the narrative.\n"
+            "- Fuse palette, texture, lighting, and composition choices directly with narrative details so every style feels purposeful rather than ornamental."
         )
         quality_objectives = (
-            "- Each prompt must read like expert art direction, emphasising decisive verbs and tangible nouns over filler language.\n"
-            "- Embed the chosen style and medium directly into the prompt_text and style_tags, and justify the match inside attributes.style_intent.\n"
+            "- Write each prompt like expert art direction, using decisive verbs and tangible nouns over filler language, and keep the text between 28 and 42 words.\n"
+            "- Embed the chosen medium, art movement, and rendering techniques directly into the prompt_text and style_tags, and explain why they fit inside attributes.style_intent.\n"
             "- Spotlight unique facets of the scene per variant (alternate subjects, emotional beats, or spatial scales) so the set feels complementary, not redundant.\n"
-            "- Leverage camera language (shot type, lens, framing) that supports the selected aesthetic and story beat.\n"
-            "- Keep prompts within 20-40 words while remaining vivid, specific, and free of contradictions."
+            "- Leverage camera language (shot type, lens, framing) and aspect ratios that support the aesthetic; prefer 1:1, 3:4, 21:9, or 9:16 unless the excerpt demands otherwise.\n"
+            "- Maintain neutral-to-positive emotional valence, avoiding words that signal harm, panic, or cruelty while still capturing momentum or quiet tension."
+        )
+        tone_guardrails = (
+            "- Avoid verbs and adjectives tied to fear, injury, or desperation (e.g., cowering, engulfed, frantic).\n"
+            "- Express intensity through environmental motion, lighting, scale, or symbolic contrast rather than explicit violence.\n"
+            "- When children or civilians appear, depict them in celebratory, inquisitive, or protected contexts.\n"
+            "- Treat mythical or technological forces as awe-inspiring, mystical, or enigmatic instead of menacing.\n"
+            "- Let wonder, serenity, or purposeful dynamism be the prevailing mood even when the scene hints at conflict."
         )
         output_schema = json.dumps(
             {
@@ -897,6 +905,8 @@ class ImagePromptGenerationService:
             f"{style_strategy}\n\n"
             "## Quality Objectives\n"
             f"{quality_objectives}\n\n"
+            "## Tone Guardrails\n"
+            f"{tone_guardrails}\n\n"
             "## Output Requirements\n"
             f"- Return ONLY strict JSON (no markdown) representing an array of {config.variants_count} objects.\n"
             "- Each array element must contain the keys: title, prompt_text, style_tags, attributes.\n"
@@ -904,7 +914,8 @@ class ImagePromptGenerationService:
             "- style_tags must be a list of short descriptors (2-5 entries).\n"
             "- attributes must detail composition, camera, lens, lighting, palette, atmosphere, aspect_ratio, style_intent, and references (list of influences or movements).\n"
             "- Ensure each variant explores a different angle, subject emphasis, or aesthetic; do not reuse the same style family or medium twice.\n"
-            "- Include at least one variant that leans into an imaginative or stylised treatment instead of strict photorealism unless the scene clearly forbids it.\n"
+            "- Keep prompt_text free of the words photorealistic, photorealism, live-action, or cinematic, and reflect the stylised treatment in the style_tags.\n"
+            "- Ensure prompt_text stays within the 28-42 word target range while remaining vivid, specific, and contradiction-free.\n"
             "- Do not include notes, warnings, or additional keys.\n"
             f"- The expected object shape is similar to: {output_schema}.\n"
             "- Never include copyrighted text beyond the provided excerpts."
