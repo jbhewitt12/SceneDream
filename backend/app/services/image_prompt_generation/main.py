@@ -1,6 +1,10 @@
 """Image prompt generation CLI entry point.
 
 Usage examples:
+
+    preview full prompt for a random scene:
+    uv run python -m app.services.image_prompt_generation.main preview
+
     uv run python -m app.services.image_prompt_generation.main run --limit 10
     uv run python -m app.services.image_prompt_generation.main run --book-slug excession-iain-m-banks --limit 5
     uv run python -m app.services.image_prompt_generation.main run --dry-run --variants 2
@@ -17,7 +21,8 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlmodel import Session
+from sqlalchemy import func
+from sqlmodel import Session, select
 
 from app.core.db import engine
 from app.repositories import ImagePromptRepository, SceneRankingRepository
@@ -105,6 +110,47 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Exit immediately if any generation attempt fails.",
     )
+    preview = subparsers.add_parser(
+        "preview",
+        help=(
+            "Print the raw prompt text that would be sent to the LLM for a random scene."
+        ),
+    )
+    preview.add_argument(
+        "--book-slug",
+        type=str,
+        help="Optional book slug to limit the random scene selection.",
+    )
+    preview.add_argument(
+        "--variants",
+        type=int,
+        help="Override the number of variants (disables ranking recommendation).",
+    )
+    preview.add_argument(
+        "--prompt-version",
+        type=str,
+        help="Override the prompt template version identifier.",
+    )
+    preview.add_argument(
+        "--temperature",
+        type=float,
+        help="Override the sampling temperature reflected in the prompt metadata.",
+    )
+    preview.add_argument(
+        "--max-output-tokens",
+        type=int,
+        help="Override the maximum tokens reflected in the prompt metadata.",
+    )
+    preview.add_argument(
+        "--context-before",
+        type=int,
+        help="Override the number of context paragraphs before the scene.",
+    )
+    preview.add_argument(
+        "--context-after",
+        type=int,
+        help="Override the number of context paragraphs after the scene.",
+    )
 
     return parser
 
@@ -190,6 +236,17 @@ def _summarize_prompts(
     }
 
 
+def _pick_random_scene(
+    session: Session,
+    *,
+    book_slug: str | None = None,
+) -> SceneExtraction | None:
+    statement = select(SceneExtraction).order_by(func.random()).limit(1)
+    if book_slug:
+        statement = statement.where(SceneExtraction.book_slug == book_slug)
+    return session.exec(statement).first()
+
+
 async def _handle_run(args: argparse.Namespace) -> int:
     config_kwargs: dict[str, object] = {}
     if args.model_name:
@@ -246,6 +303,57 @@ async def _handle_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_preview(args: argparse.Namespace) -> int:
+    config_kwargs: dict[str, object] = {}
+    if args.prompt_version:
+        config_kwargs["prompt_version"] = args.prompt_version
+    if args.temperature is not None:
+        config_kwargs["temperature"] = args.temperature
+    if args.max_output_tokens is not None:
+        config_kwargs["max_output_tokens"] = args.max_output_tokens
+    if args.context_before is not None:
+        config_kwargs["context_before"] = args.context_before
+    if args.context_after is not None:
+        config_kwargs["context_after"] = args.context_after
+    if args.variants is not None:
+        config_kwargs["variants_count"] = int(args.variants)
+        config_kwargs["use_ranking_recommendation"] = False
+
+    config = ImagePromptGenerationConfig(**config_kwargs)
+
+    with Session(engine) as session:
+        service = ImagePromptGenerationService(session, config=config)
+        last_error: Exception | None = None
+        for _ in range(5):
+            scene = _pick_random_scene(session, book_slug=args.book_slug)
+            if scene is None:
+                break
+            try:
+                prompt, _, _, _ = service.render_prompt_template(
+                    scene,
+                    prompt_version=args.prompt_version,
+                    variants_count=args.variants,
+                    temperature=args.temperature,
+                    max_output_tokens=args.max_output_tokens,
+                )
+                print(prompt)
+                return 0
+            except ImagePromptGenerationServiceError as exc:
+                last_error = exc
+                logger.info(
+                    "Skipping scene %s for preview due to validation error: %s",
+                    getattr(scene, "id", "unknown"),
+                    exc,
+                )
+                continue
+
+    if last_error is not None:
+        logger.error("Unable to render prompt preview: %s", last_error)
+    else:
+        logger.error("No scenes available for prompt preview.")
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     parser = _build_parser()
@@ -253,6 +361,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         return asyncio.run(_handle_run(args))
+    if args.command == "preview":
+        return _handle_preview(args)
     parser.error("Unknown command")
     return 2
 
