@@ -257,7 +257,7 @@ def basic_overview(records: Sequence[ImageRecord]) -> tuple[str, dict[str, Any]]
     )
     overview_text = (
         f"Loaded {len(records)} images | reviewed {reviewed}"
-        f" (approved {approved}, disapproved {rejected}, pending {pending})"
+        f" (approved {approved}, rejected {rejected}, pending {pending})"
         f" | overall approval {baseline:.1%}"
         f" | time span {span_text}"
     )
@@ -393,14 +393,14 @@ def numeric_summary(
     records: Sequence[ImageRecord],
     value_getter: Callable[[ImageRecord], int | float | None],
 ) -> dict[str, dict[str, float | int]] | None:
-    buckets: dict[str, list[float]] = {"approved": [], "disapproved": []}
+    buckets: dict[str, list[float]] = {"approved": [], "rejected": []}
     for record in records:
         if record.approved is None:
             continue
         value = value_getter(record)
         if value is None:
             continue
-        bucket_key = "approved" if record.approved else "disapproved"
+        bucket_key = "approved" if record.approved else "rejected"
         buckets[bucket_key].append(float(value))
 
     if not any(buckets.values()):
@@ -431,7 +431,7 @@ def print_numeric_summary(title: str, summary: dict[str, dict[str, float | int]]
         min_value = stats["min"]
         max_value = stats["max"]
         count_value = stats["count"]
-        label = "Approved" if bucket == "approved" else "Disapproved"
+        label = "Approved" if bucket == "approved" else "Rejected"
         print(
             f"  {label:<12} n={count_value:>3} | mean {mean_value:.1f} | median {median_value:.1f} | "
             f"min {min_value:.1f} | max {max_value:.1f}"
@@ -469,22 +469,22 @@ def derive_insights(
                 f"(Δ{entry.diff:+.1%}, n={entry.total})."
             )
     def _diff_from_summary(summary: dict[str, dict[str, float | int]] | None) -> float | None:
-        if not summary or "approved" not in summary or "disapproved" not in summary:
+        if not summary or "approved" not in summary or "rejected" not in summary:
             return None
         approved_mean = float(summary["approved"]["mean"])
-        disapproved_mean = float(summary["disapproved"]["mean"])
-        return disapproved_mean - approved_mean
+        rejected_mean = float(summary["rejected"]["mean"])
+        return rejected_mean - approved_mean
 
     prompt_diff = _diff_from_summary(prompt_length_summary)
     if prompt_diff is not None and abs(prompt_diff) >= 3:
         insights.append(
-            f"Disapproved prompts average {prompt_diff:+.1f} words relative to approved ones."
+            f"Rejected prompts average {prompt_diff:+.1f} words relative to approved ones."
         )
 
     scene_diff = _diff_from_summary(scene_length_summary)
     if scene_diff is not None and abs(scene_diff) >= 15:
         insights.append(
-            f"Scenes linked to disapproved images differ in length by {scene_diff:+.1f} words on average."
+            f"Scenes linked to rejected images differ in length by {scene_diff:+.1f} words on average."
         )
 
     return insights[:8]
@@ -516,7 +516,7 @@ def main() -> None:
     reviewed_records = [rec for rec in records if rec.approved is not None]
     total_reviewed = len(reviewed_records)
     if not total_reviewed:
-        print("No approved or disapproved images were found. Nothing to analyze yet.")
+        print("No approved or rejected images were found. Nothing to analyze yet.")
         return
 
     baseline = overview_data["baseline"]
