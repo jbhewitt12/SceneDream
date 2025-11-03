@@ -38,10 +38,11 @@ Before creating any plan, you MUST thoroughly explore and understand the relevan
    - Understand the deployment environment
    - Review any relevant configuration files
 
-## General Guidelines
+## CRITICAL GUIDELINES
 
 - There is no test database or testnet.
 - NEVER add any steps that involve manually testing the frontend.
+- Don't include code blocks in the issue file.
 
 ## Creating the Issue Plan
 
