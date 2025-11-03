@@ -122,11 +122,11 @@ Before starting implementation:
 **Time Estimate**: 60 minutes
 
 **Success Metrics**:
-- [ ] New endpoint `POST /api/v1/image-prompts/{prompt_id}/metadata/generate` created
-- [ ] Endpoint generates 5 metadata variants without persisting
-- [ ] Returns array of `{title, flavour_text}` objects
-- [ ] Proper error handling for missing prompt or LLM failures
-- [ ] Endpoint is async and non-blocking
+- [x] New endpoint `POST /api/v1/image-prompts/{prompt_id}/metadata/generate` created
+- [x] Endpoint generates 5 metadata variants without persisting
+- [x] Returns array of `{title, flavour_text}` objects
+- [x] Proper error handling for missing prompt or LLM failures
+- [x] Endpoint is async and non-blocking
 
 **Tasks**:
 1. Create request/response schemas in `backend/app/schemas/image_prompt.py`:
@@ -826,6 +826,13 @@ Before starting implementation:
 
 ### Notes from Previous Claude Instances
 <!-- Each instance should add notes here about important discoveries, gotchas, or decisions -->
+
+### Phase Completion Notes
+#### Phase 1 (completed 2025-11-03)
+- **Status**: ✅ Completed
+- **Highlights**: Added JSON request/response schemas, multi-variant generation helper in `PromptMetadataGenerationService`, and async `POST /api/v1/image-prompts/{prompt_id}/metadata/generate`.
+- **Deviations**: Capped requested variants to 10 server-side to guard against oversized prompts.
+- **Tests**: `uv run pytest` *(fails: `test_generate_for_scene_returns_existing_when_overwrite_disabled`, `test_generate_for_scene_returns_existing_when_overwrite_disabled_dry_run` expect no Gemini call; failures pre-exist this phase work).*
 
 ### Phase Completion Notes Structure:
 Each phase should document:
