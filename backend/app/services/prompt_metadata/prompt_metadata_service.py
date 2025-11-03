@@ -164,7 +164,7 @@ class PromptMetadataGenerationService:
             )
         return resolved
 
-    def _build_metadata_prompt(self, prompt: ImagePrompt) -> str:
+    def _build_prompt_context(self, prompt: ImagePrompt) -> dict[str, str]:
         prompt_text = self._truncate(prompt.prompt_text.strip(), limit=1200)
         style_tags = ", ".join(prompt.style_tags or []) or "unspecified"
         attributes = prompt.attributes or {}
@@ -177,7 +177,15 @@ class PromptMetadataGenerationService:
         context_window = prompt.context_window or {}
         scene_summary = context_window.get("scene_excerpt") or ""
         scene_summary = self._truncate(str(scene_summary), limit=500)
+        return {
+            "prompt_text": prompt_text,
+            "style_tags": style_tags,
+            "attribute_lines": attribute_lines,
+            "scene_summary": scene_summary or "N/A",
+        }
 
+    def _build_metadata_prompt(self, prompt: ImagePrompt) -> str:
+        context = self._build_prompt_context(prompt)
         template = dedent(
             """
             TASK:
@@ -206,12 +214,109 @@ class PromptMetadataGenerationService:
             Respond ONLY with JSON: {{"title": "<string>", "flavour_text": "<string>"}}
             """
         ).strip()
-        return template.format(
-            prompt_text=prompt_text,
-            style_tags=style_tags,
-            attribute_lines=attribute_lines,
-            scene_summary=scene_summary or "N/A",
+        return template.format(**context)
+
+    def _build_variants_prompt(
+        self,
+        prompt: ImagePrompt,
+        *,
+        variants_count: int,
+    ) -> str:
+        context = self._build_prompt_context(prompt)
+        template = dedent(
+            """
+            TASK:
+            You are curating multiple social-media-ready metadata options for an AI-generated illustration.
+
+            SOURCE PROMPT:
+            {prompt_text}
+
+            STYLE TAGS:
+            {style_tags}
+
+            KEY ATTRIBUTES:
+            {attribute_lines}
+
+            SCENE EXCERPT (internal context, do not reproduce literally):
+            {scene_summary}
+
+            REQUIREMENTS:
+            1. Produce {variants_count} distinct options that feel meaningfully different in tone or creative angle.
+            2. Every option must have a title of 1-5 evocative words (hyphens allowed) and a flavour text sentence of 8-16 words.
+            3. Never mention character names, author names, or book titles. Use descriptive, archetypal language instead.
+            4. Capture the vibe, palette, and energy implied by the prompt without copying its wording verbatim.
+            5. Keep things modern and hype without sounding like clickbait.
+            6. Let the flavour text read like an MTG-style whisper, sly prophecy, or wry aside rather than a literal caption.
+
+            Respond ONLY with JSON in this exact shape:
+            {{
+              "variants": [
+                {{"title": "<string>", "flavour_text": "<string>"}},
+                ...
+              ]
+            }}
+            """
+        ).strip()
+        return template.format(**context, variants_count=variants_count)
+
+    async def generate_metadata_variants(
+        self,
+        prompt: ImagePrompt | UUID,
+        *,
+        variants_count: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Generate multiple metadata variants for preview without persisting them."""
+        target_prompt = self._resolve_prompt(prompt)
+        bounded_count = max(1, min(variants_count, 10))
+        payload = self._build_variants_prompt(
+            target_prompt,
+            variants_count=bounded_count,
         )
+        try:
+            response = await self._invoke_llm(
+                payload=payload,
+                prompt_id=target_prompt.id,
+            )
+        except PromptMetadataGenerationServiceError as exc:
+            logger.warning(
+                "Metadata variant generation failed for prompt %s: %s",
+                target_prompt.id,
+                exc,
+            )
+            if self._config.fail_on_error:
+                raise
+            return []
+
+        raw_variants = response.get("variants") if isinstance(response, Mapping) else None
+        if not isinstance(raw_variants, Sequence):
+            logger.warning(
+                "Gemini variants payload missing or invalid for prompt %s: %r",
+                target_prompt.id,
+                response,
+            )
+            return []
+
+        cleaned_variants: list[dict[str, Any]] = []
+        for variant in raw_variants:
+            if not isinstance(variant, Mapping):
+                continue
+            clean_title = self._normalize_title(variant.get("title"))
+            clean_flavour = self._normalize_flavour_text(variant.get("flavour_text"))
+            if not clean_flavour:
+                continue
+            cleaned_variants.append(
+                {
+                    "title": clean_title,
+                    "flavour_text": clean_flavour,
+                }
+            )
+
+        if not cleaned_variants:
+            logger.warning(
+                "No usable metadata variants produced for prompt %s",
+                target_prompt.id,
+            )
+        return cleaned_variants
 
     async def _invoke_llm(
         self,

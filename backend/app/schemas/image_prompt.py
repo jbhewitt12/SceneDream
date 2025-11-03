@@ -57,3 +57,25 @@ class ImagePromptListResponse(BaseModel):
 
     data: list[ImagePromptRead]
     meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class MetadataGenerationRequest(BaseModel):
+    """Request payload for generating multiple metadata variants."""
+
+    variants_count: int = Field(default=5, ge=1, le=10)
+    overwrite_existing: bool = Field(default=False)
+
+
+class MetadataVariant(BaseModel):
+    """Single metadata variant containing optional title and flavour text."""
+
+    title: str | None = None
+    flavour_text: str | None = None
+
+
+class MetadataGenerationResponse(BaseModel):
+    """Response payload containing generated metadata variants."""
+
+    prompt_id: UUID
+    variants: list[MetadataVariant]
+    count: int

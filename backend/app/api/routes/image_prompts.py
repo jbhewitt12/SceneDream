@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
@@ -12,10 +13,18 @@ from app.schemas import (
     ImagePromptListResponse,
     ImagePromptRead,
     ImagePromptSceneSummary,
+    MetadataGenerationRequest,
+    MetadataGenerationResponse,
+    MetadataVariant,
+)
+from app.services.prompt_metadata.prompt_metadata_service import (
+    PromptMetadataGenerationService,
+    PromptMetadataGenerationServiceError,
 )
 
 
 router = APIRouter(prefix="/image-prompts", tags=["image-prompts"])
+logger = logging.getLogger(__name__)
 
 _DEFAULT_HISTORY_LIMIT = 20
 _MAX_HISTORY_LIMIT = 100
@@ -139,3 +148,48 @@ def get_image_prompt(
     if record is None:
         raise HTTPException(status_code=404, detail="Image prompt not found")
     return _serialize_prompt(record, include_scene=bool(include_scene))
+
+
+@router.post("/{prompt_id}/metadata/generate", response_model=MetadataGenerationResponse)
+async def generate_metadata_variants(
+    *,
+    session: SessionDep,
+    prompt_id: UUID,
+    request: MetadataGenerationRequest | None = None,
+) -> MetadataGenerationResponse:
+    """Generate multiple metadata variants for an image prompt without persisting them."""
+
+    request = request or MetadataGenerationRequest()
+    repository = ImagePromptRepository(session)
+    prompt = repository.get(prompt_id)
+    if prompt is None:
+        raise HTTPException(status_code=404, detail="Image prompt not found")
+
+    service = PromptMetadataGenerationService(session)
+    try:
+        variants = await service.generate_metadata_variants(
+            prompt,
+            variants_count=request.variants_count,
+        )
+    except PromptMetadataGenerationServiceError as exc:
+        logger.exception(
+            "Failed to generate metadata variants for prompt %s", prompt_id
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate metadata variants",
+        ) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "Unexpected error generating metadata variants for prompt %s", prompt_id
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate metadata variants",
+        ) from exc
+
+    return MetadataGenerationResponse(
+        prompt_id=prompt_id,
+        variants=[MetadataVariant(**variant) for variant in variants],
+        count=len(variants),
+    )
