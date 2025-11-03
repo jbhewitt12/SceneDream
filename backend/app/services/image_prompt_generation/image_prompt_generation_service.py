@@ -38,6 +38,24 @@ DEFAULT_CHEATSHEET_PATH = (
     "backend/app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md"
 )
 REMIX_VARIANTS_COUNT = 2
+ALLOWED_ASPECT_RATIOS = ("1:1", "3:4", "21:9", "9:16")
+_ALLOWED_RATIO_TOKENS = {value.replace(" ", "").lower() for value in ALLOWED_ASPECT_RATIOS}
+_BANNED_STYLE_TERMS = (
+    "photorealistic",
+    "photorealism",
+    "photo realistic",
+    "photo-realistic",
+    "photoreal",
+    "photo real",
+    "hyperrealistic",
+    "hyper-realistic",
+    "hyper realistic",
+    "ultra realistic",
+    "ultrarealistic",
+    "ultra-realistic",
+    "live-action",
+    "live action",
+)
 
 
 @dataclass(slots=True)
@@ -912,6 +930,11 @@ class ImagePromptGenerationService:
             "- Leverage camera language (shot type, lens, framing) and aspect ratios that support the aesthetic; prefer 1:1, 3:4, 21:9, or 9:16 unless the excerpt demands otherwise.\n"
             "- Maintain neutral-to-positive emotional valence, avoiding words that signal harm, panic, or cruelty while still capturing momentum or quiet tension."
         )
+        critical_constraints = (
+            "- Select stylised mediums only; never request photorealistic, hyper-realistic, live-action, or adjacent treatments in prompt_text or style_tags.\n"
+            "- Attributes.aspect_ratio must be exactly one of: 1:1, 3:4, 21:9, or 9:16.\n"
+            "- Ensure style_tags include the chosen medium or technique and remain free of banned realism terms."
+        )
         tone_guardrails = (
             "- Avoid verbs and adjectives tied to fear, injury, or desperation (e.g., cowering, engulfed, frantic).\n"
             "- Express intensity through environmental motion, lighting, scale, or symbolic contrast rather than explicit violence.\n"
@@ -960,6 +983,8 @@ class ImagePromptGenerationService:
             f"{style_strategy}\n\n"
             "## Quality Objectives\n"
             f"{quality_objectives}\n\n"
+            "## Critical Constraints\n"
+            f"{critical_constraints}\n\n"
             "## Tone Guardrails\n"
             f"{tone_guardrails}\n\n"
             "## Output Requirements\n"
@@ -969,7 +994,8 @@ class ImagePromptGenerationService:
             "- style_tags must be a list of short descriptors (2-5 entries).\n"
             "- attributes must detail composition, camera, lens, lighting, palette, atmosphere, aspect_ratio, style_intent, and references (list of influences or movements).\n"
             "- Ensure each variant explores a different angle, subject emphasis, or aesthetic; do not reuse the same style family or medium twice.\n"
-            "- Keep prompt_text free of the words photorealistic, photorealism, live-action, or cinematic, and reflect the stylised treatment in the style_tags.\n"
+            "- Keep prompt_text and style_tags entirely free of photorealistic, hyper-realistic, live-action, or similar wording; rely on stylised techniques only.\n"
+            "- attributes.aspect_ratio must match one of: 1:1, 3:4, 21:9, 9:16 (no other ratios allowed).\n"
             "- Ensure prompt_text stays within the 28-42 word target range while remaining vivid, specific, and contradiction-free.\n"
             "- Do not include notes, warnings, or additional keys.\n"
             f"- The expected object shape is similar to: {output_schema}.\n"
@@ -1099,7 +1125,15 @@ class ImagePromptGenerationService:
                 raise ImagePromptGenerationServiceError(
                     f"Variant {index} is not a JSON object"
                 )
-            variants.append(_VariantModel.from_payload(item))
+            variant = _VariantModel.from_payload(item)
+            issues = self._enforce_variant_constraints(variant)
+            if issues:
+                logger.warning(
+                    "Variant constraint issues detected for index %s: %s",
+                    index,
+                    "; ".join(issues),
+                )
+            variants.append(variant)
         if len(variants) != config.variants_count:
             raise ImagePromptGenerationServiceError(
                 f"Expected {config.variants_count} variants, received {len(variants)}"
@@ -1152,6 +1186,34 @@ class ImagePromptGenerationService:
                 }
             )
         return records
+
+    def _enforce_variant_constraints(self, variant: _VariantModel) -> list[str]:
+        issues: list[str] = []
+        prompt_lower = variant.prompt_text.lower()
+        for banned in _BANNED_STYLE_TERMS:
+            if banned in prompt_lower:
+                issues.append(
+                    f"prompt_text contains banned realism descriptor '{banned}'"
+                )
+        for tag in variant.style_tags or []:
+            tag_lower = tag.lower()
+            for banned in _BANNED_STYLE_TERMS:
+                if banned in tag_lower:
+                    issues.append(
+                        f"style tag '{tag}' includes banned realism descriptor '{banned}'"
+                    )
+        attributes = dict(variant.attributes or {})
+        aspect_ratio_raw = attributes.get("aspect_ratio")
+        if not isinstance(aspect_ratio_raw, str):
+            issues.append("attributes.aspect_ratio is missing or not a string")
+        else:
+            normalized_ratio = aspect_ratio_raw.replace(" ", "").lower()
+            if normalized_ratio not in _ALLOWED_RATIO_TOKENS:
+                allowed_display = ", ".join(ALLOWED_ASPECT_RATIOS)
+                issues.append(
+                    f"attributes.aspect_ratio '{aspect_ratio_raw}' is not permitted; expected one of: {allowed_display}"
+                )
+        return issues
 
     def _instantiate_prompts_from_records(
         self,
