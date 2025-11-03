@@ -844,11 +844,11 @@ class ImagePromptGenerationService:
             "Respect cultural and temporal signals and elevate them with imaginative yet coherent embellishments that keep the moment uplifting."
         )
         style_strategy = (
-            "- Diagnose the dominant mood, genre signifiers, and sensory anchors in the excerpt before writing prompts.\n"
-            "- Assemble a style pool spanning at least six distinct mediums such as textile tapestry, stained glass mosaic, ukiyo-e woodblock, chalk pastel mural, blueprint cutaway, kinetic light sculpture, paper diorama, neon hologram, ceramic relief, generative particle art, sumi-e animation, or vaporwave collage.\n"
-            "- Simulate rolling a die across that pool and assign a unique treatment to each variant; never repeat the same medium, art movement, or stylistic era across variants.\n"
-            "- Explicitly avoid photorealistic, live-action, or cinematic realism terminology in both prompt_text and style_tags; lean into stylised renderings that still suit the narrative.\n"
-            "- Fuse palette, texture, lighting, and composition choices directly with narrative details so every style feels purposeful rather than ornamental."
+            "- Capture the excerpt's emotional drivers and sensory anchors before drafting prompts.\n"
+            "- Consult the cheat sheet's style inspiration pools and assemble at least six distinct medium candidates.\n"
+            "- Randomly assign a different medium or artistic era to each variant and articulate the technique inside prompt_text and style_tags.\n"
+            "- Keep every treatment proudly stylised—never use photorealistic, live-action, or cinematic realism terminology.\n"
+            "- Bind palette, lighting, and composition decisions to narrative clues so the aesthetic choice feels earned."
         )
         quality_objectives = (
             "- Write each prompt like expert art direction, using decisive verbs and tangible nouns over filler language, and keep the text between 28 and 42 words.\n"
