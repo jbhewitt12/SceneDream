@@ -17,6 +17,7 @@ from .image_prompt import (
     ImagePromptSceneSummary,
     MetadataGenerationRequest,
     MetadataGenerationResponse,
+    MetadataUpdateRequest,
     MetadataVariant,
 )
 from .generated_image import (
@@ -50,6 +51,7 @@ __all__ = [
     "ImagePromptSceneSummary",
     "MetadataGenerationRequest",
     "MetadataGenerationResponse",
+    "MetadataUpdateRequest",
     "MetadataVariant",
     "GeneratedImageBase",
     "GeneratedImageCreate",
