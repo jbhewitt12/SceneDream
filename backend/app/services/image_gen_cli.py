@@ -821,9 +821,9 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                 )
 
                 logger.info(
-                    "Processing %d rankings to generate prompts for %d scenes",
+                    "Processing %d rankings to generate prompts for %s scenes",
                     len(rankings),
-                    target_scenes if target_scenes else "all",
+                    target_scenes if target_scenes is not None else "all",
                 )
 
                 scenes_with_prompts_generated = 0
@@ -1083,9 +1083,9 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
         )
 
         logger.info(
-            "Processing %d rankings to generate prompts for %d scenes",
+            "Processing %d rankings to generate prompts for %s scenes",
             len(rankings),
-            target_scenes if target_scenes else "all",
+            target_scenes if target_scenes is not None else "all",
         )
 
         scenes_with_prompts_generated = 0
