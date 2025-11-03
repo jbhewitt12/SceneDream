@@ -43,6 +43,7 @@ const GeneratedImageCard = ({
       : image.user_approved === false
         ? "red.500"
         : "border"
+  const promptTitle = image.prompt_title?.trim() || "Untitled Prompt"
 
   return (
     <Box
@@ -62,6 +63,11 @@ const GeneratedImageCard = ({
       display="flex"
       flexDirection="column"
     >
+      <Box px={3} pt={3} pb={2}>
+        <Text fontSize="sm" fontWeight="semibold" noOfLines={2}>
+          {promptTitle}
+        </Text>
+      </Box>
       <Box
         position="relative"
         bg="gray.100"

@@ -74,6 +74,8 @@ const GeneratedImageModal = ({
   const currentImage = imageQuery.data
   const isLoading = imageQuery.isLoading || imageQuery.isFetching
   const promptText = currentImage?.prompt?.prompt_text ?? ""
+  const promptTitle = currentImage?.prompt?.title?.trim() || ""
+  const promptFlavour = currentImage?.prompt?.flavour_text?.trim() || ""
 
   const [editedPromptText, setEditedPromptText] = useState<string>("")
   const [isRemixing, setIsRemixing] = useState(false)
@@ -374,6 +376,24 @@ const GeneratedImageModal = ({
                     <Text fontWeight="bold" fontSize="sm" mb={2}>
                       Prompt
                     </Text>
+                    {(promptTitle || promptFlavour) && (
+                      <Stack gap={1} mb={promptFlavour ? 3 : 2}>
+                        {promptTitle && (
+                          <Text fontSize="md" fontWeight="semibold">
+                            {promptTitle}
+                          </Text>
+                        )}
+                        {promptFlavour && (
+                          <Text
+                            fontSize="sm"
+                            color="fg.subtle"
+                            fontStyle="italic"
+                          >
+                            {promptFlavour}
+                          </Text>
+                        )}
+                      </Stack>
+                    )}
                     {currentImage.prompt.style_tags &&
                       currentImage.prompt.style_tags.length > 0 && (
                         <HStack gap={2} wrap="wrap" mb={2}>

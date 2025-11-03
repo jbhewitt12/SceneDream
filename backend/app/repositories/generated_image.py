@@ -196,6 +196,8 @@ class GeneratedImageRepository:
         newest_first: bool = True,
         limit: int | None = None,
         offset: int | None = None,
+        include_prompt: bool = False,
+        include_scene: bool = False,
     ) -> list[GeneratedImage]:
         statement = select(GeneratedImage).where(
             GeneratedImage.image_prompt_id == image_prompt_id
@@ -212,6 +214,11 @@ class GeneratedImageRepository:
             else GeneratedImage.created_at.asc()
         )
         statement = statement.order_by(ordering)
+
+        if include_prompt:
+            statement = statement.options(joinedload(GeneratedImage.image_prompt))
+        if include_scene:
+            statement = statement.options(joinedload(GeneratedImage.scene_extraction))
 
         if offset is not None:
             statement = statement.offset(offset)

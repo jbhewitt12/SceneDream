@@ -29,6 +29,7 @@ from app.schemas import (
     GeneratedImageGenerateRequest,
     GeneratedImageGenerateResponse,
     GeneratedImageListResponse,
+    GeneratedImageListItem,
     GeneratedImageRead,
     GeneratedImageRemixRequest,
     GeneratedImageRemixResponse,
@@ -101,6 +102,19 @@ def _build_context(
         prompt=prompt_data,
         scene=scene_data,
     )
+
+
+def _build_list_item(record: Any) -> GeneratedImageListItem:
+    """Convert a generated image record into a list item with prompt metadata."""
+
+    base_image = GeneratedImageRead.model_validate(record)
+    payload = base_image.model_dump()
+
+    prompt = getattr(record, "image_prompt", None)
+    payload["prompt_title"] = getattr(prompt, "title", None)
+    payload["prompt_flavour_text"] = getattr(prompt, "flavour_text", None)
+
+    return GeneratedImageListItem.model_validate(payload)
 
 
 def _resolve_image_file(storage_path: str, file_name: str) -> Path:
@@ -339,6 +353,7 @@ def list_generated_images(
             newest_first=newest_first,
             limit=limit,
             offset=offset,
+            include_prompt=True,
         )
     elif prompt_id is not None:
         # List by prompt
@@ -349,6 +364,7 @@ def list_generated_images(
             newest_first=newest_first,
             limit=limit,
             offset=offset,
+            include_prompt=True,
         )
     elif book is not None:
         # List by book (and optionally chapter)
@@ -361,6 +377,7 @@ def list_generated_images(
             newest_first=newest_first,
             limit=limit,
             offset=offset,
+            include_prompt=True,
         )
     else:
         # List across all books when no specific filter is provided
@@ -372,9 +389,10 @@ def list_generated_images(
             newest_first=newest_first,
             limit=limit,
             offset=offset,
+            include_prompt=True,
         )
 
-    data = [GeneratedImageRead.model_validate(record) for record in images]
+    data = [_build_list_item(record) for record in images]
     meta: dict[str, object] = {
         "count": len(data),
         "newest_first": newest_first,
@@ -527,7 +545,7 @@ def list_generated_images_for_scene(
         include_scene=include_scene,
     )
 
-    data = [GeneratedImageRead.model_validate(record) for record in images]
+    data = [_build_list_item(record) for record in images]
     meta: dict[str, object] = {
         "scene_extraction_id": str(scene_id),
         "count": len(data),
@@ -570,9 +588,10 @@ def list_generated_images_for_prompt(
         newest_first=newest_first,
         limit=limit,
         offset=offset,
+        include_prompt=True,
     )
 
-    data = [GeneratedImageRead.model_validate(record) for record in images]
+    data = [_build_list_item(record) for record in images]
     meta: dict[str, object] = {
         "image_prompt_id": str(prompt_id),
         "count": len(data),

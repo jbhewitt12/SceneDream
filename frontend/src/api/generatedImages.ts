@@ -5,6 +5,8 @@ export type GeneratedImageRead = {
   id: string
   scene_extraction_id: string
   image_prompt_id: string
+  prompt_title?: string | null
+  prompt_flavour_text?: string | null
   book_slug: string
   chapter_number: number
   variant_index: number
@@ -31,6 +33,8 @@ export type GeneratedImageRead = {
 
 export type ImagePromptSummary = {
   id: string
+  title?: string | null
+  flavour_text?: string | null
   prompt_text: string
   style_tags: string[] | null
   attributes: Record<string, unknown>
