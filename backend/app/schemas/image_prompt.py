@@ -34,6 +34,7 @@ class ImagePromptRead(BaseModel):
     prompt_version: str
     variant_index: int
     title: str | None
+    flavour_text: str | None
     prompt_text: str
     negative_prompt: str | None
     style_tags: list[str] | None
@@ -71,6 +72,13 @@ class MetadataVariant(BaseModel):
 
     title: str | None = None
     flavour_text: str | None = None
+
+
+class MetadataUpdateRequest(BaseModel):
+    """Request payload for updating stored metadata."""
+
+    title: str | None = Field(default=None, max_length=255)
+    flavour_text: str | None = Field(default=None, max_length=2000)
 
 
 class MetadataGenerationResponse(BaseModel):

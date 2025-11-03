@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -213,3 +213,35 @@ class ImagePromptRepository:
         if commit:
             self._session.commit()
         return int(result.rowcount or 0)
+
+    def update_metadata(
+        self,
+        prompt_id: UUID,
+        *,
+        title: str | None = None,
+        flavour_text: str | None = None,
+        commit: bool = False,
+        refresh: bool = True,
+    ) -> ImagePrompt | None:
+        """Update stored metadata fields for an image prompt."""
+
+        prompt = self.get(prompt_id)
+        if prompt is None:
+            return None
+
+        current_time = datetime.now(timezone.utc)
+        if title is not None:
+            prompt.title = title
+        if flavour_text is not None:
+            prompt.flavour_text = flavour_text
+
+        prompt.updated_at = current_time
+        self._session.add(prompt)
+        self._session.flush()
+
+        if commit:
+            self._session.commit()
+        if refresh:
+            self._session.refresh(prompt)
+
+        return prompt

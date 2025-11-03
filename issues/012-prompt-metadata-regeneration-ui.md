@@ -209,11 +209,11 @@ Before starting implementation:
 **Time Estimate**: 30 minutes
 
 **Success Metrics**:
-- [ ] New endpoint `PATCH /api/v1/image-prompts/{prompt_id}/metadata` created
-- [ ] Endpoint updates title and flavour_text atomically
-- [ ] Returns updated `ImagePromptRead` object
-- [ ] Proper validation for input fields
-- [ ] Updates `updated_at` timestamp
+- [x] New endpoint `PATCH /api/v1/image-prompts/{prompt_id}/metadata` created
+- [x] Endpoint updates title and flavour_text atomically
+- [x] Returns updated `ImagePromptRead` object
+- [x] Proper validation for input fields
+- [x] Updates `updated_at` timestamp
 
 **Tasks**:
 1. Create update schema in `backend/app/schemas/image_prompt.py`:
@@ -833,6 +833,12 @@ Before starting implementation:
 - **Highlights**: Added JSON request/response schemas, multi-variant generation helper in `PromptMetadataGenerationService`, and async `POST /api/v1/image-prompts/{prompt_id}/metadata/generate`.
 - **Deviations**: Capped requested variants to 10 server-side to guard against oversized prompts.
 - **Tests**: `uv run pytest` *(fails: `test_generate_for_scene_returns_existing_when_overwrite_disabled`, `test_generate_for_scene_returns_existing_when_overwrite_disabled_dry_run` expect no Gemini call; failures pre-exist this phase work).*
+
+#### Phase 2 (completed 2025-11-03)
+- **Status**: ✅ Completed
+- **Highlights**: Added `MetadataUpdateRequest`, repository helper for atomic metadata writes, and async `PATCH /api/v1/image-prompts/{prompt_id}/metadata` wiring back to `ImagePromptRead`.
+- **Deviations**: Added 422 error guard when both metadata fields are omitted to avoid timestamp-only updates.
+- **Tests**: Not run; manual API verification still outstanding.
 
 ### Phase Completion Notes Structure:
 Each phase should document:

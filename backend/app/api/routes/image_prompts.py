@@ -15,6 +15,7 @@ from app.schemas import (
     ImagePromptSceneSummary,
     MetadataGenerationRequest,
     MetadataGenerationResponse,
+    MetadataUpdateRequest,
     MetadataVariant,
 )
 from app.services.prompt_metadata.prompt_metadata_service import (
@@ -193,3 +194,31 @@ async def generate_metadata_variants(
         variants=[MetadataVariant(**variant) for variant in variants],
         count=len(variants),
     )
+
+
+@router.patch("/{prompt_id}/metadata", response_model=ImagePromptRead)
+async def update_prompt_metadata(
+    *,
+    session: SessionDep,
+    prompt_id: UUID,
+    update: MetadataUpdateRequest,
+) -> ImagePromptRead:
+    """Update stored metadata for an image prompt."""
+
+    if update.title is None and update.flavour_text is None:
+        raise HTTPException(
+            status_code=422,
+            detail="At least one metadata field must be provided",
+        )
+
+    repository = ImagePromptRepository(session)
+    prompt = repository.update_metadata(
+        prompt_id,
+        title=update.title,
+        flavour_text=update.flavour_text,
+        commit=True,
+    )
+    if prompt is None:
+        raise HTTPException(status_code=404, detail="Image prompt not found")
+
+    return ImagePromptRead.model_validate(prompt)
