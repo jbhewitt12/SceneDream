@@ -451,7 +451,7 @@ const GeneratedImageModal = ({
                       color="fg.muted"
                       minH="200px"
                       resize="vertical"
-                      isDisabled={isRemixing}
+                      disabled={isRemixing}
                     />
                     <HStack justify="flex-end" mt={2}>
                       <Button
@@ -459,10 +459,10 @@ const GeneratedImageModal = ({
                         variant="outline"
                         colorPalette="purple"
                         leftIcon={<FiEdit3 />}
-                        isLoading={isRemixing}
+                        loading={isRemixing}
                         loadingText="Remixing"
                         onClick={handleCustomRemix}
-                        isDisabled={isCustomRemixDisabled}
+                        disabled={isCustomRemixDisabled}
                       >
                         Remix with Edits
                       </Button>
