@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlmodel import Session
 
+from app.core.config import settings
 from app.repositories.generated_image import GeneratedImageRepository
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
@@ -171,7 +172,10 @@ class ImageGenerationService:
         self._session = session
         self._config = config or ImageGenerationConfig()
         self._api_key = (
-            api_key or self._config.api_key or os.getenv("OPENAI_API_KEY", "")
+            api_key
+            or self._config.api_key
+            or settings.OPENAI_API_KEY
+            or os.getenv("OPENAI_API_KEY", "")
         )
         self._image_repo = GeneratedImageRepository(session)
         self._prompt_repo = ImagePromptRepository(session)
