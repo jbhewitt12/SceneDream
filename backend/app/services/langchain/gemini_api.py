@@ -19,7 +19,7 @@ import os
 from typing import Any, Dict, List, Type
 
 # Suppress gRPC verbose logging (used by Google libraries)
-os.environ["GRPC_VERBOSITY"] = "ERROR"
+os.environ["GRPC_VERBOSITY"] = "NONE"
 
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
