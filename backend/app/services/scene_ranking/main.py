@@ -266,8 +266,9 @@ async def _handle_rank(args: argparse.Namespace) -> int:
             logger.info("No scenes matched the provided filters.")
             return 0
 
+        total_scenes = len(scenes)
         results: list[dict[str, object]] = []
-        for scene in scenes:
+        for idx, scene in enumerate(scenes, start=1):
             try:
                 outcome = await service.rank_scene(
                     scene,
@@ -286,6 +287,10 @@ async def _handle_rank(args: argparse.Namespace) -> int:
                 )
                 continue
             results.append(_summarize_result(outcome))
+
+            # Progress update every 10 scenes
+            if idx % 10 == 0:
+                print(f"{idx} of {total_scenes} scenes ranked", file=sys.stderr)
 
     print(json.dumps(results, indent=2, default=str))
     return 0
