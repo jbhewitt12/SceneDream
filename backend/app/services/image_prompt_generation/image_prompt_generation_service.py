@@ -15,6 +15,7 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.repositories.image_prompt import ImagePromptRepository
@@ -342,13 +343,32 @@ class ImagePromptGenerationService:
                     target_scene.id,
                 )
 
-        created = self._prompt_repo.bulk_create(
-            records,
-            commit=config.autocommit,
-            refresh=True,
-        )
-        if not config.autocommit:
-            self._session.flush()
+        try:
+            created = self._prompt_repo.bulk_create(
+                records,
+                commit=config.autocommit,
+                refresh=True,
+            )
+            if not config.autocommit:
+                self._session.flush()
+        except IntegrityError as exc:
+            self._session.rollback()
+            if self._is_duplicate_prompt_variant_error(exc):
+                logger.warning(
+                    "Existing image prompt variants detected for scene %s "
+                    "(model=%s, version=%s); returning stored variants instead.",
+                    target_scene.id,
+                    config.model_name,
+                    config.prompt_version,
+                )
+                existing_prompts = self._prompt_repo.get_latest_set_for_scene(
+                    target_scene.id,
+                    config.model_name,
+                    config.prompt_version,
+                )
+                if existing_prompts:
+                    return existing_prompts
+            raise
         await self._run_metadata_generation(
             created,
             dry_run=False,
@@ -1111,6 +1131,16 @@ class ImagePromptGenerationService:
             if not dry_run:
                 self._session.rollback()
             return None
+
+    @staticmethod
+    def _is_duplicate_prompt_variant_error(error: IntegrityError) -> bool:
+        """Return True when an IntegrityError is triggered by the unique variant constraint."""
+        constraint_name = "uq_image_prompt_unique_variant"
+        messages: list[str] = []
+        if getattr(error, "orig", None) is not None:
+            messages.append(str(error.orig))
+        messages.append(str(error))
+        return any(constraint_name in message for message in messages)
 
     def _determine_next_variant_indices_for_scene(
         self,
