@@ -131,7 +131,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--prompts-for-scenes",
         type=int,
-        help="Number of top-ranked scenes to generate prompts for (default: all scenes without prompts)",
+        help="Number of top-ranked scenes to generate prompts for (default: match --images-for-scenes)",
     )
     run.add_argument(
         "--images-for-scenes",
@@ -679,6 +679,22 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
     else:
         logger.info("Skipping scene ranking (already completed)")
 
+    primary_prompt_scene_limit = getattr(args, "prompts_for_scenes", None)
+    fallback_prompt_scene_limit = getattr(args, "images_for_scenes", None)
+    effective_prompts_for_scenes = (
+        primary_prompt_scene_limit
+        if isinstance(primary_prompt_scene_limit, int)
+        and primary_prompt_scene_limit > 0
+        else None
+    )
+    prompt_limit_inherited_from_images = False
+    if effective_prompts_for_scenes is None and isinstance(
+        fallback_prompt_scene_limit, int
+    ):
+        if fallback_prompt_scene_limit > 0:
+            effective_prompts_for_scenes = fallback_prompt_scene_limit
+            prompt_limit_inherited_from_images = primary_prompt_scene_limit is None
+
     # Auto-detect if prompt generation should be skipped
     skip_prompts = args.skip_prompts
     if not skip_prompts and not args.dry_run:
@@ -687,11 +703,7 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
             prompt_repo = ImagePromptRepository(session)
 
             # Determine limit based on --prompts-for-scenes parameter
-            limit = (
-                args.prompts_for_scenes
-                if hasattr(args, "prompts_for_scenes") and args.prompts_for_scenes
-                else 100
-            )
+            limit = effective_prompts_for_scenes if effective_prompts_for_scenes else 100
 
             rankings = ranking_repo.list_top_rankings_for_book(
                 book_slug=book_slug,
@@ -731,8 +743,12 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
 
         if args.dry_run:
             top_scenes_msg = ""
-            if hasattr(args, "prompts_for_scenes") and args.prompts_for_scenes:
-                top_scenes_msg = f" for top {args.prompts_for_scenes} scenes"
+            if effective_prompts_for_scenes:
+                top_scenes_msg = (
+                    f" for top {effective_prompts_for_scenes} scenes"
+                )
+                if prompt_limit_inherited_from_images:
+                    top_scenes_msg += " (matching --images-for-scenes)"
 
             if (
                 hasattr(args, "prompts_per_scene")
@@ -762,17 +778,19 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                     book_slug,
                 )
         else:
+            if prompt_limit_inherited_from_images and effective_prompts_for_scenes:
+                logger.info(
+                    "No --prompts-for-scenes provided; defaulting to top %d scenes to align with --images-for-scenes",
+                    effective_prompts_for_scenes,
+                )
+
             with Session(engine) as session:
                 # Get top-ranked scenes without prompts
                 ranking_repo = SceneRankingRepository(session)
                 prompt_repo = ImagePromptRepository(session)
 
                 # Determine target number of scenes to generate prompts for
-                target_scenes = (
-                    args.prompts_for_scenes
-                    if hasattr(args, "prompts_for_scenes") and args.prompts_for_scenes
-                    else None
-                )
+                target_scenes = effective_prompts_for_scenes
 
                 # Determine config based on flags
                 config_kwargs = {}
