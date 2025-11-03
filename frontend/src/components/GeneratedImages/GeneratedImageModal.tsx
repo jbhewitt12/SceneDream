@@ -15,11 +15,13 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiEdit3,
+  FiRefreshCw,
   FiThumbsDown,
   FiThumbsUp,
 } from "react-icons/fi"
 
 import { GeneratedImageApi } from "@/api/generatedImages"
+import { MetadataRegenerationModal } from "@/components/GeneratedImages"
 import {
   DialogBody,
   DialogCloseTrigger,
@@ -79,10 +81,17 @@ const GeneratedImageModal = ({
 
   const [editedPromptText, setEditedPromptText] = useState<string>("")
   const [isRemixing, setIsRemixing] = useState(false)
+  const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false)
 
   useEffect(() => {
     setEditedPromptText(promptText)
   }, [promptText])
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsMetadataModalOpen(false)
+    }
+  }, [isOpen])
 
   const handlePreviousVariant = useCallback(() => {
     if (sceneImages.length === 0 || !imageId || !onNavigate) return
@@ -394,6 +403,30 @@ const GeneratedImageModal = ({
                         )}
                       </Stack>
                     )}
+                    <HStack
+                      justify="space-between"
+                      align="center"
+                      mt={promptTitle || promptFlavour ? 0 : 1}
+                      mb={2}
+                    >
+                      <Text fontSize="xs" color="fg.muted">
+                        {promptTitle || promptFlavour
+                          ? "Generated metadata"
+                          : "No metadata yet"}
+                      </Text>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        colorPalette="purple"
+                        onClick={() => setIsMetadataModalOpen(true)}
+                        disabled={!currentImage?.prompt?.id}
+                      >
+                        <HStack gap={1} align="center">
+                          <FiRefreshCw aria-hidden="true" />
+                          <Text as="span">Regenerate</Text>
+                        </HStack>
+                      </Button>
+                    </HStack>
                     {currentImage.prompt.style_tags &&
                       currentImage.prompt.style_tags.length > 0 && (
                         <HStack gap={2} wrap="wrap" mb={2}>
@@ -456,6 +489,12 @@ const GeneratedImageModal = ({
             )}
           </HStack>
         </DialogBody>
+        <MetadataRegenerationModal
+          isOpen={isMetadataModalOpen}
+          onClose={() => setIsMetadataModalOpen(false)}
+          promptId={currentImage?.prompt?.id ?? null}
+          imageId={currentImage?.image?.id ?? null}
+        />
       </DialogContent>
     </DialogRoot>
   )
