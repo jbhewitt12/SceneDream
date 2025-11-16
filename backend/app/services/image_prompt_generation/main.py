@@ -329,7 +329,7 @@ def _handle_preview(args: argparse.Namespace) -> int:
             if scene is None:
                 break
             try:
-                prompt, _, _, _ = service.render_prompt_template(
+                prompt, *_ = service.render_prompt_template(
                     scene,
                     prompt_version=args.prompt_version,
                     variants_count=args.variants,

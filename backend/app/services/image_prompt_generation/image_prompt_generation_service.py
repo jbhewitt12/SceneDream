@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import random
 import time
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
@@ -41,6 +42,128 @@ logger.addHandler(logging.NullHandler())
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 REMIX_VARIANTS_COUNT = 2
+
+RECOMMENDED_STYLES: tuple[str, ...] = (
+    "90's anime",
+    "Ukiyo-e woodblock",
+    "stained glass mosaic",
+    "Art Nouveau",
+    "Impressionism",
+    "Cubism",
+    "knolling",
+    "papercraft",
+    "miniature diorama",
+    "wood burned artwork",
+    "smudged oil painting",
+    "3D voxel art",
+    "technical drawing",
+    "Neo-Expressionist",
+    "electric luminescent low-poly",
+    "paper sculpture",
+    "3D drawing",
+    "neon cubism",
+    "watercolor pixel art",
+    "smudged charcoal",
+    "paper cut silhouette",
+    "smudged Chinese ink painting",
+    "anime-style watercolor",
+    "3D Pixar-style cartoon",
+    "neon-line drawing",
+    "isometric LEGO",
+    "illuminated manuscript",
+)
+
+OTHER_STYLES: tuple[str, ...] = (
+    "Abstract art",
+    "abstract geometry",
+    "Art Deco",
+    "Bauhaus",
+    "bokeh art",
+    "Brutalism",
+    "Byzantine art",
+    "Celtic art",
+    "chiptune visuals",
+    "concept art",
+    "Constructivism",
+    "Cyber Folk",
+    "cybernetic art",
+    "cyberpunk",
+    "Dadaism",
+    "data art",
+    "digital collage",
+    "digital cubism",
+    "digital Impressionism",
+    "digital painting",
+    "double exposure",
+    "dreamy fantasy",
+    "dystopian art",
+    "etching",
+    "Expressionism",
+    "Fauvism",
+    "flat design",
+    "fractal art",
+    "Futurism",
+    "glitch art",
+    "Gothic art",
+    "gouache",
+    "Greco-Roman art",
+    "ink wash painting",
+    "isometric art",
+    "lithography",
+    "low-poly art",
+    "macabre art",
+    "Magic Realism",
+    "Minimalism",
+    "Modernism",
+    "mosaic art",
+    "neon graffiti",
+    "neon noir",
+    "origami art",
+    "parallax art",
+    "pastel drawing",
+    "photorealism",
+    "pixel art",
+    "pointillism",
+    "polyart",
+    "Pop Art",
+    "psychedelic art",
+    "Renaissance painting",
+    "Baroque painting",
+    "Retro Wave",
+    "Romanticism",
+    "sci-fi fantasy art",
+    "scratchboard art",
+    "steampunk",
+    "stippling",
+    "Surrealism",
+    "Symbolism",
+    "trompe-l'oeil",
+    "Vaporwave",
+    "vector art",
+    "watercolor painting",
+    "Zen doodle",
+    "claymation",
+    "children's book illustration",
+    "graffiti art",
+    "manga style",
+    "comic book style",
+    "cartoon style",
+    "caricature style",
+    "black-and-white",
+    "sepia tone",
+    "vintage style",
+)
+
+BLOCKED_STYLE_TERMS: tuple[str, ...] = (
+    "photorealism",
+    "photorealistic",
+    "hyper-realistic",
+    "hyper realistic",
+    "live-action",
+    "live action",
+    "cinematic realism",
+    "realistic render",
+)
 
 
 class ImagePromptGenerationService:
@@ -139,11 +262,13 @@ class ImagePromptGenerationService:
         context_window, context_text = self._context_builder.build_scene_context(
             target_scene, config
         )
-        prompt = self._build_prompt(
+        sampled_styles = self._sample_styles(config.variants_count)
+        prompt, sampled_styles = self._build_prompt(
             scene=target_scene,
             config=config,
             context_text=context_text,
             context_window=context_window,
+            sampled_styles=sampled_styles,
         )
         raw_payload, llm_request_id, execution_time_ms = await self._invoke_llm(
             prompt=prompt,
@@ -165,6 +290,7 @@ class ImagePromptGenerationService:
             "prompt_hash": prompt_hash,
             "context_window": dict(context_window),
             "cheatsheet_path": config.include_cheatsheet_path,
+            "sampled_styles": sampled_styles,
         }
         if config.metadata:
             service_payload["run_metadata"] = dict(config.metadata)
@@ -279,11 +405,14 @@ class ImagePromptGenerationService:
         temperature: float | None = None,
         max_output_tokens: int | None = None,
         metadata: Mapping[str, Any] | None = None,
-    ) -> tuple[str, ImagePromptGenerationConfig, Mapping[str, Any], str]:
+    ) -> tuple[
+        str, ImagePromptGenerationConfig, Mapping[str, Any], str, list[str]
+    ]:
         """
         Build the full prompt text exactly as it will be sent to the LLM.
 
-        Returns a tuple of (prompt_text, resolved_config, context_window, context_excerpt).
+        Returns a tuple of
+        (prompt_text, resolved_config, context_window, context_excerpt, sampled_styles).
         """
         target_scene = self._resolve_scene(scene)
         config = self._resolve_config(
@@ -317,13 +446,15 @@ class ImagePromptGenerationService:
         context_window, context_text = self._context_builder.build_scene_context(
             target_scene, resolved_config
         )
-        prompt = self._build_prompt(
+        sampled_styles = self._sample_styles(resolved_config.variants_count)
+        prompt, sampled_styles = self._build_prompt(
             scene=target_scene,
             config=resolved_config,
             context_text=context_text,
             context_window=context_window,
+            sampled_styles=sampled_styles,
         )
-        return prompt, resolved_config, context_window, context_text
+        return prompt, resolved_config, context_window, context_text, sampled_styles
 
     async def generate_for_scenes(
         self,
@@ -412,9 +543,11 @@ class ImagePromptGenerationService:
             scene.id, variants_count
         )
 
+        sampled_styles = self._sample_styles(variants_count)
         remix_prompt = self._build_remix_prompt(
             source_prompt=prompt_record,
             variants_count=variants_count,
+            sampled_styles=sampled_styles,
         )
         raw_payload, llm_request_id, execution_time_ms = await self._invoke_llm(
             prompt=remix_prompt,
@@ -431,6 +564,7 @@ class ImagePromptGenerationService:
             "model_vendor": config.model_vendor,
             "temperature": config.temperature,
             "max_output_tokens": config.max_output_tokens,
+            "sampled_styles": sampled_styles,
         }
         if config.metadata:
             service_payload["run_metadata"] = dict(config.metadata)
@@ -729,6 +863,30 @@ class ImagePromptGenerationService:
         )
         return config.variants_count, "config_default"
 
+    def _sample_styles(self, variants_count: int) -> list[str]:
+        """Sample recommended and other styles for this request."""
+        recommended_count = min(
+            max(2, variants_count + 2),
+            len(RECOMMENDED_STYLES),
+        )
+        other_count = min(
+            max(1, variants_count // 2),
+            len(OTHER_STYLES),
+        )
+        recommended_choices = random.sample(RECOMMENDED_STYLES, recommended_count)
+        other_choices = random.sample(OTHER_STYLES, other_count)
+
+        blocked_terms = tuple(term.lower() for term in BLOCKED_STYLE_TERMS)
+        sampled: list[str] = []
+        for style in [*recommended_choices, *other_choices]:
+            if any(term in style.lower() for term in blocked_terms):
+                continue
+            sampled.append(style)
+
+        deduped = list(dict.fromkeys(sampled))
+        random.shuffle(deduped)
+        return deduped
+
     def _build_prompt(
         self,
         *,
@@ -736,8 +894,14 @@ class ImagePromptGenerationService:
         config: ImagePromptGenerationConfig,
         context_text: str,
         context_window: Mapping[str, Any],
-    ) -> str:
+        sampled_styles: Sequence[str] | None = None,
+    ) -> tuple[str, list[str]]:
         cheatsheet = self._load_cheatsheet_text(config.include_cheatsheet_path)
+        styles = list(sampled_styles) if sampled_styles is not None else None
+        if styles is None or not styles:
+            styles = self._sample_styles(config.variants_count)
+        if not styles:
+            raise ImagePromptGenerationServiceError("No styles available to sample")
         scene_excerpt = scene.raw.strip()
         if not scene_excerpt:
             raise ImagePromptGenerationServiceError(
@@ -762,8 +926,8 @@ class ImagePromptGenerationService:
         )
         style_strategy = (
             "- Capture the excerpt's emotional drivers and sensory anchors before drafting prompts.\n"
-            "- Consult the cheat sheet's style inspiration pools and assemble at least six distinct medium candidates.\n"
-            "- Randomly assign a different medium or artistic era to each variant and articulate the technique inside prompt_text and style_tags.\n"
+            "- Consult the curated Suggested Styles list above and pick unique candidates for each variant.\n"
+            "- Explicitly weave the chosen medium or art era into prompt_text and style_tags for every variant.\n"
             "- Keep every treatment proudly stylised—never use photorealistic, live-action, or cinematic realism terminology.\n"
             "- Bind palette, lighting, and composition decisions to narrative clues so the aesthetic choice feels earned."
         )
@@ -821,6 +985,10 @@ class ImagePromptGenerationService:
             f"{context_text}\n\n"
             "## Prompting Cheat Sheet\n"
             f"{cheatsheet}\n\n"
+            "## Suggested Styles for This Request\n"
+            f"The following {len(styles)} styles have been curated for variety and quality. "
+            f"Select from this list when designing your {config.variants_count} variants, ensuring each variant uses a different style:\n"
+            f"{', '.join(styles)}\n\n"
             "## Creative Guidance\n"
             f"{guidance}\n\n"
             "## Style Variation Strategy\n"
@@ -845,16 +1013,20 @@ class ImagePromptGenerationService:
             f"- The expected object shape is similar to: {output_schema}.\n"
             "- Never include copyrighted text beyond the provided excerpts."
         )
-        return prompt
+        return prompt, styles
 
     def _build_remix_prompt(
         self,
         *,
         source_prompt: ImagePrompt,
         variants_count: int,
+        sampled_styles: Sequence[str] | None = None,
     ) -> str:
         original_prompt_text = source_prompt.prompt_text.strip()
         style_tags = source_prompt.style_tags or []
+        remix_styles = list(sampled_styles) if sampled_styles is not None else None
+        if remix_styles is None or not remix_styles:
+            remix_styles = self._sample_styles(variants_count)
         serialized_attributes = json.dumps(
             source_prompt.attributes, indent=2, ensure_ascii=False
         )
@@ -890,6 +1062,11 @@ class ImagePromptGenerationService:
             "",
             "## Original Attributes",
             serialized_attributes,
+            "",
+            "## Suggested Style Inflections",
+            f"Use these {len(remix_styles)} adjacent styles as subtle influences while preserving the original style family. "
+            "Stay stylised—avoid photorealistic or live-action phrasing. Apply at most one influence per variant:\n"
+            f"{', '.join(remix_styles)}",
             "",
             "## Scene Context Window",
             serialized_context,

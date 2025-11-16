@@ -8,6 +8,7 @@ import pytest
 from sqlmodel import Session
 
 from app.repositories import ImagePromptRepository, SceneExtractionRepository
+import app.services.image_prompt_generation.image_prompt_generation_service as service_module
 from app.services.image_prompt_generation import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationService,
@@ -154,7 +155,7 @@ def _patch_context(
         source_name="chapter1.xhtml",
     )
     monkeypatch.setattr(
-        service,
+        service._context_builder,
         "_load_book_context",
         lambda _: {1: chapter},
     )
@@ -215,6 +216,10 @@ def test_generate_for_scene_creates_prompts(
     _patch_context(service, monkeypatch)
 
     captured_prompt: dict[str, str] = {}
+    monkeypatch.setattr(
+        service_module.random, "sample", lambda seq, k: list(seq)[:k]
+    )
+    monkeypatch.setattr(service_module.random, "shuffle", lambda seq: None)
 
     async def fake_json_output(**kwargs: object) -> list[dict[str, object]]:
         captured_prompt["prompt"] = kwargs.get("prompt", "")  # type: ignore[arg-type]
@@ -234,6 +239,13 @@ def test_generate_for_scene_creates_prompts(
     assert first.context_window["paragraph_span"] == [2, 6]
     assert "prompt" not in first.raw_response
     assert first.raw_response["service"]["prompt_hash"]
+    assert first.raw_response["service"]["sampled_styles"] == [
+        "90's anime",
+        "Ukiyo-e woodblock",
+        "stained glass mosaic",
+        "Art Nouveau",
+        "Abstract art",
+    ]
 
     repository.delete_for_scene(scene.id, commit=True)
 
@@ -265,13 +277,18 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(
 ) -> None:
     scene = scene_factory()
     repository = ImagePromptRepository(db)
+    config = ImagePromptGenerationConfig(
+        variants_count=2,
+        allow_overwrite=False,
+        model_name="gemini-2.5-flash",
+    )
     existing = repository.bulk_create(
         [
             {
                 "scene_extraction_id": scene.id,
                 "model_vendor": "google",
                 "model_name": "gemini-2.5-flash",
-                "prompt_version": "image-prompts-v1",
+                "prompt_version": config.prompt_version,
                 "variant_index": 0,
                 "title": "Existing",
                 "prompt_text": "Existing prompt",
@@ -295,11 +312,6 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(
         commit=True,
     )
 
-    config = ImagePromptGenerationConfig(
-        variants_count=2,
-        allow_overwrite=False,
-        model_name="gemini-2.5-flash",
-    )
     service = ImagePromptGenerationService(db, config=config)
     _patch_context(service, monkeypatch)
     async def fail_json_output(**_: object) -> list[dict[str, object]]:
@@ -379,12 +391,17 @@ def test_generate_for_scene_overwrites_when_allowed(
 ) -> None:
     scene = scene_factory()
     repository = ImagePromptRepository(db)
+    config = ImagePromptGenerationConfig(
+        variants_count=2,
+        allow_overwrite=True,
+        model_name="gemini-2.5-flash",
+    )
     repository.create(
         data={
             "scene_extraction_id": scene.id,
             "model_vendor": "google",
             "model_name": "gemini-2.5-flash",
-            "prompt_version": "image-prompts-v1",
+            "prompt_version": config.prompt_version,
             "variant_index": 0,
             "title": "Old",
             "prompt_text": "Old prompt",
@@ -407,11 +424,6 @@ def test_generate_for_scene_overwrites_when_allowed(
         commit=True,
     )
 
-    config = ImagePromptGenerationConfig(
-        variants_count=2,
-        allow_overwrite=True,
-        model_name="gemini-2.5-flash",
-    )
     service = ImagePromptGenerationService(db, config=config)
     _patch_context(service, monkeypatch)
 
@@ -430,6 +442,80 @@ def test_generate_for_scene_overwrites_when_allowed(
     )
 
     repository.delete_for_scene(scene.id, commit=True)
+
+
+def test_sample_styles_respects_formula(monkeypatch: pytest.MonkeyPatch, db: Session) -> None:
+    service = ImagePromptGenerationService(db)
+    monkeypatch.setattr(
+        service_module,
+        "RECOMMENDED_STYLES",
+        ("A", "B", "C", "D", "E"),
+    )
+    monkeypatch.setattr(service_module, "OTHER_STYLES", ("X", "Y", "Z"))
+    monkeypatch.setattr(service_module.random, "sample", lambda seq, k: list(seq)[:k])
+    monkeypatch.setattr(service_module.random, "shuffle", lambda seq: None)
+
+    styles = service._sample_styles(variants_count=4)
+
+    assert styles == ["A", "B", "C", "D", "E", "X", "Y"]
+
+
+def test_sample_styles_filters_blocked_terms(monkeypatch: pytest.MonkeyPatch, db: Session) -> None:
+    service = ImagePromptGenerationService(db)
+    monkeypatch.setattr(
+        service_module,
+        "RECOMMENDED_STYLES",
+        ("Stylised", "Photorealistic ink", "Shared"),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "OTHER_STYLES",
+        ("Shared", "live-action still", "Safe Option"),
+    )
+    monkeypatch.setattr(service_module.random, "sample", lambda seq, k: list(seq)[:k])
+    monkeypatch.setattr(service_module.random, "shuffle", lambda seq: None)
+
+    styles = service._sample_styles(variants_count=2)
+
+    assert styles == ["Stylised", "Shared"]
+
+
+def test_render_prompt_template_includes_suggested_styles(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene = scene_factory()
+    config = ImagePromptGenerationConfig(variants_count=4)
+    service = ImagePromptGenerationService(db, config=config)
+    _patch_context(service, monkeypatch)
+    monkeypatch.setattr(
+        service_module,
+        "RECOMMENDED_STYLES",
+        ("Style A", "Style B", "Style C", "Style D", "Style E", "Style F"),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "OTHER_STYLES",
+        ("Other A", "Other B", "Other C"),
+    )
+    monkeypatch.setattr(service_module.random, "sample", lambda seq, k: list(seq)[:k])
+    monkeypatch.setattr(service_module.random, "shuffle", lambda seq: None)
+
+    prompt, resolved_config, _, _, sampled_styles = service.render_prompt_template(scene)
+
+    assert resolved_config.variants_count == 4
+    assert sampled_styles == [
+        "Style A",
+        "Style B",
+        "Style C",
+        "Style D",
+        "Style E",
+        "Style F",
+        "Other A",
+        "Other B",
+    ]
+    assert "Suggested Styles for This Request" in prompt
+    for style in sampled_styles:
+        assert style in prompt
 
 
 @pytest.mark.skipif(not EXCESSION_EPUB.exists(), reason="Test EPUB not available")
@@ -453,13 +539,13 @@ def test_build_scene_context_paragraph_numbering(
     config.context_before = 3
     config.context_after = 1
 
-    context_window, context_text = service._build_scene_context(
+    context_window, context_text = service._context_builder.build_scene_context(
         scene=scene,
         config=config,
     )
 
     expected_start = max(1, scene.scene_paragraph_start - config.context_before)
-    cached_chapters = service._book_cache[scene.source_book_path]
+    cached_chapters = service._context_builder._book_cache[scene.source_book_path]
     total_paragraphs = len(cached_chapters[scene.chapter_number].paragraphs)
     expected_end = min(
         total_paragraphs,
