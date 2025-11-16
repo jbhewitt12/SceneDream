@@ -543,11 +543,9 @@ class ImagePromptGenerationService:
             scene.id, variants_count
         )
 
-        sampled_styles = self._sample_styles(variants_count)
         remix_prompt = self._build_remix_prompt(
             source_prompt=prompt_record,
             variants_count=variants_count,
-            sampled_styles=sampled_styles,
         )
         raw_payload, llm_request_id, execution_time_ms = await self._invoke_llm(
             prompt=remix_prompt,
@@ -564,7 +562,6 @@ class ImagePromptGenerationService:
             "model_vendor": config.model_vendor,
             "temperature": config.temperature,
             "max_output_tokens": config.max_output_tokens,
-            "sampled_styles": sampled_styles,
         }
         if config.metadata:
             service_payload["run_metadata"] = dict(config.metadata)
@@ -1020,13 +1017,9 @@ class ImagePromptGenerationService:
         *,
         source_prompt: ImagePrompt,
         variants_count: int,
-        sampled_styles: Sequence[str] | None = None,
     ) -> str:
         original_prompt_text = source_prompt.prompt_text.strip()
         style_tags = source_prompt.style_tags or []
-        remix_styles = list(sampled_styles) if sampled_styles is not None else None
-        if remix_styles is None or not remix_styles:
-            remix_styles = self._sample_styles(variants_count)
         serialized_attributes = json.dumps(
             source_prompt.attributes, indent=2, ensure_ascii=False
         )
@@ -1062,11 +1055,6 @@ class ImagePromptGenerationService:
             "",
             "## Original Attributes",
             serialized_attributes,
-            "",
-            "## Suggested Style Inflections",
-            f"Use these {len(remix_styles)} adjacent styles as subtle influences while preserving the original style family. "
-            "Stay stylised—avoid photorealistic or live-action phrasing. Apply at most one influence per variant:\n"
-            f"{', '.join(remix_styles)}",
             "",
             "## Scene Context Window",
             serialized_context,
