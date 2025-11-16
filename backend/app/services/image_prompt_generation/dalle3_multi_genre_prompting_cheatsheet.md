@@ -1,5 +1,6 @@
 ## DALL·E 3 Multi-Genre Prompting Cheatsheet
 
+
 ### Core Formula
 Subject or focal moment + stylised medium or technique + setting & atmosphere + lighting + composition/camera move + palette or sensory signature
 
@@ -8,16 +9,6 @@ Subject or focal moment + stylised medium or technique + setting & atmosphere + 
 - Note tactile materials, environmental sound, scent, temperature, and motion cues present in the excerpt.
 - Mark scale signals (microscopic detail, human-scale vignette, colossal panorama) alongside spatial metaphors or symbolic contrasts.
 - Observe character posture and agency—observer, guide, celebrant, or conductor—and list meaningful props or icons.
-
-### Style Inspiration Pools
-Hybrid mediums to keep variants eclectic:
-- Textile tapestry, embroidered relief, macrame mural
-- Stained glass mosaic, cloisonne enamel, Art Nouveau poster
-- Ukiyo-e woodblock, sumi-e animation, ink wash scroll
-- Chalk pastel mural, charcoal monotype, impasto oil knife painting
-- Blueprint schematic cutaway, retrofuturist airbrush, neon hologram overlay
-- Paper diorama, stop-motion maquette, clay bas-relief
-- Generative particle art, glitchwave collage, kinetic light sculpture
 
 ### Palette & Sensory Hooks
 - Pair palette words with texture: glacial teal across frosted obsidian, ember orange threading brass filigree, lunar violet mist.
