@@ -7,21 +7,19 @@ import hashlib
 import json
 import logging
 import time
-from collections.abc import Mapping, MutableMapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
-from app.services.books import BookContentService, BookContentServiceError
+from app.services.books import BookContentService
 from app.services.langchain import gemini_api
 from app.services.prompt_metadata import (
     PromptMetadataConfig,
@@ -30,146 +28,19 @@ from app.services.prompt_metadata import (
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
+from .context_builder import SceneContextBuilder
+from .models import (
+    ImagePromptGenerationConfig,
+    ImagePromptGenerationServiceError,
+    ImagePromptPreview,
+)
+from .variant_processing import VariantProcessor
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_CHEATSHEET_PATH = (
-    "backend/app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md"
-)
 REMIX_VARIANTS_COUNT = 2
-ALLOWED_ASPECT_RATIOS = ("1:1", "3:4", "21:9", "9:16")
-_ALLOWED_RATIO_TOKENS = {value.replace(" ", "").lower() for value in ALLOWED_ASPECT_RATIOS}
-_BANNED_STYLE_TERMS = (
-    "photorealistic",
-    "photorealism",
-    "photo realistic",
-    "photo-realistic",
-    "photoreal",
-    "photo real",
-    "hyperrealistic",
-    "hyper-realistic",
-    "hyper realistic",
-    "ultra realistic",
-    "ultrarealistic",
-    "ultra-realistic",
-    "live-action",
-    "live action",
-)
-
-
-@dataclass(slots=True)
-class ImagePromptGenerationConfig:
-    """Runtime configuration for image prompt generation."""
-
-    model_vendor: str = "google"
-    model_name: str = "gemini-2.5-pro"
-    prompt_version: str = "image-prompts-v2"
-    variants_count: int = 4
-    use_ranking_recommendation: bool = True
-    temperature: float = 0.4
-    max_output_tokens: int | None = 8192
-    context_before: int = 3
-    context_after: int = 1
-    include_cheatsheet_path: str = DEFAULT_CHEATSHEET_PATH
-    blocked_warnings: set[str] = field(
-        default_factory=lambda: {"violence", "sexual", "drugs", "horror", "hate"}
-    )
-    skip_scenes_with_warnings: bool = True
-    dry_run: bool = False
-    allow_overwrite: bool = False
-    autocommit: bool = True
-    retry_attempts: int = 2
-    retry_backoff_seconds: float = 2.0
-    fail_on_error: bool = False
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def copy_with(self, **overrides: Any) -> ImagePromptGenerationConfig:
-        data = {
-            "model_vendor": self.model_vendor,
-            "model_name": self.model_name,
-            "prompt_version": self.prompt_version,
-            "variants_count": self.variants_count,
-            "use_ranking_recommendation": self.use_ranking_recommendation,
-            "temperature": self.temperature,
-            "max_output_tokens": self.max_output_tokens,
-            "context_before": self.context_before,
-            "context_after": self.context_after,
-            "include_cheatsheet_path": self.include_cheatsheet_path,
-            "blocked_warnings": set(self.blocked_warnings),
-            "skip_scenes_with_warnings": self.skip_scenes_with_warnings,
-            "dry_run": self.dry_run,
-            "allow_overwrite": self.allow_overwrite,
-            "autocommit": self.autocommit,
-            "retry_attempts": self.retry_attempts,
-            "retry_backoff_seconds": self.retry_backoff_seconds,
-            "fail_on_error": self.fail_on_error,
-            "metadata": dict(self.metadata),
-        }
-        normalized_overrides: dict[str, Any] = {}
-        for key, value in overrides.items():
-            if key == "metadata":
-                normalized_overrides[key] = dict(value) if value is not None else {}
-            elif key == "blocked_warnings":
-                normalized_overrides[key] = set(value) if value is not None else set()
-            elif value is not None:
-                normalized_overrides[key] = value
-            elif key in {"max_output_tokens"}:
-                normalized_overrides[key] = None
-        data.update(normalized_overrides)
-        return ImagePromptGenerationConfig(**data)
-
-
-@dataclass(slots=True)
-class ImagePromptPreview:
-    """In-memory preview of generated image prompt variants."""
-
-    scene_extraction_id: UUID
-    variant_index: int
-    title: str | None
-    flavour_text: str | None
-    prompt_text: str
-    style_tags: list[str] | None
-    attributes: dict[str, Any]
-    prompt_version: str
-    model_name: str
-    model_vendor: str
-    context_window: dict[str, Any]
-    raw_response: dict[str, Any]
-    temperature: float
-    max_output_tokens: int | None
-    execution_time_ms: int
-    llm_request_id: str | None
-
-
-class ImagePromptGenerationServiceError(RuntimeError):
-    """Raised when image prompt generation fails under strict settings."""
-
-
-@dataclass(slots=True)
-class _ChapterContext:
-    number: int
-    title: str
-    paragraphs: list[str]
-    source_name: str
-
-
-class _VariantModel(BaseModel):
-    """Validate the structure returned by the LLM."""
-
-    title: str | None = None
-    prompt_text: str
-    style_tags: list[str] | None = None
-    attributes: dict[str, Any]
-
-    @classmethod
-    def from_payload(cls, payload: Mapping[str, Any]) -> _VariantModel:
-        try:
-            return cls.model_validate(payload)
-        except ValidationError as exc:  # pragma: no cover - raised with context
-            raise ImagePromptGenerationServiceError(
-                "LLM response did not match the required variant schema"
-            ) from exc
 
 
 class ImagePromptGenerationService:
@@ -195,8 +66,9 @@ class ImagePromptGenerationService:
         self._prompt_repo = ImagePromptRepository(session)
         self._ranking_repo = SceneRankingRepository(session)
         self._cheatsheet_text: dict[str, str] = {}
-        self._book_cache: MutableMapping[str, dict[int, _ChapterContext]] = {}
         self._book_service = BookContentService()
+        self._context_builder = SceneContextBuilder(self._book_service)
+        self._variant_processor = VariantProcessor()
 
     async def generate_for_scene(
         self,
@@ -264,7 +136,9 @@ class ImagePromptGenerationService:
             if existing:
                 return existing
 
-        context_window, context_text = self._build_scene_context(target_scene, config)
+        context_window, context_text = self._context_builder.build_scene_context(
+            target_scene, config
+        )
         prompt = self._build_prompt(
             scene=target_scene,
             config=config,
@@ -275,7 +149,7 @@ class ImagePromptGenerationService:
             prompt=prompt,
             config=config,
         )
-        variants = self._extract_variants(raw_payload, config)
+        variants = self._variant_processor.extract_variants(raw_payload, config)
         if len(variants) != len(variant_indices):
             raise ImagePromptGenerationServiceError(
                 "Variant count mismatch while assigning variant indices"
@@ -298,7 +172,7 @@ class ImagePromptGenerationService:
             "response": raw_payload,
             "service": service_payload,
         }
-        records = self._build_records(
+        records = self._variant_processor.build_records(
             scene=target_scene,
             config=config,
             variants=variants,
@@ -310,7 +184,9 @@ class ImagePromptGenerationService:
         )
 
         if config.dry_run:
-            preview_prompts = self._instantiate_prompts_from_records(records)
+            preview_prompts = self._variant_processor.instantiate_prompts_from_records(
+                records
+            )
             metadata_results = await self._run_metadata_generation(
                 preview_prompts,
                 dry_run=True,
@@ -438,7 +314,7 @@ class ImagePromptGenerationService:
             metadata=merged_metadata,
         )
 
-        context_window, context_text = self._build_scene_context(
+        context_window, context_text = self._context_builder.build_scene_context(
             target_scene, resolved_config
         )
         prompt = self._build_prompt(
@@ -545,7 +421,7 @@ class ImagePromptGenerationService:
             config=config,
             system_instruction=self._remix_system_instruction,
         )
-        variants = self._extract_variants(raw_payload, config)
+        variants = self._variant_processor.extract_variants(raw_payload, config)
 
         service_payload = {
             "mode": "remix",
@@ -595,7 +471,9 @@ class ImagePromptGenerationService:
             )
 
         if config.dry_run:
-            preview_prompts = self._instantiate_prompts_from_records(records)
+            preview_prompts = self._variant_processor.instantiate_prompts_from_records(
+                records
+            )
             metadata_results = await self._run_metadata_generation(
                 preview_prompts,
                 dry_run=True,
@@ -701,7 +579,9 @@ class ImagePromptGenerationService:
         }
 
         if dry_run:
-            preview_prompts = self._instantiate_prompts_from_records([record])
+            preview_prompts = self._variant_processor.instantiate_prompts_from_records(
+                [record]
+            )
             metadata_results = await self._run_metadata_generation(
                 preview_prompts,
                 dry_run=True,
@@ -848,42 +728,6 @@ class ImagePromptGenerationService:
             config.variants_count,
         )
         return config.variants_count, "config_default"
-
-    def _build_scene_context(
-        self,
-        scene: SceneExtraction,
-        config: ImagePromptGenerationConfig,
-    ) -> tuple[dict[str, Any], str]:
-        if scene.scene_paragraph_start is None or scene.scene_paragraph_end is None:
-            base_start = max(scene.chunk_paragraph_start or 1, 1)
-            base_end = max(scene.chunk_paragraph_end or base_start, base_start)
-        else:
-            base_start = max(int(scene.scene_paragraph_start), 1)
-            base_end = max(int(scene.scene_paragraph_end), base_start)
-        chapters = self._load_book_context(scene.source_book_path)
-        chapter_context = chapters.get(int(scene.chapter_number))
-        if chapter_context is None:
-            raise ImagePromptGenerationServiceError(
-                f"Chapter {scene.chapter_number} not found in {scene.source_book_path}"
-            )
-        before = max(config.context_before, 0)
-        after = max(config.context_after, 0)
-        total_paragraphs = len(chapter_context.paragraphs)
-        start = max(1, base_start - before)
-        end = min(total_paragraphs, base_end + after)
-        formatted_lines: list[str] = []
-        for index in range(start, end + 1):
-            paragraph_text = chapter_context.paragraphs[index - 1]
-            formatted_lines.append(f"[Paragraph {index}] {paragraph_text}")
-        context_text = "\n".join(formatted_lines)
-        context_window = {
-            "chapter_number": scene.chapter_number,
-            "chapter_title": chapter_context.title,
-            "paragraph_span": [start, end],
-            "paragraphs_before": before,
-            "paragraphs_after": after,
-        }
-        return context_window, context_text
 
     def _build_prompt(
         self,
@@ -1108,123 +952,6 @@ class ImagePromptGenerationService:
             "Gemini prompt generation failed after retries"
         ) from last_error
 
-    def _extract_variants(
-        self,
-        payload: Any,
-        config: ImagePromptGenerationConfig,
-    ) -> list[_VariantModel]:
-        if isinstance(payload, dict) and "variants" in payload:
-            payload = payload["variants"]
-        if not isinstance(payload, Sequence):
-            raise ImagePromptGenerationServiceError(
-                "Gemini response must be a JSON array of variant objects"
-            )
-        variants = []
-        for index, item in enumerate(payload):
-            if not isinstance(item, Mapping):
-                raise ImagePromptGenerationServiceError(
-                    f"Variant {index} is not a JSON object"
-                )
-            variant = _VariantModel.from_payload(item)
-            issues = self._enforce_variant_constraints(variant)
-            if issues:
-                logger.warning(
-                    "Variant constraint issues detected for index %s: %s",
-                    index,
-                    "; ".join(issues),
-                )
-            variants.append(variant)
-        if len(variants) != config.variants_count:
-            raise ImagePromptGenerationServiceError(
-                f"Expected {config.variants_count} variants, received {len(variants)}"
-            )
-        return variants
-
-    def _build_records(
-        self,
-        *,
-        scene: SceneExtraction,
-        config: ImagePromptGenerationConfig,
-        variants: Sequence[_VariantModel],
-        variant_indices: Sequence[int],
-        context_window: Mapping[str, Any],
-        raw_payload: Mapping[str, Any],
-        llm_request_id: str | None,
-        execution_time_ms: int,
-    ) -> list[dict[str, Any]]:
-        records: list[dict[str, Any]] = []
-        for index, variant in enumerate(variants):
-            try:
-                variant_index = variant_indices[index]
-            except IndexError as exc:  # pragma: no cover - defensive
-                raise ImagePromptGenerationServiceError(
-                    "Variant indices length did not match variant payloads"
-                ) from exc
-            style_tags = list(variant.style_tags) if variant.style_tags else None
-            attributes = dict(variant.attributes)
-            records.append(
-                {
-                    "scene_extraction_id": scene.id,
-                    "model_vendor": config.model_vendor,
-                    "model_name": config.model_name,
-                    "prompt_version": config.prompt_version,
-                    "variant_index": variant_index,
-                    "title": variant.title.strip()
-                    if isinstance(variant.title, str)
-                    else None,
-                    "prompt_text": variant.prompt_text.strip(),
-                    "negative_prompt": None,
-                    "style_tags": style_tags,
-                    "attributes": attributes,
-                    "notes": None,
-                    "context_window": dict(context_window),
-                    "raw_response": dict(raw_payload),
-                    "temperature": config.temperature,
-                    "max_output_tokens": config.max_output_tokens,
-                    "llm_request_id": llm_request_id,
-                    "execution_time_ms": execution_time_ms,
-                }
-            )
-        return records
-
-    def _enforce_variant_constraints(self, variant: _VariantModel) -> list[str]:
-        issues: list[str] = []
-        prompt_lower = variant.prompt_text.lower()
-        for banned in _BANNED_STYLE_TERMS:
-            if banned in prompt_lower:
-                issues.append(
-                    f"prompt_text contains banned realism descriptor '{banned}'"
-                )
-        for tag in variant.style_tags or []:
-            tag_lower = tag.lower()
-            for banned in _BANNED_STYLE_TERMS:
-                if banned in tag_lower:
-                    issues.append(
-                        f"style tag '{tag}' includes banned realism descriptor '{banned}'"
-                    )
-        attributes = dict(variant.attributes or {})
-        aspect_ratio_raw = attributes.get("aspect_ratio")
-        if not isinstance(aspect_ratio_raw, str):
-            issues.append("attributes.aspect_ratio is missing or not a string")
-        else:
-            normalized_ratio = aspect_ratio_raw.replace(" ", "").lower()
-            if normalized_ratio not in _ALLOWED_RATIO_TOKENS:
-                allowed_display = ", ".join(ALLOWED_ASPECT_RATIOS)
-                issues.append(
-                    f"attributes.aspect_ratio '{aspect_ratio_raw}' is not permitted; expected one of: {allowed_display}"
-                )
-        return issues
-
-    def _instantiate_prompts_from_records(
-        self,
-        records: Sequence[Mapping[str, Any]],
-    ) -> list[ImagePrompt]:
-        """Create transient ImagePrompt models from in-memory records."""
-        prompts: list[ImagePrompt] = []
-        for record in records:
-            prompts.append(ImagePrompt(**record))  # type: ignore[arg-type]
-        return prompts
-
     async def _run_metadata_generation(
         self,
         prompts: Sequence[ImagePrompt],
@@ -1297,34 +1024,6 @@ class ImagePromptGenerationService:
         text = path.read_text(encoding="utf-8")
         self._cheatsheet_text[path_str] = text.strip()
         return self._cheatsheet_text[path_str]
-
-    def _load_book_context(
-        self,
-        source_book_path: str,
-    ) -> dict[int, _ChapterContext]:
-        if source_book_path in self._book_cache:
-            return self._book_cache[source_book_path]
-        try:
-            content = self._book_service.load_book(source_book_path)
-        except BookContentServiceError as exc:
-            raise ImagePromptGenerationServiceError(str(exc)) from exc
-
-        chapters: dict[int, _ChapterContext] = {}
-        for chapter_number, chapter in content.chapters.items():
-            chapters[chapter_number] = _ChapterContext(
-                number=chapter.number,
-                title=chapter.title,
-                paragraphs=list(chapter.paragraphs),
-                source_name=chapter.source_name,
-            )
-
-        if not chapters:
-            raise ImagePromptGenerationServiceError(
-                f"No chapters extracted from book: {source_book_path}"
-            )
-
-        self._book_cache[source_book_path] = chapters
-        return chapters
 
     def _scene_has_blocked_warnings(
         self,
