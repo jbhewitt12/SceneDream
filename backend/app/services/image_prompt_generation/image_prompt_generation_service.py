@@ -159,6 +159,19 @@ BLOCKED_STYLE_TERMS: tuple[str, ...] = (
     "realistic render",
 )
 
+CULTURE_BOOK_MARKERS: tuple[str, ...] = (
+    "consider-phlebas",
+    "player-of-games",
+    "use-of-weapons",
+    "excession",
+    "inversions",
+    "look-to-windward",
+    "matter",
+    "surface-detail",
+    "hydrogen-sonata",
+    "state-of-the-art",
+)
+
 
 class ImagePromptGenerationService:
     """Generate structured image prompts for scenes using Gemini."""
@@ -929,6 +942,11 @@ class ImagePromptGenerationService:
             "- Leverage camera language (shot type, lens, framing) and aspect ratios that support the aesthetic; prefer 1:1, 3:4, 21:9, or 9:16 unless the excerpt demands otherwise.\n"
             "- Maintain neutral-to-positive emotional valence, avoiding words that signal harm, panic, or cruelty while still capturing momentum or quiet tension."
         )
+        if self._is_culture_book(scene):
+            guidance += (
+                " For Iain M. Banks Culture-universe scenes that mention drones, avoid using the word 'drone'. "
+                "Describe them as elegant autonomous anti-gravity companions—floating AI assistants, hovering service bots, sentient metallic orbs, or compact anti-grav craft—instead of the word 'drone'."
+            )
         critical_constraints = (
             "- Select stylised mediums only; never request photorealistic, hyper-realistic, live-action, or adjacent treatments in prompt_text or style_tags.\n"
             "- Attributes.aspect_ratio must be exactly one of: 1:1, 3:4, 21:9, or 9:16.\n"
@@ -1256,6 +1274,13 @@ class ImagePromptGenerationService:
         if top_n is not None and top_n > 0:
             filtered = filtered[:top_n]
         return filtered
+
+    def _is_culture_book(self, scene: SceneExtraction) -> bool:
+        """Heuristic to detect Iain M. Banks Culture books by slug/path markers."""
+        slug = (scene.book_slug or "").lower()
+        path_hint = (scene.source_book_path or "").lower()
+        haystack = f"{slug} {path_hint}"
+        return any(marker in haystack for marker in CULTURE_BOOK_MARKERS)
 
 
 __all__ = [
