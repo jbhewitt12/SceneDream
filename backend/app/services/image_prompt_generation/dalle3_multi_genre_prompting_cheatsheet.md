@@ -30,7 +30,7 @@ Subject or focal moment + stylised medium or technique + setting & atmosphere + 
 ### Prompt Construction Boosters
 - Fuse medium and story artifact (“loom-woven star charts,” “holographic tidepool schematics,” “ceramic reliquary console”).
 - Introduce synesthetic pairings: translate sound into pattern, scent into color, texture into motion.
-- Let aspect ratios serve narrative intent: towering rituals thrive in verticals, odysseys lean wides, meditative studies nest in squares.
+- Let the supported aspect ratios (1:1, 16:9, 9:16) serve narrative intent: towering rituals thrive in verticals, odysseys lean wides, meditative studies nest in squares.
 - Sprinkle concise artist or movement references that reinforce the chosen technique and palette logic.
 
 ### Variant Mapping Worksheet
@@ -39,6 +39,6 @@ Subject or focal moment + stylised medium or technique + setting & atmosphere + 
 - Track how perspective, scale, and sensory focus evolve from variant to variant so the narrative arc keeps unfolding.
 
 ### Example Spark Prompts
-- “Kinetic light sculpture vision of twin airships gliding above a turquoise canyon, rigging woven with luminous glyphs, dusk backlight, 21:9 wide sweep, 16 mm lens drift, palette of teal vapor and amber cinders.”
-- “Sumi-e animation tableau of a wandering archivist cataloguing floating seed lanterns along a midnight river, mist curls shimmering, lantern glow reflecting indigo ink washes, 3:4 vertical framing, 35 mm lens poise, tranquil jade and saffron palette.”
+- “Kinetic light sculpture vision of twin airships gliding above a turquoise canyon, rigging woven with luminous glyphs, dusk backlight, 16:9 wide sweep, 16 mm lens drift, palette of teal vapor and amber cinders.”
+- “Sumi-e animation tableau of a wandering archivist cataloguing floating seed lanterns along a midnight river, mist curls shimmering, lantern glow reflecting indigo ink washes, 9:16 vertical framing, 35 mm lens poise, tranquil jade and saffron palette.”
 - “Textile tapestry close-up of children weaving constellation threads across a lunar observatory loom, silver dust motes swirling, auroral uplighting, 1:1 square composition, tilt-shift focus, palette of pearl, violet, and ember gold.”
