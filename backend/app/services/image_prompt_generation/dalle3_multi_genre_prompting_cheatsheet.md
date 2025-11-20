@@ -9,6 +9,7 @@ Subject or focal moment + stylised medium or technique + setting & atmosphere + 
 - Note tactile materials, environmental sound, scent, temperature, and motion cues present in the excerpt.
 - Mark scale signals (microscopic detail, human-scale vignette, colossal panorama) alongside spatial metaphors or symbolic contrasts.
 - Observe character posture and agency—observer, guide, celebrant, or conductor—and list meaningful props or icons.
+- Always alias obscure nouns immediately: describe the creature, vessel, faction, or device in vivid plain language. If you're not sure what the noun means, be creative.
 
 ### Palette & Sensory Hooks
 - Pair palette words with texture: glacial teal across frosted obsidian, ember orange threading brass filigree, lunar violet mist.
