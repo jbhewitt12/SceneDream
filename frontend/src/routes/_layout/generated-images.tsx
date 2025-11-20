@@ -322,7 +322,6 @@ function GeneratedImagesGalleryPage() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null)
-  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -569,21 +568,18 @@ function GeneratedImagesGalleryPage() {
       return image.user_approved === search.approval
     })
 
-  const handleImageClick = (imageId: string, sceneId: string) => {
+  const handleImageClick = (imageId: string) => {
     setSelectedImageId(imageId)
-    setSelectedSceneId(sceneId)
     setIsModalOpen(true)
   }
 
   const handleModalClose = () => {
     setIsModalOpen(false)
     setSelectedImageId(null)
-    setSelectedSceneId(null)
   }
 
-  const handleNavigate = (imageId: string, sceneId: string) => {
+  const handleNavigate = (imageId: string) => {
     setSelectedImageId(imageId)
-    setSelectedSceneId(sceneId)
   }
 
   // Intersection Observer for infinite scroll
@@ -646,9 +642,7 @@ function GeneratedImagesGalleryPage() {
               <GeneratedImageCard
                 key={image.id}
                 image={image}
-                onClick={() =>
-                  handleImageClick(image.id, image.scene_extraction_id)
-                }
+                onClick={() => handleImageClick(image.id)}
                 onApprovalChange={handleApprovalChange}
                 onRemix={handleRemix}
               />
@@ -682,7 +676,6 @@ function GeneratedImagesGalleryPage() {
         isOpen={isModalOpen}
         onClose={handleModalClose}
         imageId={selectedImageId}
-        sceneId={selectedSceneId}
         allImages={images.map((img) => ({
           id: img.id,
           scene_extraction_id: img.scene_extraction_id,

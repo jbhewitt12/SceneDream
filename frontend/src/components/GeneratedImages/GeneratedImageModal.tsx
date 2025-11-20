@@ -36,9 +36,8 @@ type GeneratedImageModalProps = {
   isOpen: boolean
   onClose: () => void
   imageId: string | null
-  sceneId: string | null
   allImages?: Array<{ id: string; scene_extraction_id: string }>
-  onNavigate?: (imageId: string, sceneId: string) => void
+  onNavigate?: (imageId: string) => void
   onApprovalChange?: (imageId: string, approved: boolean | null) => void
   onCustomRemix?: (imageId: string, customPromptText: string) => Promise<void>
 }
@@ -47,7 +46,6 @@ const GeneratedImageModal = ({
   isOpen,
   onClose,
   imageId,
-  sceneId,
   allImages = [],
   onNavigate,
   onApprovalChange,
@@ -60,19 +58,6 @@ const GeneratedImageModal = ({
     enabled: isOpen && imageId !== null,
   })
 
-  // Fetch all images for the scene to enable carousel
-  const sceneImagesQuery = useQuery({
-    queryKey: ["generated-images", "scene", sceneId],
-    queryFn: () =>
-      GeneratedImageApi.listForScene({
-        sceneId: sceneId!,
-        limit: 100,
-        newestFirst: false,
-      }),
-    enabled: isOpen && sceneId !== null,
-  })
-
-  const sceneImages = sceneImagesQuery.data?.data ?? []
   const currentImage = imageQuery.data
   const isLoading = imageQuery.isLoading || imageQuery.isFetching
   const promptText = currentImage?.prompt?.prompt_text ?? ""
@@ -93,96 +78,48 @@ const GeneratedImageModal = ({
     }
   }, [isOpen])
 
-  const handlePreviousVariant = useCallback(() => {
-    if (sceneImages.length === 0 || !imageId || !onNavigate) return
-    const currentIndex = sceneImages.findIndex((img) => img.id === imageId)
-    if (currentIndex === -1) return
-    const newIndex =
-      (currentIndex - 1 + sceneImages.length) % sceneImages.length
-    const newImage = sceneImages[newIndex]
-    if (newImage) {
-      onNavigate(newImage.id, newImage.scene_extraction_id)
-    }
-  }, [sceneImages, imageId, onNavigate])
-
-  const handleNextVariant = useCallback(() => {
-    if (sceneImages.length === 0 || !imageId || !onNavigate) return
-    const currentIndex = sceneImages.findIndex((img) => img.id === imageId)
-    if (currentIndex === -1) return
-    const newIndex = (currentIndex + 1) % sceneImages.length
-    const newImage = sceneImages[newIndex]
-    if (newImage) {
-      onNavigate(newImage.id, newImage.scene_extraction_id)
-    }
-  }, [sceneImages, imageId, onNavigate])
-
-  const handlePreviousScene = useCallback(() => {
-    if (allImages.length === 0 || !imageId || !onNavigate) return
-    const currentGalleryIndex = allImages.findIndex((img) => img.id === imageId)
-    if (currentGalleryIndex === -1) return
-
-    for (let i = currentGalleryIndex - 1; i >= 0; i--) {
-      if (allImages[i].scene_extraction_id !== sceneId) {
-        onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
-        return
+  const handleNavigateByOffset = useCallback(
+    (offset: number) => {
+      if (allImages.length === 0 || !imageId || !onNavigate) return
+      const currentIndex = allImages.findIndex((img) => img.id === imageId)
+      if (currentIndex === -1) return
+      const newIndex =
+        (currentIndex + offset + allImages.length) % allImages.length
+      const newImage = allImages[newIndex]
+      if (newImage) {
+        onNavigate(newImage.id)
       }
-    }
-    for (let i = allImages.length - 1; i > currentGalleryIndex; i--) {
-      if (allImages[i].scene_extraction_id !== sceneId) {
-        onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
-        return
-      }
-    }
-  }, [allImages, imageId, onNavigate, sceneId])
+    },
+    [allImages, imageId, onNavigate],
+  )
 
-  const handleNextScene = useCallback(() => {
-    if (allImages.length === 0 || !imageId || !onNavigate) return
-    const currentGalleryIndex = allImages.findIndex((img) => img.id === imageId)
-    if (currentGalleryIndex === -1) return
+  const handlePreviousImage = useCallback(
+    () => handleNavigateByOffset(-1),
+    [handleNavigateByOffset],
+  )
 
-    for (let i = currentGalleryIndex + 1; i < allImages.length; i++) {
-      if (allImages[i].scene_extraction_id !== sceneId) {
-        onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
-        return
-      }
-    }
-    for (let i = 0; i < currentGalleryIndex; i++) {
-      if (allImages[i].scene_extraction_id !== sceneId) {
-        onNavigate(allImages[i].id, allImages[i].scene_extraction_id)
-        return
-      }
-    }
-  }, [allImages, imageId, onNavigate, sceneId])
+  const handleNextImage = useCallback(
+    () => handleNavigateByOffset(1),
+    [handleNavigateByOffset],
+  )
 
   // Keyboard navigation
   useEffect(() => {
     if (!isOpen) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "ArrowLeft") {
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
         event.preventDefault()
-        handlePreviousVariant()
-      } else if (event.key === "ArrowRight") {
+        handlePreviousImage()
+      } else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
         event.preventDefault()
-        handleNextVariant()
-      } else if (event.key === "ArrowUp") {
-        event.preventDefault()
-        handlePreviousScene()
-      } else if (event.key === "ArrowDown") {
-        event.preventDefault()
-        handleNextScene()
+        handleNextImage()
       }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [
-    isOpen,
-    handlePreviousVariant,
-    handleNextVariant,
-    handlePreviousScene,
-    handleNextScene,
-  ])
+  }, [isOpen, handlePreviousImage, handleNextImage])
 
   const fullPath = currentImage
     ? buildGeneratedImageUrl({
@@ -191,9 +128,9 @@ const GeneratedImageModal = ({
         fileName: currentImage.image.file_name,
       })
     : ""
-  const hasMultipleImages = sceneImages.length > 1
+  const hasMultipleImages = allImages.length > 1
   const currentIndex = imageId
-    ? sceneImages.findIndex((img) => img.id === imageId)
+    ? allImages.findIndex((img) => img.id === imageId)
     : -1
   const isEditedPromptInvalid =
     !editedPromptText.trim() || editedPromptText === promptText
@@ -233,7 +170,7 @@ const GeneratedImageModal = ({
             {currentImage && ` · Chapter ${currentImage.image.chapter_number}`}
             {hasMultipleImages &&
               currentIndex !== -1 &&
-              ` · ${currentIndex + 1} of ${sceneImages.length}`}
+              ` · ${currentIndex + 1} of ${allImages.length}`}
           </DialogTitle>
         </DialogHeader>
         <DialogBody>
@@ -242,7 +179,7 @@ const GeneratedImageModal = ({
             {hasMultipleImages && (
               <IconButton
                 aria-label="Previous image"
-                onClick={handlePreviousVariant}
+                onClick={handlePreviousImage}
                 variant="ghost"
                 size="lg"
                 alignSelf="center"
@@ -275,7 +212,7 @@ const GeneratedImageModal = ({
             {hasMultipleImages && (
               <IconButton
                 aria-label="Next image"
-                onClick={handleNextVariant}
+                onClick={handleNextImage}
                 variant="ghost"
                 size="lg"
                 alignSelf="center"
