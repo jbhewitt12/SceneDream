@@ -35,13 +35,14 @@ from .models import (
     ImagePromptGenerationServiceError,
     ImagePromptPreview,
 )
-from .variant_processing import VariantProcessor
+from .variant_processing import ALLOWED_ASPECT_RATIOS, VariantProcessor
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 REMIX_VARIANTS_COUNT = 2
+ALLOWED_ASPECT_RATIO_DISPLAY = ", ".join(ALLOWED_ASPECT_RATIOS)
 
 RECOMMENDED_STYLES: tuple[str, ...] = (
     "90's anime",
@@ -939,7 +940,7 @@ class ImagePromptGenerationService:
             "- Write each prompt like expert art direction, using decisive verbs and tangible nouns over filler language, and keep the text between 28 and 42 words.\n"
             "- Embed the chosen medium, art movement, and rendering techniques directly into the prompt_text and style_tags, and explain why they fit inside attributes.style_intent.\n"
             "- Spotlight unique facets of the scene per variant (alternate subjects, emotional beats, or spatial scales) so the set feels complementary, not redundant.\n"
-            "- Leverage camera language (shot type, lens, framing) and aspect ratios that support the aesthetic; prefer 1:1, 3:4, 21:9, or 9:16 unless the excerpt demands otherwise.\n"
+            f"- Leverage camera language (shot type, lens, framing) and choose aspect ratios from {ALLOWED_ASPECT_RATIO_DISPLAY} to serve the excerpt's intent.\n"
             "- Maintain neutral-to-positive emotional valence, avoiding words that signal harm, panic, or cruelty while still capturing momentum or quiet tension."
         )
         if self._is_culture_book(scene):
@@ -949,7 +950,7 @@ class ImagePromptGenerationService:
             )
         critical_constraints = (
             "- Select stylised mediums only; never request photorealistic, hyper-realistic, live-action, or adjacent treatments in prompt_text or style_tags.\n"
-            "- Attributes.aspect_ratio must be exactly one of: 1:1, 3:4, 21:9, or 9:16.\n"
+            f"- Attributes.aspect_ratio must be exactly one of: {ALLOWED_ASPECT_RATIO_DISPLAY}.\n"
             "- Ensure style_tags include the chosen medium or technique and remain free of banned realism terms."
         )
         tone_guardrails = (
@@ -1016,7 +1017,7 @@ class ImagePromptGenerationService:
             "- attributes must detail composition, camera, lens, lighting, palette, atmosphere, aspect_ratio, style_intent, and references (list of influences or movements).\n"
             "- Ensure each variant explores a different angle, subject emphasis, or aesthetic; do not reuse the same style family or medium twice.\n"
             "- Keep prompt_text and style_tags entirely free of photorealistic, hyper-realistic, live-action, or similar wording; rely on stylised techniques only.\n"
-            "- attributes.aspect_ratio must match one of: 1:1, 3:4, 21:9, 9:16 (no other ratios allowed).\n"
+            f"- attributes.aspect_ratio must match one of: {ALLOWED_ASPECT_RATIO_DISPLAY} (no other ratios allowed).\n"
             "- Ensure prompt_text stays within the 28-42 word target range while remaining vivid, specific, and contradiction-free.\n"
             "- Do not include notes, warnings, or additional keys.\n"
             f"- The expected object shape is similar to: {output_schema}.\n"

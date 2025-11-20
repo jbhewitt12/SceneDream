@@ -18,7 +18,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_ASPECT_RATIOS = ("1:1", "3:4", "21:9", "9:16")
+ALLOWED_ASPECT_RATIOS = ("1:1", "16:9", "9:16")
 _BANNED_STYLE_TERMS = (
     "photorealistic",
     "photorealism",
@@ -66,9 +66,14 @@ class VariantProcessor:
     ) -> None:
         self._banned_style_terms = tuple(banned_style_terms)
         self._allowed_aspect_ratios = tuple(allowed_aspect_ratios)
-        self._allowed_ratio_tokens = {
-            value.replace(" ", "").lower() for value in allowed_aspect_ratios
+        normalized_map = {
+            value.replace(" ", "").lower(): value for value in allowed_aspect_ratios
         }
+        self._allowed_ratio_tokens = set(normalized_map)
+        self._normalized_ratio_map = normalized_map
+        self._fallback_aspect_ratio = (
+            self._allowed_aspect_ratios[0] if self._allowed_aspect_ratios else None
+        )
 
     def extract_variants(
         self,
@@ -174,17 +179,26 @@ class VariantProcessor:
                     issues.append(
                         f"style tag '{tag}' includes banned realism descriptor '{banned}'"
                     )
-        attributes = dict(variant.attributes or {})
+        if not isinstance(variant.attributes, dict):
+            variant.attributes = {}
+        attributes = variant.attributes
+        needs_fallback = True
         aspect_ratio_raw = attributes.get("aspect_ratio")
         if not isinstance(aspect_ratio_raw, str):
             issues.append("attributes.aspect_ratio is missing or not a string")
         else:
             normalized_ratio = aspect_ratio_raw.replace(" ", "").lower()
-            if normalized_ratio not in self._allowed_ratio_tokens:
+            canonical_ratio = self._normalized_ratio_map.get(normalized_ratio)
+            if canonical_ratio is None:
                 allowed_display = ", ".join(self._allowed_aspect_ratios)
                 issues.append(
                     f"attributes.aspect_ratio '{aspect_ratio_raw}' is not permitted; expected one of: {allowed_display}"
                 )
+            else:
+                attributes["aspect_ratio"] = canonical_ratio
+                needs_fallback = False
+        if needs_fallback and self._fallback_aspect_ratio:
+            attributes["aspect_ratio"] = self._fallback_aspect_ratio
         return issues
 
 
