@@ -35,7 +35,10 @@ from app.schemas import (
     GeneratedImageRemixResponse,
     GeneratedImageWithContext,
     ImagePromptSummary,
+    PostingStatusResponse,
+    QueueForPostingResponse,
     SceneSummary,
+    SocialMediaPostRead,
 )
 from app.services.image_generation.image_generation_service import (
     ImageGenerationService,
@@ -45,6 +48,8 @@ from app.services.image_prompt_generation.image_prompt_generation_service import
     ImagePromptGenerationService,
     ImagePromptGenerationServiceError,
 )
+from app.services.social_posting import SocialPostingService
+from app.services.social_posting.scheduler import get_scheduler
 from models.image_prompt import ImagePrompt
 
 router = APIRouter(prefix="/generated-images", tags=["generated-images"])
@@ -113,6 +118,11 @@ def _build_list_item(record: Any) -> GeneratedImageListItem:
     prompt = getattr(record, "image_prompt", None)
     payload["prompt_title"] = getattr(prompt, "title", None)
     payload["prompt_flavour_text"] = getattr(prompt, "flavour_text", None)
+
+    # Add posting status from social_media_posts relationship
+    social_posts = getattr(record, "social_media_posts", None) or []
+    payload["has_been_posted"] = any(p.status == "posted" for p in social_posts)
+    payload["is_queued"] = any(p.status == "queued" for p in social_posts)
 
     return GeneratedImageListItem.model_validate(payload)
 
@@ -354,6 +364,7 @@ def list_generated_images(
             limit=limit,
             offset=offset,
             include_prompt=True,
+            include_posting_status=True,
         )
     elif prompt_id is not None:
         # List by prompt
@@ -365,6 +376,7 @@ def list_generated_images(
             limit=limit,
             offset=offset,
             include_prompt=True,
+            include_posting_status=True,
         )
     elif book is not None:
         # List by book (and optionally chapter)
@@ -378,6 +390,7 @@ def list_generated_images(
             limit=limit,
             offset=offset,
             include_prompt=True,
+            include_posting_status=True,
         )
     else:
         # List across all books when no specific filter is provided
@@ -390,6 +403,7 @@ def list_generated_images(
             limit=limit,
             offset=offset,
             include_prompt=True,
+            include_posting_status=True,
         )
 
     data = [_build_list_item(record) for record in images]
@@ -543,6 +557,7 @@ def list_generated_images_for_scene(
         offset=offset,
         include_prompt=include_prompt,
         include_scene=include_scene,
+        include_posting_status=True,
     )
 
     data = [_build_list_item(record) for record in images]
@@ -589,6 +604,7 @@ def list_generated_images_for_prompt(
         limit=limit,
         offset=offset,
         include_prompt=True,
+        include_posting_status=True,
     )
 
     data = [_build_list_item(record) for record in images]
@@ -822,4 +838,83 @@ async def trigger_image_generation(
         generated_image_ids=generated_ids,
         count=len(generated_ids),
         dry_run=request.dry_run,
+    )
+
+
+@router.post(
+    "/{image_id}/queue-for-posting",
+    response_model=QueueForPostingResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def queue_image_for_posting(
+    *,
+    session: SessionDep,
+    image_id: UUID,
+) -> QueueForPostingResponse:
+    """
+    Queue an approved image for posting to configured social media services.
+
+    The image must have user_approved=True. If the cooldown period has passed
+    since the last post, the image will be posted immediately. Otherwise, it
+    will be added to the queue for later posting.
+    """
+    service = SocialPostingService(session)
+
+    try:
+        posts = service.queue_image(image_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not posts:
+        return QueueForPostingResponse(
+            posts=[],
+            message="No services available to post to, or image already queued/posted",
+        )
+
+    # Trigger immediate queue check if cooldown has passed
+    scheduler = get_scheduler()
+    if scheduler.is_running:
+        _spawn_background_task(
+            scheduler.trigger_immediate_check(),
+            task_name=f"immediate-post-check-{image_id}",
+        )
+
+    post_schemas = [SocialMediaPostRead.model_validate(p) for p in posts]
+    return QueueForPostingResponse(
+        posts=post_schemas,
+        message=f"Queued for {len(posts)} service(s)",
+    )
+
+
+@router.get(
+    "/{image_id}/posting-status",
+    response_model=PostingStatusResponse,
+)
+def get_image_posting_status(
+    *,
+    session: SessionDep,
+    image_id: UUID,
+) -> PostingStatusResponse:
+    """
+    Get the social media posting status for an image.
+
+    Returns all posting records for the image, along with summary flags
+    indicating whether it has been posted or is currently queued.
+    """
+    repository = GeneratedImageRepository(session)
+    image = repository.get(image_id)
+    if image is None:
+        raise HTTPException(status_code=404, detail="Generated image not found")
+
+    service = SocialPostingService(session)
+    posts = service.get_posting_status(image_id)
+
+    post_schemas = [SocialMediaPostRead.model_validate(p) for p in posts]
+    has_been_posted = any(p.status == "posted" for p in posts)
+    is_queued = any(p.status == "queued" for p in posts)
+
+    return PostingStatusResponse(
+        posts=post_schemas,
+        has_been_posted=has_been_posted,
+        is_queued=is_queued,
     )

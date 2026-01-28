@@ -104,6 +104,8 @@ class GeneratedImageListItem(GeneratedImageRead):
 
     prompt_title: str | None = None
     prompt_flavour_text: str | None = None
+    has_been_posted: bool = False
+    is_queued: bool = False
 
 
 class GeneratedImageListResponse(BaseModel):

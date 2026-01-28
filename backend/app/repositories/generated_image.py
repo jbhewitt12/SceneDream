@@ -70,6 +70,7 @@ class GeneratedImageRepository:
         offset: int | None = None,
         include_prompt: bool = False,
         include_scene: bool = False,
+        include_posting_status: bool = False,
     ) -> list[GeneratedImage]:
         statement = select(GeneratedImage).where(
             GeneratedImage.scene_extraction_id == scene_extraction_id
@@ -90,6 +91,10 @@ class GeneratedImageRepository:
             statement = statement.options(joinedload(GeneratedImage.image_prompt))
         if include_scene:
             statement = statement.options(joinedload(GeneratedImage.scene_extraction))
+        if include_posting_status:
+            statement = statement.options(
+                joinedload(GeneratedImage.social_media_posts)
+            )
 
         if offset is not None:
             statement = statement.offset(offset)
@@ -111,6 +116,7 @@ class GeneratedImageRepository:
         offset: int | None = None,
         include_prompt: bool = False,
         include_scene: bool = False,
+        include_posting_status: bool = False,
     ) -> list[GeneratedImage]:
         statement = select(GeneratedImage).where(GeneratedImage.book_slug == book_slug)
 
@@ -134,6 +140,10 @@ class GeneratedImageRepository:
             statement = statement.options(joinedload(GeneratedImage.image_prompt))
         if include_scene:
             statement = statement.options(joinedload(GeneratedImage.scene_extraction))
+        if include_posting_status:
+            statement = statement.options(
+                joinedload(GeneratedImage.social_media_posts)
+            )
 
         if offset is not None:
             statement = statement.offset(offset)
@@ -154,6 +164,7 @@ class GeneratedImageRepository:
         offset: int | None = None,
         include_prompt: bool = False,
         include_scene: bool = False,
+        include_posting_status: bool = False,
     ) -> list[GeneratedImage]:
         """Return generated images across all books with optional filters."""
 
@@ -179,6 +190,10 @@ class GeneratedImageRepository:
             statement = statement.options(joinedload(GeneratedImage.image_prompt))
         if include_scene:
             statement = statement.options(joinedload(GeneratedImage.scene_extraction))
+        if include_posting_status:
+            statement = statement.options(
+                joinedload(GeneratedImage.social_media_posts)
+            )
 
         if offset is not None:
             statement = statement.offset(offset)
@@ -198,6 +213,7 @@ class GeneratedImageRepository:
         offset: int | None = None,
         include_prompt: bool = False,
         include_scene: bool = False,
+        include_posting_status: bool = False,
     ) -> list[GeneratedImage]:
         statement = select(GeneratedImage).where(
             GeneratedImage.image_prompt_id == image_prompt_id
@@ -219,6 +235,10 @@ class GeneratedImageRepository:
             statement = statement.options(joinedload(GeneratedImage.image_prompt))
         if include_scene:
             statement = statement.options(joinedload(GeneratedImage.scene_extraction))
+        if include_posting_status:
+            statement = statement.options(
+                joinedload(GeneratedImage.social_media_posts)
+            )
 
         if offset is not None:
             statement = statement.offset(offset)

@@ -16,12 +16,14 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiEdit3,
+  FiExternalLink,
   FiRefreshCw,
+  FiShare2,
   FiThumbsDown,
   FiThumbsUp,
 } from "react-icons/fi"
 
-import { GeneratedImageApi } from "@/api/generatedImages"
+import { GeneratedImageApi, getPostingStatus } from "@/api/generatedImages"
 import { updatePromptMetadata } from "@/api/imagePrompts"
 import { MetadataRegenerationModal } from "@/components/GeneratedImages"
 import {
@@ -42,6 +44,7 @@ type GeneratedImageModalProps = {
   onNavigate?: (imageId: string) => void
   onApprovalChange?: (imageId: string, approved: boolean | null) => void
   onCustomRemix?: (imageId: string, customPromptText: string) => Promise<void>
+  onQueueForPosting?: (imageId: string) => Promise<void>
 }
 
 const GeneratedImageModal = ({
@@ -52,6 +55,7 @@ const GeneratedImageModal = ({
   onNavigate,
   onApprovalChange,
   onCustomRemix,
+  onQueueForPosting,
 }: GeneratedImageModalProps) => {
   // Fetch the current image details with context
   const imageQuery = useQuery({
@@ -60,7 +64,15 @@ const GeneratedImageModal = ({
     enabled: isOpen && imageId !== null,
   })
 
+  // Fetch posting status
+  const postingStatusQuery = useQuery({
+    queryKey: ["posting-status", imageId],
+    queryFn: () => getPostingStatus(imageId!),
+    enabled: isOpen && imageId !== null,
+  })
+
   const currentImage = imageQuery.data
+  const postingStatus = postingStatusQuery.data
   const isLoading = imageQuery.isLoading || imageQuery.isFetching
   const promptText = currentImage?.prompt?.prompt_text ?? ""
   const promptTitle = currentImage?.prompt?.title?.trim() || ""
@@ -68,6 +80,7 @@ const GeneratedImageModal = ({
 
   const [editedPromptText, setEditedPromptText] = useState<string>("")
   const [isRemixing, setIsRemixing] = useState(false)
+  const [isQueueing, setIsQueueing] = useState(false)
   const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false)
   const [editedTitle, setEditedTitle] = useState<string>("")
   const [editedFlavour, setEditedFlavour] = useState<string>("")
@@ -247,6 +260,25 @@ const GeneratedImageModal = ({
     }
   }
 
+  const handleQueueForPosting = async () => {
+    if (!onQueueForPosting || !currentImage?.image?.id) return
+
+    setIsQueueing(true)
+    try {
+      await onQueueForPosting(currentImage.image.id)
+      queryClient.invalidateQueries({ queryKey: ["posting-status", imageId] })
+    } catch (error) {
+      console.error("Queue for posting failed", error)
+    } finally {
+      setIsQueueing(false)
+    }
+  }
+
+  const canQueueForPosting =
+    currentImage?.image?.user_approved === true &&
+    !postingStatus?.has_been_posted &&
+    !postingStatus?.is_queued
+
   return (
     <DialogRoot
       open={isOpen}
@@ -408,6 +440,103 @@ const GeneratedImageModal = ({
                         </Text>
                       )}
                     </HStack>
+                  </Box>
+                )}
+
+                {/* Social media sharing */}
+                {onQueueForPosting && (
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm" mb={2}>
+                      Social Media
+                    </Text>
+                    {postingStatus?.posts && postingStatus.posts.length > 0 ? (
+                      <Stack gap={2}>
+                        {postingStatus.posts.map((post) => (
+                          <HStack
+                            key={post.id}
+                            gap={2}
+                            p={2}
+                            borderWidth="1px"
+                            borderRadius="md"
+                            bg={
+                              post.status === "posted"
+                                ? "green.50"
+                                : post.status === "failed"
+                                  ? "red.50"
+                                  : "blue.50"
+                            }
+                            _dark={{
+                              bg:
+                                post.status === "posted"
+                                  ? "green.900"
+                                  : post.status === "failed"
+                                    ? "red.900"
+                                    : "blue.900",
+                            }}
+                          >
+                            <Badge
+                              colorScheme={
+                                post.status === "posted"
+                                  ? "green"
+                                  : post.status === "failed"
+                                    ? "red"
+                                    : "blue"
+                              }
+                            >
+                              {post.service_name}
+                            </Badge>
+                            <Text fontSize="xs" flex="1">
+                              {post.status === "posted"
+                                ? "Posted"
+                                : post.status === "queued"
+                                  ? "Queued"
+                                  : "Failed"}
+                            </Text>
+                            {post.external_url && (
+                              <Button
+                                aria-label="View on Flickr"
+                                size="xs"
+                                variant="ghost"
+                                asChild
+                              >
+                                <a
+                                  href={post.external_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  <FiExternalLink />
+                                </a>
+                              </Button>
+                            )}
+                            {post.status === "failed" && post.error_message && (
+                              <Text fontSize="xs" color="red.500">
+                                {post.error_message}
+                              </Text>
+                            )}
+                          </HStack>
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Text fontSize="xs" color="fg.muted" mb={2}>
+                        {currentImage.image.user_approved !== true
+                          ? "Approve this image to enable sharing"
+                          : "Not yet posted"}
+                      </Text>
+                    )}
+                    {canQueueForPosting && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        colorPalette="blue"
+                        loading={isQueueing}
+                        loadingText="Queueing"
+                        onClick={handleQueueForPosting}
+                        mt={2}
+                      >
+                        <FiShare2 />
+                        Queue for Posting
+                      </Button>
+                    )}
                   </Box>
                 )}
 

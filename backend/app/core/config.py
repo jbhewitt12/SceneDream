@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     FLICKR_API_KEY: str | None = None
     FLICKR_API_SECRET: str | None = None
 
+    # Social media posting settings
+    HOURS_BETWEEN_POSTING_IMAGES: float = 4.0
+    FLICKR_ENABLED: bool = True
+
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
             message = (

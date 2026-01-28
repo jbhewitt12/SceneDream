@@ -29,6 +29,8 @@ export type GeneratedImageRead = {
   updated_at: string
   user_approved: boolean | null
   approval_updated_at: string | null
+  has_been_posted?: boolean
+  is_queued?: boolean
 }
 
 export type ImagePromptSummary = {
@@ -127,6 +129,31 @@ export type GeneratedImageCustomRemixResponse = {
   custom_prompt_id: string
   status: string
   estimated_completion_seconds: number
+}
+
+export type SocialMediaPostRead = {
+  id: string
+  generated_image_id: string
+  service_name: string
+  status: string
+  external_id: string | null
+  external_url: string | null
+  queued_at: string
+  posted_at: string | null
+  last_attempt_at: string | null
+  attempt_count: number
+  error_message: string | null
+}
+
+export type QueueForPostingResponse = {
+  posts: SocialMediaPostRead[]
+  message: string
+}
+
+export type PostingStatusResponse = {
+  posts: SocialMediaPostRead[]
+  has_been_posted: boolean
+  is_queued: boolean
 }
 
 export const GeneratedImageApi = {
@@ -300,4 +327,50 @@ export const customRemixImage = async (
   }
 
   return (await response.json()) as GeneratedImageCustomRemixResponse
+}
+
+export const queueForPosting = async (
+  imageId: string,
+): Promise<QueueForPostingResponse> => {
+  const url = buildUrl(
+    `/api/v1/generated-images/${encodeURIComponent(imageId)}/queue-for-posting`,
+  )
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    const message = body || `${response.status} ${response.statusText}`
+    throw new Error(`Failed to queue for posting: ${message}`)
+  }
+
+  return (await response.json()) as QueueForPostingResponse
+}
+
+export const getPostingStatus = async (
+  imageId: string,
+): Promise<PostingStatusResponse> => {
+  const url = buildUrl(
+    `/api/v1/generated-images/${encodeURIComponent(imageId)}/posting-status`,
+  )
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    const message = body || `${response.status} ${response.statusText}`
+    throw new Error(`Failed to get posting status: ${message}`)
+  }
+
+  return (await response.json()) as PostingStatusResponse
 }
