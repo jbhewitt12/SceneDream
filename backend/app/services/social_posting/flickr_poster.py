@@ -54,9 +54,10 @@ class FlickrPoster:
         service = self._get_service()
 
         # Determine the full path to the image
-        # storage_path is relative to project root (e.g., "img/generated/book/...")
+        # storage_path is the directory relative to project root (e.g., "img/generated/book/chapter-X")
+        # file_name is the actual image file (e.g., "uuid.png")
         project_root = Path(__file__).parents[5]  # Go up from services/social_posting
-        image_path = project_root / image.storage_path
+        image_path = project_root / image.storage_path / image.file_name
 
         if not image_path.exists():
             raise FileNotFoundError(f"Image file not found: {image_path}")
