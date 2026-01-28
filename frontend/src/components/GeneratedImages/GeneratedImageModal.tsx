@@ -5,12 +5,13 @@ import {
   HStack,
   IconButton,
   Image,
+  Input,
   Stack,
   Text,
   Textarea,
 } from "@chakra-ui/react"
-import { useQuery } from "@tanstack/react-query"
-import { useCallback, useEffect, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   FiChevronLeft,
   FiChevronRight,
@@ -21,6 +22,7 @@ import {
 } from "react-icons/fi"
 
 import { GeneratedImageApi } from "@/api/generatedImages"
+import { updatePromptMetadata } from "@/api/imagePrompts"
 import { MetadataRegenerationModal } from "@/components/GeneratedImages"
 import {
   DialogBody,
@@ -67,10 +69,93 @@ const GeneratedImageModal = ({
   const [editedPromptText, setEditedPromptText] = useState<string>("")
   const [isRemixing, setIsRemixing] = useState(false)
   const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false)
+  const [editedTitle, setEditedTitle] = useState<string>("")
+  const [editedFlavour, setEditedFlavour] = useState<string>("")
+  const titleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flavourDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const queryClient = useQueryClient()
+
+  const metadataMutation = useMutation({
+    mutationFn: ({
+      promptId,
+      title,
+      flavourText,
+    }: {
+      promptId: string
+      title?: string | null
+      flavourText?: string | null
+    }) =>
+      updatePromptMetadata(promptId, {
+        title,
+        flavour_text: flavourText,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["generated-image", imageId] })
+      queryClient.invalidateQueries({ queryKey: ["generated-images"] })
+    },
+  })
 
   useEffect(() => {
     setEditedPromptText(promptText)
   }, [promptText])
+
+  useEffect(() => {
+    setEditedTitle(promptTitle)
+  }, [promptTitle])
+
+  useEffect(() => {
+    setEditedFlavour(promptFlavour)
+  }, [promptFlavour])
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current)
+      if (flavourDebounceRef.current) clearTimeout(flavourDebounceRef.current)
+    }
+  }, [])
+
+  const handleTitleChange = useCallback(
+    (value: string) => {
+      setEditedTitle(value)
+      if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current)
+
+      const promptId = currentImage?.prompt?.id
+      if (!promptId) return
+
+      titleDebounceRef.current = setTimeout(() => {
+        const trimmed = value.trim()
+        if (trimmed !== promptTitle) {
+          metadataMutation.mutate({
+            promptId,
+            title: trimmed || null,
+          })
+        }
+      }, 800)
+    },
+    [currentImage?.prompt?.id, promptTitle, metadataMutation],
+  )
+
+  const handleFlavourChange = useCallback(
+    (value: string) => {
+      setEditedFlavour(value)
+      if (flavourDebounceRef.current) clearTimeout(flavourDebounceRef.current)
+
+      const promptId = currentImage?.prompt?.id
+      if (!promptId) return
+
+      flavourDebounceRef.current = setTimeout(() => {
+        const trimmed = value.trim()
+        if (trimmed !== promptFlavour) {
+          metadataMutation.mutate({
+            promptId,
+            flavourText: trimmed || null,
+          })
+        }
+      }, 800)
+    },
+    [currentImage?.prompt?.id, promptFlavour, metadataMutation],
+  )
 
   useEffect(() => {
     if (!isOpen) {
@@ -108,6 +193,16 @@ const GeneratedImageModal = ({
     if (!isOpen) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Skip navigation if user is typing in an input or textarea
+      const target = event.target as HTMLElement
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return
+      }
+
       if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
         event.preventDefault()
         handlePreviousImage()
@@ -322,35 +417,29 @@ const GeneratedImageModal = ({
                     <Text fontWeight="bold" fontSize="sm" mb={2}>
                       Prompt
                     </Text>
-                    {(promptTitle || promptFlavour) && (
-                      <Stack gap={1} mb={promptFlavour ? 3 : 2}>
-                        {promptTitle && (
-                          <Text fontSize="md" fontWeight="semibold">
-                            {promptTitle}
-                          </Text>
-                        )}
-                        {promptFlavour && (
-                          <Text
-                            fontSize="sm"
-                            color="fg.subtle"
-                            fontStyle="italic"
-                          >
-                            {promptFlavour}
-                          </Text>
-                        )}
-                      </Stack>
-                    )}
-                    <HStack
-                      justify="space-between"
-                      align="center"
-                      mt={promptTitle || promptFlavour ? 0 : 1}
-                      mb={2}
-                    >
-                      <Text fontSize="xs" color="fg.muted">
-                        {promptTitle || promptFlavour
-                          ? "Generated metadata"
-                          : "No metadata yet"}
-                      </Text>
+                    <Stack gap={2} mb={3}>
+                      <Input
+                        value={editedTitle}
+                        onChange={(e) => handleTitleChange(e.target.value)}
+                        placeholder="Title"
+                        fontSize="md"
+                        fontWeight="semibold"
+                        variant="flushed"
+                        size="sm"
+                      />
+                      <Textarea
+                        value={editedFlavour}
+                        onChange={(e) => handleFlavourChange(e.target.value)}
+                        placeholder="Description / flavour text"
+                        fontSize="sm"
+                        color="fg.subtle"
+                        fontStyle="italic"
+                        variant="flushed"
+                        resize="none"
+                        minH="60px"
+                      />
+                    </Stack>
+                    <HStack justify="flex-end" align="center" mb={2}>
                       <Button
                         size="xs"
                         variant="ghost"
