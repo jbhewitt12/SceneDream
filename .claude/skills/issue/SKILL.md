@@ -1,3 +1,11 @@
+---
+description: /issue command
+argument-hint: "[feature description]"
+disable-model-invocation: true
+context: fork
+agent: Explore
+---
+
 # /issue command
 
 You are tasked with creating a well-researched, implementable issue file in the `/issues` folder. Your plan must be grounded in a deep understanding of the existing codebase.
@@ -15,7 +23,7 @@ Before creating any plan, you MUST thoroughly explore and understand the relevan
    - `Glob "**/models.py"` - Find data models
 3. **Pattern identification**:
    - Read at least 2 similar features completely before planning
-   - Document the patterns found (e.g., service → repository → model flow)
+   - Document the patterns found (e.g., service -> repository -> model flow)
 
 ### Detailed Exploration Steps:
 1. **Read CLAUDE.md** to understand the project structure, conventions, and architecture
@@ -44,13 +52,33 @@ Before creating any plan, you MUST thoroughly explore and understand the relevan
 - NEVER add any steps that involve manually testing the frontend.
 - Don't include code blocks in the issue file.
 
+## Technical Interview Phase
+
+After exploring the codebase and before writing the issue plan, conduct an in-depth technical interview with the user using the AskUserQuestion tool. This interview should continue until you have a complete understanding of the requirements.
+
+### Interview Guidelines:
+- Ask about **technical implementation details**: architecture choices, data flow, state management, API design
+- Ask about **UI & UX considerations**: user interactions, edge cases, error states, loading states
+- Ask about **concerns and constraints**: performance requirements, security considerations, backwards compatibility
+- Ask about **tradeoffs**: where should we prioritize simplicity vs flexibility, speed vs correctness
+- **Avoid obvious questions** - use your codebase research to ask informed, specific questions
+- Continue asking follow-up questions until you have clarity on all ambiguous aspects
+
+### Example Interview Topics:
+- "Based on the existing service pattern in X, should this new feature follow the same approach or would Y be more appropriate given Z?"
+- "I noticed the codebase uses pattern A for similar features. Are there any reasons to deviate from this?"
+- "What should happen when [edge case] occurs?"
+- "How important is [specific tradeoff] for this feature?"
+
+Do not proceed to writing the issue file until the interview is complete and you have answers to all critical technical questions.
+
 ## Creating the Issue Plan
 
-Only after thoroughly understanding the codebase, follow these steps:
+Only after thoroughly understanding the codebase AND completing the technical interview, follow these steps:
 
 1. **Analyze the request in context**: Break down the user's request into a comprehensive plan that fits naturally with the existing architecture.
 
-2. **Determine the next issue number**: 
+2. **Determine the next issue number**:
    - Search the `/issues` folder for existing markdown files
    - Look for files that start with a number (e.g., "001-", "02-", "123-")
    - Find the highest number and increment it by 1
@@ -113,7 +141,6 @@ Each phase should include:
 - **Phase Name**: Descriptive name and brief description
 - **Goal**: Clear statement of what this phase achieves
 - **Dependencies**: Prerequisites from previous phases or existing system
-- **Time Estimate**: Realistic estimate (typically 30 min - 2 hours per phase)
 - **Success Metrics**: Checklist of measurable outcomes
 - **Tasks**: Specific, actionable items with file paths and references
 
@@ -179,19 +206,19 @@ Each phase should document:
 - Warnings or gotchas for future work
 ```
 
-5. **Provide specific, actionable tasks**: 
+5. **Provide specific, actionable tasks**:
    - Each checklist item should be concrete and achievable
    - Include file paths when creating or modifying files
    - Reference existing patterns to follow
    - Break large tasks into smaller subtasks
    - Include test writing as explicit tasks
    - Avoid vague tasks like "implement the system"
-   
+
    Good examples:
    - "Create PositionAutoSeller service in backend/app/services/polymarket/position_auto_seller.py following the pattern in polymarket_trader.py"
    - "Add WebSocket handler for position updates in backend/app/services/twitter_websocket/handlers.py implementing the AbstractHandler interface"
    - "Create migration for new 'position_alerts' table with columns: id, position_id, alert_type, threshold, created_at"
-   
+
    Bad examples:
    - "Implement automatic selling functionality"
    - "Add database support"
@@ -219,4 +246,4 @@ Each phase should document:
 ## Notes
    - Ensure each Phase is achievable by a single Claude Code instance.
 
-Now, please create an issue file for the following request: {prompt}
+Now, please create an issue file for the following request: $ARGUMENTS
