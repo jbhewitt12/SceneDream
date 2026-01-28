@@ -109,11 +109,12 @@ class FlickrService:
         is_friend: bool = False,
         is_family: bool = False,
         safety_level: int = 1,
-        content_type: int = 1,
+        content_type: int = 3,
         hidden: int = 2,
+        add_ai_tags: bool = True,
     ) -> str:
         """
-        Upload an image to Flickr.
+        Upload an image to Flickr. Defaults optimized for AI-generated content.
 
         Args:
             file_path: Path to the image file
@@ -124,8 +125,9 @@ class FlickrService:
             is_friend: If True, visible to friends
             is_family: If True, visible to family
             safety_level: 1=Safe, 2=Moderate, 3=Restricted
-            content_type: 1=Photo, 2=Screenshot, 3=Other
+            content_type: 1=Photo, 2=Screenshot, 3=Art/Illustration (default 3 for AI)
             hidden: 1=show in global search, 2=hide
+            add_ai_tags: Automatically append AI-related tags (default True)
 
         Returns:
             The new photo ID
@@ -152,15 +154,25 @@ class FlickrService:
             kwargs["title"] = title
         if description:
             kwargs["description"] = description
+
+        # Build final tag list
+        final_tags: list[str] = []
         if tags:
             if isinstance(tags, list):
-                # Quote multi-word tags
-                formatted_tags = " ".join(
-                    f'"{tag}"' if " " in tag else tag for tag in tags
-                )
-                kwargs["tags"] = formatted_tags
+                final_tags.extend(tags)
             else:
-                kwargs["tags"] = tags
+                final_tags.extend(tags.split())
+
+        if add_ai_tags:
+            ai_indicators = ["AI-generated", "AI art", "generative AI"]
+            final_tags.extend(ai_indicators)
+
+        if final_tags:
+            # Quote multi-word tags
+            formatted_tags = " ".join(
+                f'"{tag}"' if " " in tag else tag for tag in final_tags
+            )
+            kwargs["tags"] = formatted_tags
 
         response = self.flickr.upload(**kwargs)
 
