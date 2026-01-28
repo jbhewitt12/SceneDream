@@ -32,7 +32,9 @@ import {
   type GeneratedImageListResponse,
   type GeneratedImageRead,
   type GeneratedImageWithContext,
+  type QueueForPostingResponse,
   customRemixImage,
+  queueForPosting,
   remixImage,
   updateImageApproval,
 } from "@/api/generatedImages"
@@ -540,6 +542,37 @@ function GeneratedImagesGalleryPage() {
     },
   })
 
+  const queueMutation = useMutation<QueueForPostingResponse, Error, string>({
+    mutationFn: (imageId: string) => queueForPosting(imageId),
+    onMutate: async (imageId) => {
+      // Optimistic update - mark as queued in list
+      queryClient.setQueryData(
+        listQueryKey,
+        (old: InfiniteData<GeneratedImageListResponse> | undefined) => {
+          if (!old) return old
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              data: page.data.map((img) =>
+                img.id === imageId ? { ...img, is_queued: true } : img,
+              ),
+            })),
+          }
+        },
+      )
+    },
+    onSuccess: (data) => {
+      showSuccessToast(data.message)
+    },
+    onError: (error: Error) => {
+      showErrorToast(error.message)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: listQueryKey })
+    },
+  })
+
   const handleApprovalChange = useCallback(
     (imageId: string, approved: boolean | null) => {
       approvalMutation.mutate({ imageId, approved })
@@ -556,6 +589,11 @@ function GeneratedImagesGalleryPage() {
     (imageId: string, customPromptText: string) =>
       customRemixMutation.mutateAsync({ imageId, customPromptText }),
     [customRemixMutation],
+  )
+
+  const handleQueueForPosting = useCallback(
+    (imageId: string) => queueMutation.mutateAsync(imageId),
+    [queueMutation],
   )
 
   // Flatten all pages into a single array
@@ -645,6 +683,7 @@ function GeneratedImagesGalleryPage() {
                 onClick={() => handleImageClick(image.id)}
                 onApprovalChange={handleApprovalChange}
                 onRemix={handleRemix}
+                onQueueForPosting={handleQueueForPosting}
               />
             ))}
           </SimpleGrid>
@@ -683,6 +722,7 @@ function GeneratedImagesGalleryPage() {
         onNavigate={handleNavigate}
         onApprovalChange={handleApprovalChange}
         onCustomRemix={handleCustomRemix}
+        onQueueForPosting={handleQueueForPosting}
       />
     </Container>
   )

@@ -8,12 +8,16 @@ import type {
   GeneratedImagesCustomRemixGeneratedImageResponse,
   GeneratedImagesGetGeneratedImageData,
   GeneratedImagesGetGeneratedImageResponse,
+  GeneratedImagesGetImagePostingStatusData,
+  GeneratedImagesGetImagePostingStatusResponse,
   GeneratedImagesListGeneratedImagesData,
   GeneratedImagesListGeneratedImagesForPromptData,
   GeneratedImagesListGeneratedImagesForPromptResponse,
   GeneratedImagesListGeneratedImagesForSceneData,
   GeneratedImagesListGeneratedImagesForSceneResponse,
   GeneratedImagesListGeneratedImagesResponse,
+  GeneratedImagesQueueImageForPostingData,
+  GeneratedImagesQueueImageForPostingResponse,
   GeneratedImagesRemixGeneratedImageData,
   GeneratedImagesRemixGeneratedImageResponse,
   GeneratedImagesStreamGeneratedImageFileData,
@@ -22,12 +26,16 @@ import type {
   GeneratedImagesTriggerImageGenerationResponse,
   GeneratedImagesUpdateImageApprovalData,
   GeneratedImagesUpdateImageApprovalResponse,
+  ImagePromptsGenerateMetadataVariantsData,
+  ImagePromptsGenerateMetadataVariantsResponse,
   ImagePromptsGetImagePromptData,
   ImagePromptsGetImagePromptResponse,
   ImagePromptsListPromptsForBookData,
   ImagePromptsListPromptsForBookResponse,
   ImagePromptsListPromptsForSceneData,
   ImagePromptsListPromptsForSceneResponse,
+  ImagePromptsUpdatePromptMetadataData,
+  ImagePromptsUpdatePromptMetadataResponse,
   ItemsCreateItemData,
   ItemsCreateItemResponse,
   ItemsDeleteItemData,
@@ -359,6 +367,59 @@ export class GeneratedImagesService {
       },
     })
   }
+
+  /**
+   * Queue Image For Posting
+   * Queue an approved image for posting to configured social media services.
+   *
+   * The image must have user_approved=True. If the cooldown period has passed
+   * since the last post, the image will be posted immediately. Otherwise, it
+   * will be added to the queue for later posting.
+   * @param data The data for the request.
+   * @param data.imageId
+   * @returns QueueForPostingResponse Successful Response
+   * @throws ApiError
+   */
+  public static queueImageForPosting(
+    data: GeneratedImagesQueueImageForPostingData,
+  ): CancelablePromise<GeneratedImagesQueueImageForPostingResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/generated-images/{image_id}/queue-for-posting",
+      path: {
+        image_id: data.imageId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Image Posting Status
+   * Get the social media posting status for an image.
+   *
+   * Returns all posting records for the image, along with summary flags
+   * indicating whether it has been posted or is currently queued.
+   * @param data The data for the request.
+   * @param data.imageId
+   * @returns PostingStatusResponse Successful Response
+   * @throws ApiError
+   */
+  public static getImagePostingStatus(
+    data: GeneratedImagesGetImagePostingStatusData,
+  ): CancelablePromise<GeneratedImagesGetImagePostingStatusResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/generated-images/{image_id}/posting-status",
+      path: {
+        image_id: data.imageId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
 }
 
 export class ImagePromptsService {
@@ -459,6 +520,58 @@ export class ImagePromptsService {
       query: {
         include_scene: data.includeScene,
       },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Generate Metadata Variants
+   * Generate multiple metadata variants for an image prompt without persisting them.
+   * @param data The data for the request.
+   * @param data.promptId
+   * @param data.requestBody
+   * @returns MetadataGenerationResponse Successful Response
+   * @throws ApiError
+   */
+  public static generateMetadataVariants(
+    data: ImagePromptsGenerateMetadataVariantsData,
+  ): CancelablePromise<ImagePromptsGenerateMetadataVariantsResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/image-prompts/{prompt_id}/metadata/generate",
+      path: {
+        prompt_id: data.promptId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update Prompt Metadata
+   * Update stored metadata for an image prompt.
+   * @param data The data for the request.
+   * @param data.promptId
+   * @param data.requestBody
+   * @returns ImagePromptRead Successful Response
+   * @throws ApiError
+   */
+  public static updatePromptMetadata(
+    data: ImagePromptsUpdatePromptMetadataData,
+  ): CancelablePromise<ImagePromptsUpdatePromptMetadataResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/image-prompts/{prompt_id}/metadata",
+      path: {
+        prompt_id: data.promptId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },

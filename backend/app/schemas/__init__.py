@@ -37,6 +37,11 @@ from .generated_image import (
     ImagePromptSummary,
     SceneSummary,
 )
+from .social_media_post import (
+    PostingStatusResponse,
+    QueueForPostingResponse,
+    SocialMediaPostRead,
+)
 
 __all__ = [
     "SceneExtractionDateRange",
@@ -68,4 +73,7 @@ __all__ = [
     "GeneratedImageWithContext",
     "ImagePromptSummary",
     "SceneSummary",
+    "PostingStatusResponse",
+    "QueueForPostingResponse",
+    "SocialMediaPostRead",
 ]

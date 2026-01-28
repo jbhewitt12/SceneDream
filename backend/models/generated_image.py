@@ -14,6 +14,7 @@ from sqlmodel import Field, Relationship, SQLModel
 if TYPE_CHECKING:
     from .image_prompt import ImagePrompt
     from .scene_extraction import SceneExtraction
+    from .social_media_post import SocialMediaPost
 
 
 class GeneratedImage(SQLModel, table=True):
@@ -103,4 +104,9 @@ class GeneratedImage(SQLModel, table=True):
     )
     image_prompt: "ImagePrompt" | None = Relationship(
         sa_relationship=relationship("ImagePrompt", back_populates="generated_images")
+    )
+    social_media_posts: list["SocialMediaPost"] = Relationship(
+        sa_relationship=relationship(
+            "SocialMediaPost", back_populates="generated_image"
+        )
     )

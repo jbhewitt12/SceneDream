@@ -73,10 +73,45 @@ export type GeneratedImageGenerateResponse = {
 }
 
 /**
+ * List item representation of a generated image including prompt metadata.
+ */
+export type GeneratedImageListItem = {
+  scene_extraction_id: string
+  image_prompt_id: string
+  book_slug: string
+  chapter_number: number
+  variant_index: number
+  provider: string
+  model: string
+  size: string
+  quality: string
+  style: string
+  aspect_ratio?: string | null
+  response_format: string
+  storage_path: string
+  file_name: string
+  width?: number | null
+  height?: number | null
+  bytes_approx?: number | null
+  checksum_sha256?: string | null
+  request_id?: string | null
+  error?: string | null
+  id: string
+  created_at: string
+  updated_at: string
+  user_approved?: boolean | null
+  approval_updated_at?: string | null
+  prompt_title?: string | null
+  prompt_flavour_text?: string | null
+  has_been_posted?: boolean
+  is_queued?: boolean
+}
+
+/**
  * Collection response for generated images with optional metadata.
  */
 export type GeneratedImageListResponse = {
-  data: Array<GeneratedImageRead>
+  data: Array<GeneratedImageListItem>
   meta?: {
     [key: string]: unknown
   }
@@ -176,6 +211,7 @@ export type ImagePromptRead = {
   prompt_version: string
   variant_index: number
   title: string | null
+  flavour_text: string | null
   prompt_text: string
   negative_prompt: string | null
   style_tags: Array<string> | null
@@ -217,6 +253,8 @@ export type ImagePromptSceneSummary = {
  */
 export type ImagePromptSummary = {
   id: string
+  title?: string | null
+  flavour_text?: string | null
   prompt_text: string
   style_tags?: Array<string> | null
   attributes?: {
@@ -250,9 +288,51 @@ export type Message = {
   message: string
 }
 
+/**
+ * Request payload for generating multiple metadata variants.
+ */
+export type MetadataGenerationRequest = {
+  variants_count?: number
+  overwrite_existing?: boolean
+}
+
+/**
+ * Response payload containing generated metadata variants.
+ */
+export type MetadataGenerationResponse = {
+  prompt_id: string
+  variants: Array<MetadataVariant>
+  count: number
+}
+
+/**
+ * Request payload for updating stored metadata.
+ */
+export type MetadataUpdateRequest = {
+  title?: string | null
+  flavour_text?: string | null
+}
+
+/**
+ * Single metadata variant containing optional title and flavour text.
+ */
+export type MetadataVariant = {
+  title?: string | null
+  flavour_text?: string | null
+}
+
 export type NewPassword = {
   token: string
   new_password: string
+}
+
+/**
+ * Response schema for posting status query.
+ */
+export type PostingStatusResponse = {
+  posts: Array<SocialMediaPostRead>
+  has_been_posted: boolean
+  is_queued: boolean
 }
 
 export type PrivateUserCreate = {
@@ -260,6 +340,14 @@ export type PrivateUserCreate = {
   password: string
   full_name: string
   is_verified?: boolean
+}
+
+/**
+ * Response schema for queue for posting action.
+ */
+export type QueueForPostingResponse = {
+  posts: Array<SocialMediaPostRead>
+  message: string
 }
 
 /**
@@ -405,6 +493,23 @@ export type SceneSummary = {
   refined?: string | null
 }
 
+/**
+ * Detailed representation of a social media post record.
+ */
+export type SocialMediaPostRead = {
+  id: string
+  generated_image_id: string
+  service_name: string
+  status: string
+  external_id?: string | null
+  external_url?: string | null
+  queued_at: string
+  posted_at?: string | null
+  last_attempt_at?: string | null
+  attempt_count: number
+  error_message?: string | null
+}
+
 export type Token = {
   access_token: string
   token_type?: string
@@ -547,6 +652,19 @@ export type GeneratedImagesTriggerImageGenerationData = {
 export type GeneratedImagesTriggerImageGenerationResponse =
   GeneratedImageGenerateResponse
 
+export type GeneratedImagesQueueImageForPostingData = {
+  imageId: string
+}
+
+export type GeneratedImagesQueueImageForPostingResponse =
+  QueueForPostingResponse
+
+export type GeneratedImagesGetImagePostingStatusData = {
+  imageId: string
+}
+
+export type GeneratedImagesGetImagePostingStatusResponse = PostingStatusResponse
+
 export type ImagePromptsListPromptsForSceneData = {
   includeScene?: boolean
   limit?: number
@@ -578,6 +696,21 @@ export type ImagePromptsGetImagePromptData = {
 }
 
 export type ImagePromptsGetImagePromptResponse = ImagePromptRead
+
+export type ImagePromptsGenerateMetadataVariantsData = {
+  promptId: string
+  requestBody?: MetadataGenerationRequest | null
+}
+
+export type ImagePromptsGenerateMetadataVariantsResponse =
+  MetadataGenerationResponse
+
+export type ImagePromptsUpdatePromptMetadataData = {
+  promptId: string
+  requestBody: MetadataUpdateRequest
+}
+
+export type ImagePromptsUpdatePromptMetadataResponse = ImagePromptRead
 
 export type ItemsReadItemsData = {
   limit?: number

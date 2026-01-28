@@ -1,5 +1,8 @@
 import sentry_sdk
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncGenerator
+
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
@@ -7,6 +10,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.api.main import api_router
 from app.core.config import settings
+from app.services.social_posting.scheduler import start_scheduler, stop_scheduler
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -16,10 +20,22 @@ def custom_generate_unique_id(route: APIRoute) -> str:
 if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
     sentry_sdk.init(dsn=str(settings.SENTRY_DSN), enable_tracing=True)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage application lifespan events."""
+    # Startup
+    await start_scheduler()
+    yield
+    # Shutdown
+    await stop_scheduler()
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     generate_unique_id_function=custom_generate_unique_id,
+    lifespan=lifespan,
 )
 
 # Set all CORS enabled origins

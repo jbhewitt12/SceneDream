@@ -10,7 +10,7 @@ import {
   Text,
 } from "@chakra-ui/react"
 
-import { FiShuffle, FiThumbsDown, FiThumbsUp } from "react-icons/fi"
+import { FiShare2, FiShuffle, FiThumbsDown, FiThumbsUp } from "react-icons/fi"
 
 import type { GeneratedImageRead } from "@/api/generatedImages"
 import { buildGeneratedImageUrl } from "./url"
@@ -20,6 +20,7 @@ type GeneratedImageCardProps = {
   onClick: () => void
   onApprovalChange?: (imageId: string, approved: boolean | null) => void
   onRemix?: (imageId: string) => Promise<void> | void
+  onQueueForPosting?: (imageId: string) => Promise<void> | void
 }
 
 const GeneratedImageCard = ({
@@ -27,9 +28,11 @@ const GeneratedImageCard = ({
   onClick,
   onApprovalChange,
   onRemix,
+  onQueueForPosting,
 }: GeneratedImageCardProps) => {
   const [isRemixing, setIsRemixing] = useState(false)
   const [remixCompleted, setRemixCompleted] = useState(false)
+  const [isQueueing, setIsQueueing] = useState(false)
 
   const fullPath = buildGeneratedImageUrl({
     id: image.id,
@@ -99,6 +102,23 @@ const GeneratedImageCard = ({
             justifyContent="center"
           >
             <Badge colorScheme="red">Error</Badge>
+          </Box>
+        )}
+        {image.has_been_posted && (
+          <Box
+            position="absolute"
+            top={2}
+            right={2}
+            bg="blue.500"
+            color="white"
+            borderRadius="full"
+            p={1.5}
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            title="Posted to social media"
+          >
+            <FiShare2 size={12} />
           </Box>
         )}
       </Box>
@@ -195,6 +215,39 @@ const GeneratedImageCard = ({
                 </IconButton>
               </>
             )}
+
+            {onQueueForPosting &&
+              image.user_approved === true &&
+              !image.has_been_posted && (
+                <IconButton
+                  aria-label="Queue for posting"
+                  size="sm"
+                  variant={image.is_queued ? "solid" : "outline"}
+                  colorPalette="blue"
+                  loading={isQueueing}
+                  disabled={isQueueing || image.is_queued}
+                  title={
+                    image.is_queued
+                      ? "Already queued for posting"
+                      : "Queue for social media posting"
+                  }
+                  onClick={async (event) => {
+                    event.stopPropagation()
+                    if (!onQueueForPosting || isQueueing || image.is_queued) {
+                      return
+                    }
+
+                    try {
+                      setIsQueueing(true)
+                      await Promise.resolve(onQueueForPosting(image.id))
+                    } finally {
+                      setIsQueueing(false)
+                    }
+                  }}
+                >
+                  <FiShare2 />
+                </IconButton>
+              )}
           </HStack>
         )}
       </Stack>

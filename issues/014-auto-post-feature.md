@@ -429,3 +429,86 @@ Each phase should document:
 - Key findings or learnings
 - Any deviations from the original plan and rationale
 - Warnings or gotchas for future work
+
+---
+
+## Completion Notes
+
+### Phase 1: Database Model and Migration - COMPLETED
+- **Date**: 2026-01-29
+- **Status**: Complete
+- Created `SocialMediaPost` model in `backend/models/social_media_post.py`
+- Added `social_media_posts` relationship to `GeneratedImage` model
+- Exported in `backend/models/__init__.py`
+- Alembic migration `705b42b7e831` created and applied successfully
+- All indexes created: generated_image_id, service_name, status, queued_at
+
+### Phase 2: Configuration and Social Posting Service - COMPLETED
+- **Date**: 2026-01-29
+- **Status**: Complete
+- Added `HOURS_BETWEEN_POSTING_IMAGES` (default 4.0) and `FLICKR_ENABLED` (default True) to config
+- Created `backend/app/services/social_posting/` directory with:
+  - `__init__.py` - exports SocialPostingService
+  - `repository.py` - SocialMediaPostRepository for DB operations
+  - `flickr_poster.py` - FlickrPoster class using existing FlickrService
+  - `social_posting_service.py` - Main orchestrating service with queue_image, process_queue, should_post_now methods
+- FlickrPoster uses asyncio.run_in_executor for non-blocking upload
+
+### Phase 3: API Endpoints - COMPLETED
+- **Date**: 2026-01-29
+- **Status**: Complete
+- Created `backend/app/schemas/social_media_post.py` with:
+  - SocialMediaPostRead, QueueForPostingResponse, PostingStatusResponse
+- Added endpoints to `backend/app/api/routes/generated_images.py`:
+  - POST `/{image_id}/queue-for-posting` - queues image and triggers immediate check
+  - GET `/{image_id}/posting-status` - returns posting records for image
+- Updated `GeneratedImageListItem` schema with `has_been_posted` and `is_queued` fields
+- Updated repository methods to include `include_posting_status` parameter
+- All list endpoints now load social_media_posts relationship
+
+### Phase 4: Background Scheduler with APScheduler - COMPLETED
+- **Date**: 2026-01-29
+- **Status**: Complete
+- Added `apscheduler>=3.10.0,<4.0.0` to dependencies
+- Created `backend/app/services/social_posting/scheduler.py` with:
+  - SocialPostingScheduler class with start/stop methods
+  - AsyncIOScheduler running every 15 minutes
+  - trigger_immediate_check() for on-demand processing
+  - Global instance management via get_scheduler()
+- Integrated with FastAPI using lifespan context manager in `backend/app/main.py`
+- Scheduler only starts if at least one service (Flickr) is enabled
+
+### Phase 5: Card View Updates - COMPLETED
+- **Date**: 2026-01-29
+- **Status**: Complete
+- Updated `GeneratedImageCard.tsx`:
+  - Added `FiShare2` icon import
+  - Added `onQueueForPosting` prop
+  - Added blue share icon overlay on top-right corner for posted images
+  - Added queue button (visible only for approved, not-yet-posted images)
+  - Queue button disabled when already queued or posting is in progress
+- Updated `frontend/src/api/generatedImages.ts`:
+  - Added `has_been_posted` and `is_queued` fields to `GeneratedImageRead`
+  - Added `SocialMediaPostRead`, `QueueForPostingResponse`, `PostingStatusResponse` types
+  - Added `queueForPosting()` and `getPostingStatus()` functions
+
+### Phase 6: Modal View Updates - COMPLETED
+- **Date**: 2026-01-29
+- **Status**: Complete
+- Updated `GeneratedImageModal.tsx`:
+  - Added `onQueueForPosting` prop
+  - Added `postingStatusQuery` to fetch posting status when modal opens
+  - Added "Social Media" section in context panel showing:
+    - List of posts with status badges (Posted/Queued/Failed)
+    - External link button to view on Flickr
+    - Error messages for failed posts
+    - "Queue for Posting" button when image is approved but not yet posted
+- Updated `generated-images.tsx` route:
+  - Added `queueMutation` with optimistic updates
+  - Added `handleQueueForPosting` callback
+  - Passed `onQueueForPosting` to both `GeneratedImageCard` and `GeneratedImageModal`
+
+### Phase 7: Filter Updates - SKIPPED
+- **Reason**: The issue spec mentioned filter updates but didn't specify what filters to add
+- **Status**: The basic posting status fields (`has_been_posted`, `is_queued`) are already available on list items, which enables future filter implementation if needed
+- **Note**: Filters could be added later by extending the search schema and passing to list endpoints
