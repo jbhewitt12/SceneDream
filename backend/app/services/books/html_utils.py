@@ -228,6 +228,13 @@ def is_front_matter(
     name_tokens = extract_name_tokens(source_name)
     if not name_tokens:
         return False
+
+    # Files matching "index_split_NNN" pattern are Calibre-split content files,
+    # not actual book indexes. Don't treat them as front matter.
+    stem = Path(source_name).stem.lower()
+    if re.match(r"^index_split_\d+$", stem):
+        return False
+
     return bool(set(tokens) & name_tokens)
 
 

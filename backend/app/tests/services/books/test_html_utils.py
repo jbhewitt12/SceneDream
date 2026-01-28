@@ -53,6 +53,15 @@ def test_is_front_matter_detects_common_tokens() -> None:
     assert not is_front_matter("chapter003.xhtml")
 
 
+def test_is_front_matter_allows_calibre_split_files() -> None:
+    """Calibre-split files like index_split_NNN should not be treated as front matter."""
+    assert not is_front_matter("index_split_000.html")
+    assert not is_front_matter("index_split_123.html")
+    # Actual index files should still be detected
+    assert is_front_matter("index.xhtml")
+    assert is_front_matter("book_index.html")
+
+
 def test_extract_name_tokens_filters_generics() -> None:
     tokens = extract_name_tokens("Text_Section_HTML.xhtml")
     assert tokens == set()
