@@ -101,7 +101,10 @@ class GeneratedImageRepository:
         if limit is not None:
             statement = statement.limit(limit)
 
-        return list(self._session.exec(statement))
+        result = self._session.exec(statement)
+        if include_posting_status:
+            result = result.unique()
+        return list(result)
 
     def list_for_book(
         self,
@@ -150,7 +153,10 @@ class GeneratedImageRepository:
         if limit is not None:
             statement = statement.limit(limit)
 
-        return list(self._session.exec(statement))
+        result = self._session.exec(statement)
+        if include_posting_status:
+            result = result.unique()
+        return list(result)
 
     def list_all(
         self,
@@ -200,7 +206,10 @@ class GeneratedImageRepository:
         if limit is not None:
             statement = statement.limit(limit)
 
-        return list(self._session.exec(statement))
+        result = self._session.exec(statement)
+        if include_posting_status:
+            result = result.unique()
+        return list(result)
 
     def list_for_prompt(
         self,
@@ -245,7 +254,10 @@ class GeneratedImageRepository:
         if limit is not None:
             statement = statement.limit(limit)
 
-        return list(self._session.exec(statement))
+        result = self._session.exec(statement)
+        if include_posting_status:
+            result = result.unique()
+        return list(result)
 
     def get_latest_for_prompt(
         self,
