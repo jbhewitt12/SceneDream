@@ -47,7 +47,7 @@ class FlickrService:
         self.flickr = flickrapi.FlickrAPI(
             self.api_key,
             self.api_secret,
-            format="parsed-json",
+            format="etree",
         )
         self._load_or_authenticate()
 
@@ -176,10 +176,15 @@ class FlickrService:
 
         response = self.flickr.upload(**kwargs)
 
-        if response.get("stat") != "ok":
-            raise flickrapi.FlickrError(f"Upload failed: {response}")
+        # Response is an XML Element with etree format
+        if response.attrib.get("stat") != "ok":
+            raise flickrapi.FlickrError(f"Upload failed: {response.attrib}")
 
-        photo_id = response["photoid"]["_content"]
+        photoid_elem = response.find("photoid")
+        if photoid_elem is None or photoid_elem.text is None:
+            raise flickrapi.FlickrError("Upload response missing photo ID")
+
+        photo_id = photoid_elem.text
         print(f"Upload successful! Photo ID: {photo_id}")
         print(f"View at: https://www.flickr.com/photos/{photo_id}")
         return str(photo_id)
@@ -197,18 +202,18 @@ class FlickrService:
         """
         try:
             response = self.flickr.photos.getSizes(photo_id=photo_id)
-            if response.get("stat") == "ok":
-                sizes = response.get("sizes", {}).get("size", [])
-                size_map = {"s": "Small", "m": "Medium", "b": "Large", "o": "Original"}
-                target_label = size_map.get(size, "Large")
-                for s in sizes:
-                    if s.get("label") == target_label:
-                        source: str | None = s.get("source")
-                        return source
-                # Fallback to largest available
-                if sizes:
-                    source = sizes[-1].get("source")
-                    return source
+            if response.attrib.get("stat") == "ok":
+                sizes_elem = response.find("sizes")
+                if sizes_elem is not None:
+                    size_map = {"s": "Small", "m": "Medium", "b": "Large", "o": "Original"}
+                    target_label = size_map.get(size, "Large")
+                    sizes = list(sizes_elem.iter("size"))
+                    for s in sizes:
+                        if s.attrib.get("label") == target_label:
+                            return s.attrib.get("source")
+                    # Fallback to largest available
+                    if sizes:
+                        return sizes[-1].attrib.get("source")
         except flickrapi.FlickrError as e:
             print(f"Error getting photo URL: {e}")
         return None
@@ -225,7 +230,7 @@ class FlickrService:
         """
         try:
             response = self.flickr.photos.delete(photo_id=photo_id)
-            return bool(response.get("stat") == "ok")
+            return bool(response.attrib.get("stat") == "ok")
         except flickrapi.FlickrError as e:
             print(f"Error deleting photo: {e}")
             return False
@@ -251,7 +256,7 @@ class FlickrService:
             if description is not None:
                 kwargs["description"] = description
             response = self.flickr.photos.setMeta(**kwargs)
-            return bool(response.get("stat") == "ok")
+            return bool(response.attrib.get("stat") == "ok")
         except flickrapi.FlickrError as e:
             print(f"Error setting photo meta: {e}")
             return False
@@ -273,7 +278,7 @@ class FlickrService:
             else:
                 tags_str = tags
             response = self.flickr.photos.addTags(photo_id=photo_id, tags=tags_str)
-            return bool(response.get("stat") == "ok")
+            return bool(response.attrib.get("stat") == "ok")
         except flickrapi.FlickrError as e:
             print(f"Error adding tags: {e}")
             return False
