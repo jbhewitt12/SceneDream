@@ -14,6 +14,7 @@ from models.social_media_post import SocialMediaPost
 
 from .flickr_poster import FlickrPoster
 from .repository import SocialMediaPostRepository
+from .x_poster import XPoster
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class SocialPostingService:
         self._session = session
         self._repo = SocialMediaPostRepository(session)
         self._flickr_poster: FlickrPoster | None = None
+        self._x_poster: XPoster | None = None
 
     @staticmethod
     def get_enabled_services() -> list[str]:
@@ -32,6 +34,8 @@ class SocialPostingService:
         services: list[str] = []
         if settings.FLICKR_ENABLED and settings.FLICKR_API_KEY:
             services.append("flickr")
+        if settings.X_ENABLED and settings.X_CONSUMER_KEY:
+            services.append("x")
         return services
 
     def queue_image(self, image_id: UUID) -> list[SocialMediaPost]:
@@ -145,6 +149,12 @@ class SocialPostingService:
                 photo_id, photo_url = await self._flickr_poster.post(image, prompt)
                 post.external_id = photo_id
                 post.external_url = photo_url
+            elif post.service_name == "x":
+                if self._x_poster is None:
+                    self._x_poster = XPoster()
+                tweet_id, tweet_url = await self._x_poster.post(image, prompt)
+                post.external_id = tweet_id
+                post.external_url = tweet_url
             else:
                 raise ValueError(f"Unknown service: {post.service_name}")
 
