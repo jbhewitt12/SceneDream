@@ -26,7 +26,7 @@ class PromptMetadataConfig:
     """Runtime configuration for metadata generation."""
 
     model_vendor: str = "google"
-    model_name: str = "gemini-2.5-pro"
+    model_name: str = "gemini-3-flash-preview"
     temperature: float = 0.85
     retry_attempts: int = 2
     retry_backoff_seconds: float = 1.0
