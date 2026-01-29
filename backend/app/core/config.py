@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     FLICKR_API_SECRET: str | None = None
 
     # Social media posting settings
-    HOURS_BETWEEN_POSTING_IMAGES: float = 4.0
+    HOURS_BETWEEN_POSTING_IMAGES: float = 0.0167
     FLICKR_ENABLED: bool = True
 
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
