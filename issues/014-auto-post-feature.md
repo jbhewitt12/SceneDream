@@ -512,3 +512,100 @@ Each phase should document:
 - **Reason**: The issue spec mentioned filter updates but didn't specify what filters to add
 - **Status**: The basic posting status fields (`has_been_posted`, `is_queued`) are already available on list items, which enables future filter implementation if needed
 - **Note**: Filters could be added later by extending the search schema and passing to list endpoints
+
+---
+
+## Phase 8: X (Twitter) API Integration
+
+**Goal**: Add X (Twitter) as a second social media service so queued images post to both Flickr and X
+
+**Dependencies**: Phases 1-6 complete (existing social posting infrastructure)
+
+**Success Metrics**:
+- [ ] `tweepy` library added to dependencies
+- [ ] X credentials configured in settings
+- [ ] `XPoster` class created and integrated with `SocialPostingService`
+- [ ] When "Queue for Posting" is clicked, image queues for both Flickr and X
+- [ ] Posts include title + AI disclosure hashtags (#AIgenerated #AIart)
+- [ ] Alt text set to image title for accessibility
+- [ ] Manual verification: image successfully posts to X
+
+**Tasks**:
+
+1. **Add tweepy dependency**:
+   - Add `tweepy>=4.14.0` to `backend/pyproject.toml` dependencies
+   - Run `uv sync` to install
+
+2. **Add X credentials to config** (`backend/app/core/config.py`):
+   ```python
+   # X (Twitter) API settings
+   X_ENABLED: bool = False  # Default to False until credentials are configured
+   X_CONSUMER_KEY: str | None = None
+   X_CONSUMER_SECRET: str | None = None
+   X_ACCESS_TOKEN: str | None = None
+   X_ACCESS_TOKEN_SECRET: str | None = None
+   ```
+
+3. **Create `backend/app/services/social_posting/x_poster.py`**:
+   - `XPoster` class following same pattern as `FlickrPoster`:
+     - Lazy initialization of tweepy Client and API in `_get_client()` / `_get_api()`
+     - `async def post(image: GeneratedImage, prompt: ImagePrompt) -> tuple[str, str]`
+       - Upload media using v1.1 API (`api.media_upload()`)
+       - Set alt text to `prompt.title` using `api.create_media_metadata()`
+       - Create tweet using v2 API (`client.create_tweet()`)
+       - Tweet text: `"{title} #AIgenerated #AIart"` (title from prompt)
+       - Return `(tweet_id, tweet_url)`
+     - Use `asyncio.run_in_executor()` for non-blocking calls (same as FlickrPoster)
+     - Handle `tweepy.TweepyException` errors gracefully
+
+4. **Update `SocialPostingService`** (`backend/app/services/social_posting/social_posting_service.py`):
+   - Import `XPoster`
+   - Add `_x_poster: XPoster | None = None` instance variable
+   - Update `get_enabled_services()`:
+     ```python
+     if settings.X_ENABLED and settings.X_CONSUMER_KEY:
+         services.append("x")
+     ```
+   - Update `_post_to_service()` to handle `service_name == "x"`:
+     ```python
+     elif post.service_name == "x":
+         if self._x_poster is None:
+             self._x_poster = XPoster()
+         tweet_id, tweet_url = await self._x_poster.post(image, prompt)
+         post.external_id = tweet_id
+         post.external_url = tweet_url
+     ```
+
+5. **Update frontend modal** (`frontend/src/components/GeneratedImages/GeneratedImageModal.tsx`):
+   - Add X icon or "X" label for x.com posts in the Social Media section
+   - The existing code should work automatically since it iterates over all `postingStatusQuery.data` items
+
+6. **Add environment variables to `.env`**:
+   ```
+   X_ENABLED=true
+   X_CONSUMER_KEY=your_consumer_key
+   X_CONSUMER_SECRET=your_consumer_secret
+   X_ACCESS_TOKEN=your_access_token
+   X_ACCESS_TOKEN_SECRET=your_access_token_secret
+   ```
+
+7. **Manual verification**:
+   - Set `HOURS_BETWEEN_POSTING_IMAGES=0` (no cooldown) for testing
+   - Approve an image in the UI
+   - Click "Queue for Posting"
+   - Verify two `SocialMediaPost` records created (one for flickr, one for x)
+   - Verify image posts to X with title and hashtags
+   - Verify alt text is set on the X post
+   - Check modal shows both Flickr and X posting status
+
+**Technical Notes**:
+- X API uses OAuth 1.0a User Context for media upload (v1.1) and tweet creation (v2)
+- Media upload is v1.1 only (v2 doesn't support media upload yet)
+- Tweet creation uses v2 for better API stability
+- 280 character limit for tweets; title + hashtags should fit comfortably
+- Image size limit: <5MB for simple upload (DALL-E images are typically within this)
+
+**Error Handling**:
+- Authentication errors: Log and mark post as failed
+- Rate limit errors: Mark as failed, will retry on next scheduler run
+- Network errors: Mark as failed with error message

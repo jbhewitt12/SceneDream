@@ -79,10 +79,11 @@ class SocialPostingScheduler:
     @staticmethod
     def _get_enabled_services() -> list[str]:
         """Return list of enabled social media services."""
-        services: list[str] = []
-        if settings.FLICKR_ENABLED and settings.FLICKR_API_KEY:
-            services.append("flickr")
-        return services
+        from app.services.social_posting.social_posting_service import (
+            SocialPostingService,
+        )
+
+        return SocialPostingService.get_enabled_services()
 
     async def _process_queue_job(self) -> None:
         """
@@ -113,11 +114,19 @@ class SocialPostingScheduler:
 
                 result = await service.process_queue()
                 if result:
-                    logger.info(
-                        "Queue processing completed: posted image %s to %s",
-                        result.generated_image_id,
-                        result.service_name,
-                    )
+                    if result.status == "posted":
+                        logger.info(
+                            "Queue processing completed: posted image %s to %s",
+                            result.generated_image_id,
+                            result.service_name,
+                        )
+                    else:
+                        logger.warning(
+                            "Queue processing completed: %s image %s to %s",
+                            result.status,
+                            result.generated_image_id,
+                            result.service_name,
+                        )
                 else:
                     logger.debug("No posts in queue to process")
 

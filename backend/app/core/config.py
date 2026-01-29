@@ -102,6 +102,13 @@ class Settings(BaseSettings):
     HOURS_BETWEEN_POSTING_IMAGES: float = 0.0167
     FLICKR_ENABLED: bool = True
 
+    # X (Twitter) API settings
+    X_ENABLED: bool = False
+    X_CONSUMER_KEY: str | None = None
+    X_CONSUMER_SECRET: str | None = None
+    X_ACCESS_TOKEN: str | None = None
+    X_ACCESS_TOKEN_SECRET: str | None = None
+
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
             message = (
