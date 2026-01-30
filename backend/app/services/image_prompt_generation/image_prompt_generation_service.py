@@ -21,7 +21,7 @@ from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
 from app.services.books import BookContentService
-from app.services.langchain import gemini_api
+from app.services.langchain import openai_api
 from app.services.prompt_metadata import (
     PromptMetadataConfig,
     PromptMetadataGenerationService,
@@ -1095,7 +1095,7 @@ class ImagePromptGenerationService:
         for attempt in range(1, attempts + 1):
             start_time = time.perf_counter()
             try:
-                response = await gemini_api.json_output(
+                response = await openai_api.json_output(
                     prompt=prompt,
                     system_instruction=system_instruction or self._system_instruction,
                     model=config.model_name,

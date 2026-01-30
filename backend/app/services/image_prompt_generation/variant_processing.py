@@ -82,9 +82,18 @@ class VariantProcessor:
     ) -> list[VariantModel]:
         if isinstance(payload, dict) and "variants" in payload:
             payload = payload["variants"]
+        # Handle case where LLM returns a single variant object instead of an array
+        if isinstance(payload, dict) and "prompt_text" in payload:
+            payload = [payload]
+        # Handle case where LLM returns variants as dict with numeric string keys
+        if isinstance(payload, dict) and all(
+            key.isdigit() for key in payload.keys()
+        ):
+            sorted_keys = sorted(payload.keys(), key=int)
+            payload = [payload[key] for key in sorted_keys]
         if not isinstance(payload, Sequence):
             raise ImagePromptGenerationServiceError(
-                "Gemini response must be a JSON array of variant objects"
+                "LLM response must be a JSON array of variant objects"
             )
         variants = []
         for index, item in enumerate(payload):
