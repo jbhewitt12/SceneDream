@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     FLICKR_API_SECRET: str | None = None
 
     # Social media posting settings
-    HOURS_BETWEEN_POSTING_IMAGES: float = 0.0167
+    HOURS_BETWEEN_POSTING_IMAGES: float
     FLICKR_ENABLED: bool = True
 
     # X (Twitter) API settings

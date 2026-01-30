@@ -16,8 +16,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Run the queue processor every 15 minutes
-SCHEDULER_INTERVAL_MINUTES = 15
+# Maximum interval between queue checks (cap)
+MAX_SCHEDULER_INTERVAL_MINUTES = 15
+
+
+def _get_scheduler_interval_minutes() -> float:
+    """
+    Calculate scheduler interval based on posting cooldown.
+
+    The scheduler checks at least as often as the posting interval,
+    but never more than every 15 minutes.
+    """
+    posting_interval_minutes = settings.HOURS_BETWEEN_POSTING_IMAGES * 60
+    return min(posting_interval_minutes, MAX_SCHEDULER_INTERVAL_MINUTES)
 
 
 class SocialPostingScheduler:
@@ -50,10 +61,12 @@ class SocialPostingScheduler:
             )
             return
 
+        interval_minutes = _get_scheduler_interval_minutes()
+
         self._scheduler = AsyncIOScheduler()
         self._scheduler.add_job(
             self._process_queue_job,
-            trigger=IntervalTrigger(minutes=SCHEDULER_INTERVAL_MINUTES),
+            trigger=IntervalTrigger(minutes=interval_minutes),
             id="social_posting_queue_processor",
             name="Social Media Posting Queue Processor",
             replace_existing=True,
@@ -61,10 +74,13 @@ class SocialPostingScheduler:
         self._scheduler.start()
         self._started = True
         logger.info(
-            "Social posting scheduler started (interval: %d minutes, enabled services: %s)",
-            SCHEDULER_INTERVAL_MINUTES,
+            "Social posting scheduler started (interval: %.1f minutes, enabled services: %s)",
+            interval_minutes,
             ", ".join(enabled_services),
         )
+
+        # Schedule an immediate check on startup
+        asyncio.create_task(self._startup_check())
 
     def stop(self) -> None:
         """Stop the background scheduler gracefully."""
@@ -84,6 +100,11 @@ class SocialPostingScheduler:
         )
 
         return SocialPostingService.get_enabled_services()
+
+    async def _startup_check(self) -> None:
+        """Run an immediate queue check on startup."""
+        logger.info("Running startup queue check")
+        await self._process_queue_job()
 
     async def _process_queue_job(self) -> None:
         """
