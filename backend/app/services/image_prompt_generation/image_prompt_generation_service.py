@@ -105,7 +105,6 @@ OTHER_STYLES: tuple[str, ...] = (
     "Futurism",
     "glitch art",
     "Gothic art",
-    "gouache",
     "Greco-Roman art",
     "ink wash painting",
     "isometric art",
