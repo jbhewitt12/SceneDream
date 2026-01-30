@@ -7,14 +7,21 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import flickrapi  # type: ignore[import-untyped]
+
 from app.core.config import settings
 from app.services.flickr.flickr_service import FlickrService
+from app.services.social_posting.exceptions import RateLimitError
 
 if TYPE_CHECKING:
     from models.generated_image import GeneratedImage
     from models.image_prompt import ImagePrompt
 
 logger = logging.getLogger(__name__)
+
+# Flickr error codes that indicate rate limiting
+FLICKR_RATE_LIMIT_CODES = {"99", "105"}  # 99 = User not allowed, 105 = Service unavailable
+FLICKR_RATE_LIMIT_KEYWORDS = ["rate limit", "too many", "throttl"]
 
 
 class FlickrPoster:
@@ -62,6 +69,7 @@ class FlickrPoster:
 
         Raises:
             FileNotFoundError: If the image file doesn't exist
+            RateLimitError: If the API returns a rate limit error
             RuntimeError: If the upload fails
         """
         service = self._get_service()
@@ -79,18 +87,27 @@ class FlickrPoster:
 
         logger.info(f"Uploading image to Flickr: {title}")
 
-        # Run the synchronous upload in a thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        photo_id = await loop.run_in_executor(
-            None,
-            lambda: service.upload(
-                file_path=image_path,
-                title=title,
-                # FlickrService.upload() already has AI-optimized defaults:
-                # - content_type=3 (Art/Illustration)
-                # - add_ai_tags=True (adds "AI-generated", "AI art", "generative AI")
-            ),
-        )
+        try:
+            # Run the synchronous upload in a thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            photo_id = await loop.run_in_executor(
+                None,
+                lambda: service.upload(
+                    file_path=image_path,
+                    title=title,
+                    # FlickrService.upload() already has AI-optimized defaults:
+                    # - content_type=3 (Art/Illustration)
+                    # - add_ai_tags=True (adds "AI-generated", "AI art", "generative AI")
+                ),
+            )
+        except flickrapi.FlickrError as e:
+            error_str = str(e).lower()
+            error_code = getattr(e, "code", None)
+            if error_code in FLICKR_RATE_LIMIT_CODES or any(
+                keyword in error_str for keyword in FLICKR_RATE_LIMIT_KEYWORDS
+            ):
+                raise RateLimitError(f"Flickr API rate limit: {e}") from e
+            raise
 
         # Construct the Flickr URL with user NSID
         user_nsid = self._get_user_nsid()

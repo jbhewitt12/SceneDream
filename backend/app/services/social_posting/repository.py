@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
+from app.core.config import settings
 from models.social_media_post import SocialMediaPost
 
 if TYPE_CHECKING:
@@ -48,10 +50,24 @@ class SocialMediaPostRepository:
         return self._session.exec(statement).first()
 
     def get_oldest_queued(self) -> SocialMediaPost | None:
-        """Get the oldest queued post that hasn't been posted yet."""
+        """
+        Get the oldest queued post that hasn't been posted yet.
+
+        Excludes posts that were recently attempted (e.g., rate-limited)
+        and are still within the cooldown period.
+        """
+        cooldown = timedelta(hours=settings.HOURS_BETWEEN_POSTING_IMAGES)
+        cooldown_threshold = datetime.now(timezone.utc) - cooldown
+
         statement = (
             select(SocialMediaPost)
             .where(SocialMediaPost.status == "queued")
+            .where(
+                or_(
+                    SocialMediaPost.last_attempt_at.is_(None),
+                    SocialMediaPost.last_attempt_at <= cooldown_threshold,
+                )
+            )
             .order_by(SocialMediaPost.queued_at.asc())
             .limit(1)
         )

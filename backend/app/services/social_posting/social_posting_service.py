@@ -12,6 +12,7 @@ from app.core.config import settings
 from models.generated_image import GeneratedImage
 from models.social_media_post import SocialMediaPost
 
+from .exceptions import RateLimitError
 from .flickr_poster import FlickrPoster
 from .repository import SocialMediaPostRepository
 from .x_poster import XPoster
@@ -164,6 +165,15 @@ class SocialPostingService:
             logger.info(
                 f"Successfully posted image {image.id} to {post.service_name}: "
                 f"{post.external_url}"
+            )
+
+        except RateLimitError as e:
+            # Keep as queued so it will be retried after cooldown
+            # last_attempt_at is already set, so get_oldest_queued will skip it
+            post.error_message = f"Rate limited: {e}"
+            logger.warning(
+                f"Rate limited posting image {post.generated_image_id} to "
+                f"{post.service_name}: {e}. Will retry after cooldown."
             )
 
         except Exception as e:
