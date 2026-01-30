@@ -22,6 +22,7 @@ class FlickrPoster:
 
     def __init__(self) -> None:
         self._service: FlickrService | None = None
+        self._user_nsid: str | None = None
 
     def _get_service(self) -> FlickrService:
         """Lazy initialization of FlickrService to avoid auth issues at import time."""
@@ -33,6 +34,18 @@ class FlickrPoster:
                 settings.FLICKR_API_SECRET,
             )
         return self._service
+
+    def _get_user_nsid(self) -> str:
+        """Get the authenticated user's NSID for URL construction."""
+        if self._user_nsid is None:
+            service = self._get_service()
+            response = service.flickr.test.login()
+            user_elem = response.find("user")
+            if user_elem is not None:
+                self._user_nsid = user_elem.attrib.get("id", "")
+            else:
+                self._user_nsid = ""
+        return self._user_nsid
 
     async def post(
         self, image: GeneratedImage, prompt: ImagePrompt
@@ -79,9 +92,9 @@ class FlickrPoster:
             ),
         )
 
-        # Construct the Flickr URL
-        # Note: FlickrService outputs user-specific URL but we'll use the simpler format
-        photo_url = f"https://www.flickr.com/photos/{photo_id}"
+        # Construct the Flickr URL with user NSID
+        user_nsid = self._get_user_nsid()
+        photo_url = f"https://www.flickr.com/photos/{user_nsid}/{photo_id}"
 
         logger.info(f"Successfully uploaded to Flickr: {photo_url}")
 
