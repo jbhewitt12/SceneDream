@@ -20,7 +20,7 @@ class ImagePromptGenerationConfig:
     """Runtime configuration for image prompt generation."""
 
     model_vendor: str = "google"
-    model_name: str = "gemini-2.5-pro"
+    model_name: str = "gemini-3-flash-preview"
     prompt_version: str = "image-prompts-v3"
     variants_count: int = 4
     use_ranking_recommendation: bool = True
