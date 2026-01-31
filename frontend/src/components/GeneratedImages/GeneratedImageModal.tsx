@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import {
   FiChevronLeft,
   FiChevronRight,
+  FiCrop,
   FiEdit3,
   FiExternalLink,
   FiRefreshCw,
@@ -23,9 +24,16 @@ import {
   FiThumbsUp,
 } from "react-icons/fi"
 
-import { GeneratedImageApi, getPostingStatus } from "@/api/generatedImages"
+import {
+  GeneratedImageApi,
+  cropImage,
+  getPostingStatus,
+} from "@/api/generatedImages"
 import { updatePromptMetadata } from "@/api/imagePrompts"
-import { MetadataRegenerationModal } from "@/components/GeneratedImages"
+import {
+  CropModal,
+  MetadataRegenerationModal,
+} from "@/components/GeneratedImages"
 import {
   DialogBody,
   DialogCloseTrigger,
@@ -34,6 +42,7 @@ import {
   DialogRoot,
   DialogTitle,
 } from "@/components/ui/dialog"
+import useCustomToast from "@/hooks/useCustomToast"
 import { buildGeneratedImageUrl } from "./url"
 
 type GeneratedImageModalProps = {
@@ -82,11 +91,14 @@ const GeneratedImageModal = ({
   const [isRemixing, setIsRemixing] = useState(false)
   const [isQueueing, setIsQueueing] = useState(false)
   const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false)
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false)
+  const [imageCacheBuster, setImageCacheBuster] = useState<number>(0)
   const [editedTitle, setEditedTitle] = useState<string>("")
   const [editedFlavour, setEditedFlavour] = useState<string>("")
   const titleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flavourDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const queryClient = useQueryClient()
+  const { showErrorToast, showSuccessToast } = useCustomToast()
 
   const metadataMutation = useMutation({
     mutationFn: ({
@@ -173,6 +185,7 @@ const GeneratedImageModal = ({
   useEffect(() => {
     if (!isOpen) {
       setIsMetadataModalOpen(false)
+      setIsCropModalOpen(false)
     }
   }, [isOpen])
 
@@ -229,13 +242,16 @@ const GeneratedImageModal = ({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [isOpen, handlePreviousImage, handleNextImage])
 
-  const fullPath = currentImage
+  const baseImageUrl = currentImage
     ? buildGeneratedImageUrl({
         id: currentImage.image.id,
         storagePath: currentImage.image.storage_path,
         fileName: currentImage.image.file_name,
       })
     : ""
+  const fullPath = imageCacheBuster
+    ? `${baseImageUrl}?t=${imageCacheBuster}`
+    : baseImageUrl
   const hasMultipleImages = allImages.length > 1
   const currentIndex = imageId
     ? allImages.findIndex((img) => img.id === imageId)
@@ -278,6 +294,35 @@ const GeneratedImageModal = ({
     currentImage?.image?.user_approved === true &&
     !postingStatus?.has_been_posted &&
     !postingStatus?.is_queued
+
+  const handleCropComplete = useCallback(
+    async (croppedBlob: Blob) => {
+      if (!currentImage?.image?.id) return
+
+      try {
+        await cropImage(currentImage.image.id, croppedBlob)
+        setIsCropModalOpen(false)
+        setImageCacheBuster(Date.now())
+        queryClient.invalidateQueries({
+          queryKey: ["generated-image", imageId],
+        })
+        queryClient.invalidateQueries({ queryKey: ["generated-images"] })
+        showSuccessToast("Image cropped successfully")
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to crop image"
+        showErrorToast(message)
+        throw error
+      }
+    },
+    [
+      currentImage?.image?.id,
+      imageId,
+      queryClient,
+      showErrorToast,
+      showSuccessToast,
+    ],
+  )
 
   return (
     <DialogRoot
@@ -361,9 +406,19 @@ const GeneratedImageModal = ({
               >
                 {/* Image metadata */}
                 <Box>
-                  <Text fontWeight="bold" fontSize="sm" mb={2}>
-                    Image Details
-                  </Text>
+                  <HStack justify="space-between" align="center" mb={2}>
+                    <Text fontWeight="bold" fontSize="sm">
+                      Image Details
+                    </Text>
+                    <IconButton
+                      aria-label="Crop image"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsCropModalOpen(true)}
+                    >
+                      <FiCrop />
+                    </IconButton>
+                  </HStack>
                   <HStack gap={2} wrap="wrap" mb={2}>
                     <Badge>{currentImage.image.size}</Badge>
                     <Badge colorScheme="purple">
@@ -649,6 +704,12 @@ const GeneratedImageModal = ({
           onClose={() => setIsMetadataModalOpen(false)}
           promptId={currentImage?.prompt?.id ?? null}
           imageId={currentImage?.image?.id ?? null}
+        />
+        <CropModal
+          isOpen={isCropModalOpen}
+          onClose={() => setIsCropModalOpen(false)}
+          imageSrc={baseImageUrl}
+          onCropComplete={handleCropComplete}
         />
       </DialogContent>
     </DialogRoot>

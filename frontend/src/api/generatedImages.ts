@@ -374,3 +374,23 @@ export const getPostingStatus = async (
 
   return (await response.json()) as PostingStatusResponse
 }
+
+export const cropImage = async (imageId: string, file: Blob): Promise<void> => {
+  const url = buildUrl(
+    `/api/v1/generated-images/${encodeURIComponent(imageId)}/crop`,
+  )
+
+  const formData = new FormData()
+  formData.append("file", file)
+
+  const response = await fetch(url, {
+    method: "PUT",
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    const message = body || `${response.status} ${response.statusText}`
+    throw new Error(`Failed to crop image: ${message}`)
+  }
+}
