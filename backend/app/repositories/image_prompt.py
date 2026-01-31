@@ -108,7 +108,7 @@ class ImagePromptRepository:
     def list_for_book(
         self,
         *,
-        book_slug: str,
+        book_slug: str | None = None,
         model_name: str | None = None,
         prompt_version: str | None = None,
         style_tag: str | None = None,
@@ -118,14 +118,12 @@ class ImagePromptRepository:
         offset: int | None = None,
         include_scene: bool = False,
     ) -> list[ImagePrompt]:
-        statement = (
-            select(ImagePrompt)
-            .join(
-                SceneExtraction,
-                ImagePrompt.scene_extraction_id == SceneExtraction.id,
-            )
-            .where(SceneExtraction.book_slug == book_slug)
+        statement = select(ImagePrompt).join(
+            SceneExtraction,
+            ImagePrompt.scene_extraction_id == SceneExtraction.id,
         )
+        if book_slug:
+            statement = statement.where(SceneExtraction.book_slug == book_slug)
         if model_name:
             statement = statement.where(ImagePrompt.model_name == model_name)
         if prompt_version:

@@ -41,7 +41,7 @@ export type SceneRankingListResponse = {
 }
 
 export type SceneRankingTopParams = {
-  book_slug: string
+  book_slug?: string
   limit?: number
   model_name?: string | null
   prompt_version?: string | null

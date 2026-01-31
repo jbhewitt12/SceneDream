@@ -30,7 +30,7 @@ import {
 } from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback, useMemo } from "react"
 import {
   FiAlertTriangle,
   FiFilter,
@@ -199,7 +199,7 @@ const SceneRankingFilters = ({
               }}
             >
               <option value="">
-                {availableBooks.length ? "Select a book" : "No books"}
+                {availableBooks.length ? "All Books" : "No books"}
               </option>
               {availableBooks.map((slug) => (
                 <option key={slug} value={slug}>
@@ -657,20 +657,7 @@ function SceneRankingsPage() {
     queryFn: SceneExtractionService.filters,
   })
 
-  useEffect(() => {
-    const books = filtersQuery.data?.books ?? []
-    if (!search.book_slug && books.length) {
-      const defaultBook = books[0]
-      if (defaultBook) {
-        updateSearch({ book_slug: defaultBook })
-      }
-    }
-  }, [filtersQuery.data, search.book_slug, updateSearch])
-
-  const cleanSearch = useMemo<SceneRankingTopParams | undefined>(() => {
-    if (!search.book_slug) {
-      return undefined
-    }
+  const cleanSearch = useMemo<SceneRankingTopParams>(() => {
     const includeScene = search.include_scene ?? true
     return {
       book_slug: search.book_slug,
@@ -684,9 +671,7 @@ function SceneRankingsPage() {
 
   const listQuery = useQuery({
     queryKey: ["scene-rankings", "top", cleanSearch],
-    queryFn: () =>
-      SceneRankingService.listTop(cleanSearch as SceneRankingTopParams),
-    enabled: Boolean(cleanSearch),
+    queryFn: () => SceneRankingService.listTop(cleanSearch),
     placeholderData: (prev) => prev,
   })
 
@@ -700,7 +685,6 @@ function SceneRankingsPage() {
 
   const totalMeta = listQuery.data?.meta?.count
   const total = typeof totalMeta === "number" ? totalMeta : rankings.length
-  const appliedBook = cleanSearch?.book_slug
 
   return (
     <Container maxW="7xl" py={8}>
@@ -733,11 +717,7 @@ function SceneRankingsPage() {
           isFetching={filtersQuery.isFetching}
         />
         <Separator />
-        {!appliedBook ? (
-          <Flex align="center" justify="center" minH="200px">
-            <Spinner size="lg" />
-          </Flex>
-        ) : listQuery.isError ? (
+        {listQuery.isError ? (
           <AlertRoot status="error" borderRadius="md">
             <AlertIndicator />
             <AlertContent>

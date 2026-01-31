@@ -17,7 +17,7 @@ import {
 } from "@chakra-ui/react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback } from "react"
 import { FiFilter, FiRefreshCcw, FiZap } from "react-icons/fi"
 import { z } from "zod"
 
@@ -148,7 +148,7 @@ const PromptGalleryFilters = ({
                 })
               }
             >
-              <option value="">Select book</option>
+              <option value="">All Books</option>
               {books.map((book) => (
                 <option key={book} value={book}>
                   {book}
@@ -234,13 +234,11 @@ const PromptGalleryFilters = ({
 }
 
 const usePromptGalleryData = (search: PromptGallerySearch) => {
-  const queryEnabled = Boolean(search.book_slug)
-
   const query = useQuery({
-    queryKey: ["image-prompts", "book", search],
+    queryKey: ["image-prompts", "list", search],
     queryFn: () =>
-      ImagePromptApi.listForBook({
-        bookSlug: search.book_slug!,
+      ImagePromptApi.list({
+        bookSlug: search.book_slug ?? undefined,
         chapterNumber: search.chapter_number ?? undefined,
         modelName: search.model_name ?? undefined,
         promptVersion: search.prompt_version ?? undefined,
@@ -249,7 +247,6 @@ const usePromptGalleryData = (search: PromptGallerySearch) => {
         pageSize: search.page_size,
         includeScene: search.include_scene,
       }),
-    enabled: queryEnabled,
     placeholderData: (previousData) => previousData,
     keepPreviousData: true,
   })
@@ -271,17 +268,6 @@ function PromptGalleryPage() {
     queryKey: ["scene-extractions", "filters"],
     queryFn: () => SceneExtractionService.filters(),
   })
-
-  useEffect(() => {
-    if (!search.book_slug && filtersQuery.data?.books?.length) {
-      navigate({
-        search: (prev) => ({
-          ...prev,
-          book_slug: filtersQuery.data?.books?.[0],
-        }),
-      })
-    }
-  }, [filtersQuery.data?.books, navigate, search.book_slug])
 
   const handleSearchUpdate = useCallback(
     (updates: Partial<PromptGallerySearch>) => {
@@ -362,13 +348,7 @@ function PromptGalleryPage() {
           onPageChange: (page) => handleSearchUpdate({ page }),
         }}
         height="calc(100vh - 320px)"
-        emptyState={
-          search.book_slug ? (
-            <Text>No prompts yet for this selection.</Text>
-          ) : (
-            <Text>Select a book to browse prompts.</Text>
-          )
-        }
+        emptyState={<Text>No prompts yet for this selection.</Text>}
       />
     </Container>
   )
