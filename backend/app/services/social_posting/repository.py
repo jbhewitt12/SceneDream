@@ -49,12 +49,17 @@ class SocialMediaPostRepository:
         )
         return self._session.exec(statement).first()
 
-    def get_oldest_queued(self) -> SocialMediaPost | None:
+    def get_oldest_queued(
+        self, service_name: str | None = None
+    ) -> SocialMediaPost | None:
         """
         Get the oldest queued post that hasn't been posted yet.
 
         Excludes posts that were recently attempted (e.g., rate-limited)
         and are still within the cooldown period.
+
+        Args:
+            service_name: Optionally filter by service name (e.g., "x", "flickr")
         """
         cooldown = timedelta(hours=settings.HOURS_BETWEEN_POSTING_IMAGES)
         cooldown_threshold = datetime.now(timezone.utc) - cooldown
@@ -68,24 +73,25 @@ class SocialMediaPostRepository:
                     SocialMediaPost.last_attempt_at <= cooldown_threshold,
                 )
             )
-            .order_by(SocialMediaPost.queued_at.asc())
-            .limit(1)
         )
+        if service_name is not None:
+            statement = statement.where(SocialMediaPost.service_name == service_name)
+        statement = statement.order_by(SocialMediaPost.queued_at.asc()).limit(1)
         return self._session.exec(statement).first()
 
-    def get_last_successful_post(self) -> SocialMediaPost | None:
-        """Get the most recently posted item."""
-        statement = (
-            select(SocialMediaPost)
-            .where(SocialMediaPost.status == "posted")
-            .order_by(SocialMediaPost.posted_at.desc())
-            .limit(1)
-        )
+    def get_last_successful_post(
+        self, service_name: str | None = None
+    ) -> SocialMediaPost | None:
+        """Get the most recently posted item, optionally filtered by service."""
+        statement = select(SocialMediaPost).where(SocialMediaPost.status == "posted")
+        if service_name is not None:
+            statement = statement.where(SocialMediaPost.service_name == service_name)
+        statement = statement.order_by(SocialMediaPost.posted_at.desc()).limit(1)
         return self._session.exec(statement).first()
 
-    def get_last_posted_at(self) -> datetime | None:
-        """Get the timestamp of the most recent successful post."""
-        post = self.get_last_successful_post()
+    def get_last_posted_at(self, service_name: str | None = None) -> datetime | None:
+        """Get the timestamp of the most recent successful post, optionally by service."""
+        post = self.get_last_successful_post(service_name)
         return post.posted_at if post else None
 
     def create(

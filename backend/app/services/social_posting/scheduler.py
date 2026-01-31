@@ -1,23 +1,34 @@
-"""Background scheduler for social media posting queue processing."""
+"""Background scheduler for social media posting queue processing.
+
+This scheduler is designed to be robust to system sleep/wake cycles:
+- Jobs are persisted in the database, not in memory
+- On startup, an immediate queue check processes any overdue posts
+- APScheduler is configured with misfire_grace_time to handle missed firings
+- The startup check logs queue state for visibility
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
-from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
+from apscheduler.schedulers.asyncio import (
+    AsyncIOScheduler,  # type: ignore[import-untyped]
+)
+from apscheduler.triggers.interval import (
+    IntervalTrigger,  # type: ignore[import-untyped]
+)
 
 from app.core.config import settings
-
-if TYPE_CHECKING:
-    from sqlmodel import Session
 
 logger = logging.getLogger(__name__)
 
 # Maximum interval between queue checks (cap)
 MAX_SCHEDULER_INTERVAL_MINUTES = 15
+
+# Grace period for missed job executions (e.g., during laptop sleep)
+# Jobs missed within this window will still fire when the system wakes
+MISFIRE_GRACE_TIME_SECONDS = 60 * 60 * 24  # 24 hours
 
 
 def _get_scheduler_interval_minutes() -> float:
@@ -56,9 +67,7 @@ class SocialPostingScheduler:
         # Check if any posting services are enabled
         enabled_services = self._get_enabled_services()
         if not enabled_services:
-            logger.info(
-                "No social media services enabled, scheduler will not start"
-            )
+            logger.info("No social media services enabled, scheduler will not start")
             return
 
         interval_minutes = _get_scheduler_interval_minutes()
@@ -70,6 +79,10 @@ class SocialPostingScheduler:
             id="social_posting_queue_processor",
             name="Social Media Posting Queue Processor",
             replace_existing=True,
+            # Handle missed executions during laptop sleep
+            misfire_grace_time=MISFIRE_GRACE_TIME_SECONDS,
+            # Combine multiple missed firings into one execution
+            coalesce=True,
         )
         self._scheduler.start()
         self._started = True
@@ -79,8 +92,8 @@ class SocialPostingScheduler:
             ", ".join(enabled_services),
         )
 
-        # Schedule an immediate check on startup
-        asyncio.create_task(self._startup_check())
+        # Schedule an immediate startup check with error handling
+        asyncio.create_task(self._safe_startup_check())
 
     def stop(self) -> None:
         """Stop the background scheduler gracefully."""
@@ -101,17 +114,73 @@ class SocialPostingScheduler:
 
         return SocialPostingService.get_enabled_services()
 
-    async def _startup_check(self) -> None:
-        """Run an immediate queue check on startup."""
-        logger.info("Running startup queue check")
-        await self._process_queue_job()
+    async def _safe_startup_check(self) -> None:
+        """
+        Wrapper for startup check with error handling.
 
-    async def _process_queue_job(self) -> None:
+        This ensures that startup check failures don't go unnoticed and
+        don't prevent the scheduler from running.
+        """
+        try:
+            await self._startup_check()
+        except Exception:
+            logger.exception(
+                "Startup queue check failed - scheduler will continue running "
+                "and retry on next interval"
+            )
+
+    async def _startup_check(self) -> None:
+        """
+        Run an immediate queue check on startup with queue status logging.
+
+        This provides visibility into the queue state when the server starts,
+        which is especially useful after laptop sleep/wake cycles.
+        """
+        from sqlmodel import Session
+
+        from app.core.db import engine
+        from app.services.social_posting.repository import SocialMediaPostRepository
+
+        # Log queue state for visibility
+        try:
+            with Session(engine) as session:
+                repo = SocialMediaPostRepository(session)
+                queued_count = repo.count_queued()
+                if queued_count > 0:
+                    logger.info("Startup: %d posts queued for processing", queued_count)
+                else:
+                    logger.info("Startup: no posts in queue")
+
+                # Log last post time per service
+                for service in self._get_enabled_services():
+                    last_posted = repo.get_last_posted_at(service)
+                    if last_posted:
+                        logger.info(
+                            "Startup: last %s post was at %s",
+                            service,
+                            last_posted.isoformat(),
+                        )
+        except Exception:
+            logger.exception("Failed to log queue state on startup")
+
+        # Process the queue - on startup, process all eligible services at once
+        # to catch up after laptop sleep
+        logger.info("Running startup queue check")
+        await self._process_queue_job(process_all_services=True)
+
+    async def _process_queue_job(self, *, process_all_services: bool = False) -> None:
         """
         Job that processes the posting queue.
 
         This is called periodically by APScheduler. It creates a new database
         session and delegates to SocialPostingService.process_queue().
+
+        The service handles per-service cooldowns internally, so we don't
+        need to check cooldown here.
+
+        Args:
+            process_all_services: If True, process one post for each eligible
+                service. Used on startup to recover from laptop sleep.
         """
         from sqlmodel import Session
 
@@ -126,14 +195,10 @@ class SocialPostingScheduler:
             with Session(engine) as session:
                 service = SocialPostingService(session)
 
-                if not service.should_post_now():
-                    logger.debug(
-                        "Cooldown period not passed (%.1f hours between posts)",
-                        settings.HOURS_BETWEEN_POSTING_IMAGES,
-                    )
-                    return
-
-                result = await service.process_queue()
+                # process_queue() handles per-service cooldowns internally
+                result = await service.process_queue(
+                    process_all_services=process_all_services
+                )
                 if result:
                     if result.status == "posted":
                         logger.info(
