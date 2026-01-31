@@ -40,7 +40,9 @@ const CropModal = ({
   const imgRef = useRef<HTMLImageElement>(null)
 
   // Add cache-busting to bypass cached responses without CORS headers
-  const cacheBustedSrc = `${imageSrc}${imageSrc.includes("?") ? "&" : "?"}t=${Date.now()}`
+  const cacheBustedSrc = `${imageSrc}${
+    imageSrc.includes("?") ? "&" : "?"
+  }t=${Date.now()}`
 
   const generatePreview = useCallback((pixelCrop: PixelCrop) => {
     if (!imgRef.current || !pixelCrop.width || !pixelCrop.height) {
