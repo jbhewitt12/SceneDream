@@ -44,32 +44,42 @@ def _serialize_ranking(
 def list_top_scene_rankings(
     *,
     session: SessionDep,
-    book_slug: str = Query(..., min_length=1),
+    book_slug: str | None = Query(None, min_length=1),
     limit: int = Query(_DEFAULT_TOP_LIMIT, ge=1, le=_MAX_TOP_LIMIT),
     model_name: str | None = Query(None, min_length=1),
     prompt_version: str | None = Query(None, min_length=1),
     weight_config_hash: str | None = Query(None, min_length=1),
     include_scene: bool = Query(False),
 ) -> SceneRankingListResponse:
-    """Return the highest ranked scenes for a book with optional filters."""
+    """Return the highest ranked scenes, optionally filtered by book."""
 
     repository = SceneRankingRepository(session)
-    rankings = repository.list_top_rankings_for_book(
-        book_slug=book_slug,
-        limit=limit,
-        model_name=model_name,
-        prompt_version=prompt_version,
-        weight_config_hash=weight_config_hash,
-        include_scene=include_scene,
-    )
+    if book_slug:
+        rankings = repository.list_top_rankings_for_book(
+            book_slug=book_slug,
+            limit=limit,
+            model_name=model_name,
+            prompt_version=prompt_version,
+            weight_config_hash=weight_config_hash,
+            include_scene=include_scene,
+        )
+    else:
+        rankings = repository.list_top_rankings(
+            limit=limit,
+            model_name=model_name,
+            prompt_version=prompt_version,
+            weight_config_hash=weight_config_hash,
+            include_scene=include_scene,
+        )
     data = [
         _serialize_ranking(record, include_scene=include_scene) for record in rankings
     ]
     meta: dict[str, object] = {
-        "book_slug": book_slug,
         "limit": limit,
         "count": len(data),
     }
+    if book_slug:
+        meta["book_slug"] = book_slug
     if model_name:
         meta["model_name"] = model_name
     if prompt_version:

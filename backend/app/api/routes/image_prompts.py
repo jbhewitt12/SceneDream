@@ -88,6 +88,57 @@ def list_prompts_for_scene(
     return ImagePromptListResponse(data=data, meta=meta)
 
 
+@router.get("/list", response_model=ImagePromptListResponse)
+def list_prompts(
+    *,
+    session: SessionDep,
+    book_slug: str | None = Query(None, min_length=1),
+    chapter_number: int | None = Query(None, ge=0),
+    model_name: str | None = Query(None, min_length=1),
+    prompt_version: str | None = Query(None, min_length=1),
+    style_tag: str | None = Query(None, min_length=1),
+    newest_first: bool = Query(True),
+    limit: int = Query(_DEFAULT_BOOK_LIMIT, ge=1, le=_MAX_BOOK_LIMIT),
+    offset: int | None = Query(None, ge=0),
+    include_scene: bool = Query(False),
+) -> ImagePromptListResponse:
+    """List prompts with optional filters, across all books or a specific book."""
+
+    repository = ImagePromptRepository(session)
+    prompts = repository.list_for_book(
+        book_slug=book_slug,
+        model_name=model_name,
+        prompt_version=prompt_version,
+        style_tag=style_tag,
+        chapter_number=chapter_number,
+        newest_first=newest_first,
+        limit=limit,
+        offset=offset,
+        include_scene=include_scene,
+    )
+    data = [
+        _serialize_prompt(record, include_scene=include_scene) for record in prompts
+    ]
+    meta: dict[str, object] = {
+        "count": len(data),
+        "newest_first": newest_first,
+        "limit": limit,
+    }
+    if book_slug:
+        meta["book_slug"] = book_slug
+    if offset is not None:
+        meta["offset"] = offset
+    if chapter_number is not None:
+        meta["chapter_number"] = chapter_number
+    if model_name:
+        meta["model_name"] = model_name
+    if prompt_version:
+        meta["prompt_version"] = prompt_version
+    if style_tag:
+        meta["style_tag"] = style_tag
+    return ImagePromptListResponse(data=data, meta=meta)
+
+
 @router.get("/book/{book_slug}", response_model=ImagePromptListResponse)
 def list_prompts_for_book(
     *,
