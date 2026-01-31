@@ -8,8 +8,9 @@ import mimetypes
 import re
 import shutil
 import time
+from collections.abc import Coroutine
 from pathlib import Path
-from typing import Any, Coroutine, cast
+from typing import Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
@@ -28,8 +29,8 @@ from app.schemas import (
     GeneratedImageCustomRemixResponse,
     GeneratedImageGenerateRequest,
     GeneratedImageGenerateResponse,
-    GeneratedImageListResponse,
     GeneratedImageListItem,
+    GeneratedImageListResponse,
     GeneratedImageRead,
     GeneratedImageRemixRequest,
     GeneratedImageRemixResponse,
@@ -345,6 +346,7 @@ def list_generated_images(
     provider: str | None = Query(None, min_length=1),
     model: str | None = Query(None, min_length=1),
     approval: bool | None = Query(None),
+    posted: bool | None = Query(None),
     newest_first: bool = Query(True),
     limit: int = Query(_DEFAULT_LIST_LIMIT, ge=1, le=_MAX_LIST_LIMIT),
     offset: int | None = Query(None, ge=0),
@@ -386,6 +388,7 @@ def list_generated_images(
             provider=provider,
             model=model,
             approval=approval,
+            posted=posted,
             newest_first=newest_first,
             limit=limit,
             offset=offset,
@@ -399,6 +402,7 @@ def list_generated_images(
             provider=provider,
             model=model,
             approval=approval,
+            posted=posted,
             newest_first=newest_first,
             limit=limit,
             offset=offset,
@@ -428,6 +432,8 @@ def list_generated_images(
         meta["model"] = model
     if approval is not None:
         meta["approval"] = approval
+    if posted is not None:
+        meta["posted"] = posted
 
     return GeneratedImageListResponse(data=data, meta=meta)
 
