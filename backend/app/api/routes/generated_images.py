@@ -530,6 +530,7 @@ def stream_generated_image_file(
         path=file_path,
         media_type=media_type or "application/octet-stream",
         filename=file_path.name,
+        headers={"Access-Control-Allow-Origin": "*"},
     )
 
 

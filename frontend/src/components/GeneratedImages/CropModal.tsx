@@ -39,6 +39,9 @@ const CropModal = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const imgRef = useRef<HTMLImageElement>(null)
 
+  // Add cache-busting to bypass cached responses without CORS headers
+  const cacheBustedSrc = `${imageSrc}${imageSrc.includes("?") ? "&" : "?"}t=${Date.now()}`
+
   const generatePreview = useCallback((pixelCrop: PixelCrop) => {
     if (!imgRef.current || !pixelCrop.width || !pixelCrop.height) {
       setPreviewUrl(null)
@@ -180,8 +183,9 @@ const CropModal = ({
               >
                 <img
                   ref={imgRef}
-                  src={imageSrc}
+                  src={cacheBustedSrc}
                   alt="Crop selection area"
+                  crossOrigin="anonymous"
                   style={{ maxHeight: "70vh", maxWidth: "100%" }}
                 />
               </ReactCrop>
