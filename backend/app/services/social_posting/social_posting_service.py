@@ -93,9 +93,14 @@ class SocialPostingService:
 
         return created_posts
 
-    def should_post_now(self) -> bool:
-        """Check if enough time has passed since the last post."""
-        last_posted_at = self._repo.get_last_posted_at()
+    def should_post_now(self, service_name: str | None = None) -> bool:
+        """Check if enough time has passed since the last post.
+
+        Args:
+            service_name: If provided, check cooldown for this specific service.
+                          If None, check global cooldown across all services.
+        """
+        last_posted_at = self._repo.get_last_posted_at(service_name)
         if last_posted_at is None:
             return True
 
@@ -103,23 +108,56 @@ class SocialPostingService:
         next_allowed = last_posted_at + cooldown
         return datetime.now(timezone.utc) >= next_allowed
 
-    async def process_queue(self) -> SocialMediaPost | None:
+    async def process_queue(
+        self, *, process_all_services: bool = False
+    ) -> SocialMediaPost | None:
         """
-        Process the oldest queued post if the cooldown has passed.
+        Process queued posts if the per-service cooldown has passed.
+
+        Checks each enabled service independently, allowing one service to post
+        even if another service recently posted.
+
+        Args:
+            process_all_services: If True, process one post for EACH eligible
+                service (useful for startup recovery after laptop sleep).
+                If False (default), process only the first eligible post.
 
         Returns:
-            The processed SocialMediaPost if one was posted, None otherwise
+            The last processed SocialMediaPost if any were posted, None otherwise
         """
-        if not self.should_post_now():
-            logger.debug("Cooldown period not yet passed, skipping queue processing")
-            return None
+        enabled_services = self.get_enabled_services()
+        last_result: SocialMediaPost | None = None
 
-        post = self._repo.get_oldest_queued()
-        if not post:
-            logger.debug("No queued posts to process")
-            return None
+        for service_name in enabled_services:
+            # Check per-service cooldown
+            if not self.should_post_now(service_name):
+                logger.debug(
+                    "Cooldown not passed for service %s, checking next",
+                    service_name,
+                )
+                continue
 
-        return await self._post_to_service(post)
+            # Get oldest queued post for this service
+            post = self._repo.get_oldest_queued(service_name)
+            if not post:
+                logger.debug("No queued posts for service %s", service_name)
+                continue
+
+            logger.info(
+                "Processing queued post %s for service %s",
+                post.id,
+                service_name,
+            )
+            result = await self._post_to_service(post)
+            last_result = result
+
+            # Unless we want to process all services, return after first post
+            if not process_all_services:
+                return result
+
+        if last_result is None:
+            logger.debug("No posts eligible for processing across any service")
+        return last_result
 
     async def _post_to_service(self, post: SocialMediaPost) -> SocialMediaPost:
         """
