@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Coroutine, cast
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.exc import OperationalError
 
@@ -918,3 +918,47 @@ def get_image_posting_status(
         has_been_posted=has_been_posted,
         is_queued=is_queued,
     )
+
+
+@router.put("/{image_id}/crop")
+async def crop_image(
+    *,
+    session: SessionDep,
+    image_id: UUID,
+    file: UploadFile = File(...),
+) -> dict[str, str]:
+    """
+    Replace a generated image with a cropped version.
+
+    Accepts a multipart file upload containing the cropped image data
+    and overwrites the original file on disk.
+    """
+    repository = GeneratedImageRepository(session)
+    image = repository.get(image_id)
+    if image is None:
+        raise HTTPException(status_code=404, detail="Generated image not found")
+
+    file_path = _resolve_image_file(image.storage_path, image.file_name)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(
+            status_code=400,
+            detail="Original image file not found on disk",
+        )
+
+    try:
+        contents = await file.read()
+        file_path.write_bytes(contents)
+        logger.info(
+            "Cropped image %s written to %s (%d bytes)",
+            image_id,
+            file_path,
+            len(contents),
+        )
+    except Exception as exc:
+        logger.exception("Failed to write cropped image %s: %s", image_id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to save cropped image",
+        ) from exc
+
+    return {"status": "success"}
