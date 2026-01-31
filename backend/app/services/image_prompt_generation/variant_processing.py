@@ -86,9 +86,7 @@ class VariantProcessor:
         if isinstance(payload, dict) and "prompt_text" in payload:
             payload = [payload]
         # Handle case where LLM returns variants as dict with numeric string keys
-        if isinstance(payload, dict) and all(
-            key.isdigit() for key in payload.keys()
-        ):
+        if isinstance(payload, dict) and all(key.isdigit() for key in payload.keys()):
             sorted_keys = sorted(payload.keys(), key=int)
             payload = [payload[key] for key in sorted_keys]
         if not isinstance(payload, Sequence):
@@ -170,7 +168,7 @@ class VariantProcessor:
         """Create transient ImagePrompt models from in-memory records."""
         prompts: list[ImagePrompt] = []
         for record in records:
-            prompts.append(ImagePrompt(**record))  # type: ignore[arg-type]
+            prompts.append(ImagePrompt(**record))
         return prompts
 
     def _enforce_variant_constraints(self, variant: VariantModel) -> list[str]:

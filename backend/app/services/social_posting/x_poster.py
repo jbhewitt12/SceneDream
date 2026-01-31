@@ -19,7 +19,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # HTTP status codes and error messages that indicate rate limiting
-RATE_LIMIT_STATUS_CODES = {429, 402}  # 429 = Too Many Requests, 402 = Payment Required (credits exhausted)
+RATE_LIMIT_STATUS_CODES = {
+    429,
+    402,
+}  # 429 = Too Many Requests, 402 = Payment Required (credits exhausted)
 RATE_LIMIT_ERROR_KEYWORDS = ["rate limit", "too many requests", "credits"]
 
 
@@ -126,7 +129,9 @@ class XPoster:
                 getattr(e, "response", None)
                 and getattr(e.response, "status_code", None) in RATE_LIMIT_STATUS_CODES
             ) or any(keyword in error_str for keyword in RATE_LIMIT_ERROR_KEYWORDS):
-                raise RateLimitError(f"X API rate limit or credits exhausted: {e}") from e
+                raise RateLimitError(
+                    f"X API rate limit or credits exhausted: {e}"
+                ) from e
             raise
 
     async def post(self, image: GeneratedImage, prompt: ImagePrompt) -> tuple[str, str]:

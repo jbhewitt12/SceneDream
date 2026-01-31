@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import Optional
 
 from app.services.scene_extraction.scene_extraction import (
     EXCESSION_EPUB_PATH,
@@ -70,7 +69,7 @@ def _handle_full(enable_refinement: bool) -> dict[str, object]:
     return extractor.extract_book(EXCESSION_EPUB_PATH)
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 

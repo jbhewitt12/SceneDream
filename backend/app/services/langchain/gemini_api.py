@@ -16,15 +16,14 @@
 
 import logging
 import os
-from typing import Any, Dict, List, Type
+from typing import Any
 
 # Suppress gRPC verbose logging (used by Google libraries)
 os.environ["GRPC_VERBOSITY"] = "NONE"
 
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.tools import tool  # For defining tools if needed
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
 from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
 
@@ -34,7 +33,7 @@ DEFAULT_PRO_MODEL = "gemini-pro-latest"
 logger = logging.getLogger(__name__)
 
 
-async def retry_with_backoff(async_func, *args, **kwargs):
+async def retry_with_backoff(async_func: Any, *args: Any, **kwargs: Any) -> Any:
     """
     Asynchronous retry wrapper with exponential backoff.
     Retries the async function on exceptions.
@@ -42,7 +41,7 @@ async def retry_with_backoff(async_func, *args, **kwargs):
     retrying = AsyncRetrying(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        reraise=True
+        reraise=True,
     )
     async for attempt in retrying:
         with attempt:
@@ -63,7 +62,7 @@ def _coerce_content_to_text(payload: Any) -> str:
 def _get_llm(
     model: str = DEFAULT_FLASH_MODEL,
     temperature: float = 0.7,
-    max_tokens: int = None,
+    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> ChatGoogleGenerativeAI:
     """
@@ -94,7 +93,7 @@ async def simple_call(
     prompt: str,
     model: str = DEFAULT_FLASH_MODEL,
     temperature: float = 0.7,
-    max_tokens: int = None,
+    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> str:
     """
@@ -114,14 +113,14 @@ async def simple_call(
     """
     llm = _get_llm(model, temperature, max_tokens, **kwargs)
     response = await retry_with_backoff(llm.ainvoke, prompt)
-    return response.content
+    return _coerce_content_to_text(response.content)
 
 
 async def chat_call(
-    messages: List[Dict[str, str]],
+    messages: list[dict[str, str]],
     model: str = DEFAULT_FLASH_MODEL,
     temperature: float = 0.7,
-    max_tokens: int = None,
+    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> str:
     """
@@ -144,7 +143,7 @@ async def chat_call(
     :return: The generated response as a string.
     """
     llm = _get_llm(model, temperature, max_tokens, **kwargs)
-    lc_messages = []
+    lc_messages: list[SystemMessage | HumanMessage | AIMessage] = []
     for msg in messages:
         role = msg.get("role", "").lower()
         content = msg.get("content", "")
@@ -158,15 +157,15 @@ async def chat_call(
             raise ValueError(f"Unsupported role: {role}")
 
     response = await retry_with_backoff(llm.ainvoke, lc_messages)
-    return response.content
+    return _coerce_content_to_text(response.content)
 
 
 async def call_with_tools(
     prompt: str,
-    tools: List[Any],
+    tools: list[Any],
     model: str = DEFAULT_PRO_MODEL,
     temperature: float = 0.7,
-    max_tokens: int = None,
+    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> Any:
     """
@@ -200,11 +199,11 @@ async def call_with_tools(
 
 async def structured_output(
     prompt: str,
-    schema: Type[BaseModel],
+    schema: type[BaseModel],
     method: str = "default",
     model: str = DEFAULT_PRO_MODEL,
     temperature: float = 0.0,
-    max_tokens: int = None,
+    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> BaseModel:
     """
@@ -235,6 +234,8 @@ async def structured_output(
         structured_llm = llm.with_structured_output(schema)
 
     result = await retry_with_backoff(structured_llm.ainvoke, prompt)
+    if not isinstance(result, BaseModel):
+        raise ValueError(f"Expected BaseModel result, got {type(result)}")
     return result
 
 
@@ -243,9 +244,9 @@ async def json_output(
     system_instruction: str = "Respond only with valid JSON.",
     model: str = DEFAULT_PRO_MODEL,
     temperature: float = 0.0,
-    max_tokens: int = None,
+    max_tokens: int | None = None,
     **kwargs: Any,
-) -> Dict:
+) -> dict[str, Any]:
     """
     Makes an LLM call that forces JSON output using generation config.
     Parses the response to a Python dict.
@@ -282,7 +283,8 @@ async def json_output(
             lines = lines[:-1]
         content = "\n".join(lines).strip()
     try:
-        return json.loads(content)
+        parsed: dict[str, Any] = json.loads(content)
+        return parsed
     except json.JSONDecodeError as exc:
         metadata = getattr(response, "response_metadata", {}) or {}
         finish_reason = metadata.get("finish_reason")

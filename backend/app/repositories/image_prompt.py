@@ -168,7 +168,7 @@ class ImagePromptRepository:
         commit: bool = False,
         refresh: bool = True,
     ) -> ImagePrompt:
-        prompt = ImagePrompt(**data)  # type: ignore[arg-type]
+        prompt = ImagePrompt(**data)
         self._session.add(prompt)
         self._session.flush()
         if commit:

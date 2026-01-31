@@ -406,7 +406,7 @@ class SceneRankingService:
                 commit=config.autocommit,
                 refresh=True,
             )
-        except IntegrityError as exc:
+        except IntegrityError:
             self._session.rollback()
             if not config.allow_overwrite:
                 existing = self._ranking_repo.get_unique_run(
@@ -686,7 +686,9 @@ class SceneRankingService:
             )
         return "\n".join(prompt_parts)
 
-    async def _invoke_llm(self, *, prompt: str, config: SceneRankingConfig) -> dict[str, Any]:
+    async def _invoke_llm(
+        self, *, prompt: str, config: SceneRankingConfig
+    ) -> dict[str, Any]:
         last_error: Exception | None = None
         attempts = max(config.retry_attempts, 0)
         for attempt in range(attempts + 1):

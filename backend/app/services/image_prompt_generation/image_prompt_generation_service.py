@@ -412,9 +412,7 @@ class ImagePromptGenerationService:
         temperature: float | None = None,
         max_output_tokens: int | None = None,
         metadata: Mapping[str, Any] | None = None,
-    ) -> tuple[
-        str, ImagePromptGenerationConfig, Mapping[str, Any], str, list[str]
-    ]:
+    ) -> tuple[str, ImagePromptGenerationConfig, Mapping[str, Any], str, list[str]]:
         """
         Build the full prompt text exactly as it will be sent to the LLM.
 
@@ -1268,8 +1266,8 @@ class ImagePromptGenerationService:
                 return ranked_scenes
         filtered: list[SceneExtraction] = []
         for scene in scenes:
-            ranking = self._ranking_repo.get_latest_for_scene(scene.id)
-            if ranking is not None:
+            scene_ranking = self._ranking_repo.get_latest_for_scene(scene.id)
+            if scene_ranking is not None:
                 filtered.append(scene)
         if top_n is not None and top_n > 0:
             filtered = filtered[:top_n]

@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from textwrap import dedent
-from typing import Any, Mapping, Sequence
+from typing import Any
 from uuid import UUID
 
 from sqlmodel import Session
@@ -125,7 +126,9 @@ class PromptMetadataGenerationService:
             target_prompt.flavour_text = clean_flavour
             updated = True
 
-        if clean_title and (effective_overwrite or not self._has_text(target_prompt.title)):
+        if clean_title and (
+            effective_overwrite or not self._has_text(target_prompt.title)
+        ):
             target_prompt.title = clean_title
             updated = True
 
@@ -287,7 +290,9 @@ class PromptMetadataGenerationService:
                 raise
             return []
 
-        raw_variants = response.get("variants") if isinstance(response, Mapping) else None
+        raw_variants = (
+            response.get("variants") if isinstance(response, Mapping) else None
+        )
         if not isinstance(raw_variants, Sequence):
             logger.warning(
                 "Gemini variants payload missing or invalid for prompt %s: %r",
@@ -376,8 +381,10 @@ class PromptMetadataGenerationService:
 
     @staticmethod
     def _stringify_value(value: Any) -> str:
-        if isinstance(value, (list, tuple)):
-            return ", ".join(PromptMetadataGenerationService._stringify_value(v) for v in value)
+        if isinstance(value, list | tuple):
+            return ", ".join(
+                PromptMetadataGenerationService._stringify_value(v) for v in value
+            )
         if isinstance(value, Mapping):
             parts = [
                 f"{k}: {PromptMetadataGenerationService._stringify_value(v)}"

@@ -52,7 +52,7 @@ class ImageGenerationConfig:
 
     def copy_with(self, **overrides: Any) -> ImageGenerationConfig:
         """Create a copy with overridden fields."""
-        data = {
+        data: dict[str, Any] = {
             "provider": self.provider,
             "model": self.model,
             "quality": self.quality,
@@ -620,12 +620,17 @@ class ImageGenerationService:
             )
 
             # Call DALL·E API (runs in thread pool to avoid blocking)
+            if not self._api_key:
+                raise ImageGenerationServiceError(
+                    "API key is required for image generation"
+                )
+            api_key = self._api_key
             loop = asyncio.get_event_loop()
             results = await loop.run_in_executor(
                 None,
                 lambda: dalle_image_api.generate_images(
                     prompt=task.prompt.prompt_text,
-                    api_key=self._api_key,
+                    api_key=api_key,
                     model=config.model,
                     size=task.size,
                     quality=task.quality,
@@ -643,18 +648,23 @@ class ImageGenerationService:
             storage_dir.mkdir(parents=True, exist_ok=True)
             file_path = storage_dir / task.file_name
 
+            result_data = (
+                results[0]
+                if isinstance(results[0], str)
+                else results[0].decode("utf-8")
+            )
             if config.response_format == "b64_json":
                 success = await loop.run_in_executor(
                     None,
                     lambda: dalle_image_api.save_image_from_b64(
-                        results[0], str(file_path)
+                        result_data, str(file_path)
                     ),
                 )
             else:  # url format
                 success = await loop.run_in_executor(
                     None,
                     lambda: dalle_image_api.save_image_from_url(
-                        results[0], str(file_path)
+                        result_data, str(file_path)
                     ),
                 )
 

@@ -7,8 +7,8 @@ from uuid import uuid4
 import pytest
 from sqlmodel import Session
 
-from app.repositories import ImagePromptRepository, SceneExtractionRepository
 import app.services.image_prompt_generation.image_prompt_generation_service as service_module
+from app.repositories import ImagePromptRepository, SceneExtractionRepository
 from app.services.image_prompt_generation import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationService,
@@ -30,7 +30,7 @@ EXCESSION_EPUB = (
 
 @pytest.fixture(autouse=True)
 def _stub_prompt_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def _fake_generate(self, prompts, *, dry_run=False, **kwargs):  # type: ignore[no-untyped-def]
+    async def _fake_generate(self, prompts, *, dry_run=False, **_kwargs):  # type: ignore[no-untyped-def]  # noqa: ARG001
         results = []
         for prompt in prompts:
             title = (getattr(prompt, "title", None) or "Shareable Moment").strip()
@@ -45,8 +45,8 @@ def _stub_prompt_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
                     }
                 )
             else:
-                setattr(prompt, "title", title)
-                setattr(prompt, "flavour_text", flavour)
+                prompt.title = title
+                prompt.flavour_text = flavour
                 results.append(prompt)
         return results
 
@@ -216,13 +216,11 @@ def test_generate_for_scene_creates_prompts(
     _patch_context(service, monkeypatch)
 
     captured_prompt: dict[str, str] = {}
-    monkeypatch.setattr(
-        service_module.random, "sample", lambda seq, k: list(seq)[:k]
-    )
+    monkeypatch.setattr(service_module.random, "sample", lambda seq, k: list(seq)[:k])
     monkeypatch.setattr(service_module.random, "shuffle", lambda seq: None)
 
     async def fake_json_output(**kwargs: object) -> list[dict[str, object]]:
-        captured_prompt["prompt"] = kwargs.get("prompt", "")  # type: ignore[arg-type]
+        captured_prompt["prompt"] = kwargs.get("prompt", "")
         return _variants()
 
     monkeypatch.setattr(openai_api, "json_output", fake_json_output)
@@ -314,6 +312,7 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(
 
     service = ImagePromptGenerationService(db, config=config)
     _patch_context(service, monkeypatch)
+
     async def fail_json_output(**_: object) -> list[dict[str, object]]:
         pytest.fail("json_output should not be invoked")
 
@@ -444,7 +443,9 @@ def test_generate_for_scene_overwrites_when_allowed(
     repository.delete_for_scene(scene.id, commit=True)
 
 
-def test_sample_styles_respects_formula(monkeypatch: pytest.MonkeyPatch, db: Session) -> None:
+def test_sample_styles_respects_formula(
+    monkeypatch: pytest.MonkeyPatch, db: Session
+) -> None:
     service = ImagePromptGenerationService(db)
     monkeypatch.setattr(
         service_module,
@@ -460,7 +461,9 @@ def test_sample_styles_respects_formula(monkeypatch: pytest.MonkeyPatch, db: Ses
     assert styles == ["A", "B", "C", "D", "E", "X", "Y"]
 
 
-def test_sample_styles_filters_blocked_terms(monkeypatch: pytest.MonkeyPatch, db: Session) -> None:
+def test_sample_styles_filters_blocked_terms(
+    monkeypatch: pytest.MonkeyPatch, db: Session
+) -> None:
     service = ImagePromptGenerationService(db)
     monkeypatch.setattr(
         service_module,
@@ -500,7 +503,9 @@ def test_render_prompt_template_includes_suggested_styles(
     monkeypatch.setattr(service_module.random, "sample", lambda seq, k: list(seq)[:k])
     monkeypatch.setattr(service_module.random, "shuffle", lambda seq: None)
 
-    prompt, resolved_config, _, _, sampled_styles = service.render_prompt_template(scene)
+    prompt, resolved_config, _, _, sampled_styles = service.render_prompt_template(
+        scene
+    )
 
     assert resolved_config.variants_count == 4
     assert sampled_styles == [

@@ -174,7 +174,7 @@ def test_remix_endpoint_task_creation_failure(
         execute_mock,
     )
 
-    def _failing_spawn(coro: object, *, task_name: str) -> None:
+    def _failing_spawn(coro: object, *, task_name: str) -> None:  # noqa: ARG001
         if asyncio.iscoroutine(coro):
             coro.close()
         raise RuntimeError("scheduler unavailable")
@@ -246,6 +246,7 @@ def test_custom_remix_endpoint_schedules_async_task(
     assert asyncio.iscoroutine(scheduled_coro)
     assert execute_mock.await_count == 0
     assert task_name.startswith("custom-remix-generated-image-")
+
 
 def test_spawn_background_task_logs_exception(
     caplog: pytest.LogCaptureFixture,

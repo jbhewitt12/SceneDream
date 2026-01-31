@@ -1,17 +1,18 @@
+import json
 import logging
 import os
-import json
-from bs4 import BeautifulSoup
-import ebooklib
-from ebooklib import epub
-import yaml
 from concurrent.futures import ThreadPoolExecutor
+
+import ebooklib
+import yaml
+from bs4 import BeautifulSoup
+from ebooklib import epub
 
 logging.basicConfig(level=logging.INFO, filename="logs/pipeline.log")
 
 
 def load_config():
-    with open("config.yaml", "r") as f:
+    with open("config.yaml") as f:
         return yaml.safe_load(f)
 
 

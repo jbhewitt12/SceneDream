@@ -8,10 +8,10 @@ import logging
 import os
 import re
 import unicodedata
-from datetime import datetime, timezone
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from dotenv import load_dotenv
 from sqlmodel import Session
@@ -25,7 +25,6 @@ from app.services.scene_extraction.scene_refinement import (
     SceneRefinementError,
     SceneRefiner,
 )
-
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -61,18 +60,18 @@ class SceneExtractionConfig:
     chunk_overlap_paragraphs: int = 2
     refinement_model: str = "gemini-2.5-flash-lite"
     refinement_temperature: float = 0.1
-    refinement_max_tokens: Optional[int] = None
-    book_slug: Optional[str] = None
+    refinement_max_tokens: int | None = None
+    book_slug: str | None = None
     enable_refinement: bool = ENABLE_REFINEMENT
-    resume_from_chapter: Optional[int] = None
-    resume_from_chunk: Optional[int] = None
+    resume_from_chapter: int | None = None
+    resume_from_chunk: int | None = None
 
 
 @dataclass
 class Chapter:
     number: int
     title: str
-    paragraphs: List[str]
+    paragraphs: list[str]
     source_name: str
 
 
@@ -85,7 +84,7 @@ class ChapterChunk:
     paragraphs: Sequence[str]
 
     def formatted_paragraphs(self) -> str:
-        lines: List[str] = []
+        lines: list[str] = []
         for offset, paragraph in enumerate(self.paragraphs):
             paragraph_number = self.start_paragraph + offset
             lines.append(f"[Paragraph {paragraph_number}] {paragraph}")
@@ -100,35 +99,33 @@ class RawScene:
     location_marker: str
     raw_excerpt: str
     chunk_index: int
-    chunk_span: Tuple[int, int]
-    scene_id: Optional[int] = None
-    paragraph_start: Optional[int] = None
-    paragraph_end: Optional[int] = None
-    word_start: Optional[int] = None
-    word_end: Optional[int] = None
+    chunk_span: tuple[int, int]
+    scene_id: int | None = None
+    paragraph_start: int | None = None
+    paragraph_end: int | None = None
+    word_start: int | None = None
+    word_end: int | None = None
 
-    def signature(self) -> Tuple[str, str]:
+    def signature(self) -> tuple[str, str]:
         return (self.location_marker.strip().lower(), self.raw_excerpt.strip())
 
 
 def _batched_scenes(
     scenes: Sequence[RawScene], batch_size: int
-) -> Iterable[List[RawScene]]:
+) -> Iterable[list[RawScene]]:
     size = max(1, batch_size)
     for start in range(0, len(scenes), size):
         yield list(scenes[start : start + size])
 
 
 class SceneExtractor:
-    def __init__(self, config: Optional[SceneExtractionConfig] = None) -> None:
+    def __init__(self, config: SceneExtractionConfig | None = None) -> None:
         self.config = config or SceneExtractionConfig()
         load_dotenv()
-        self._refiner: Optional[SceneRefiner] = None
+        self._refiner: SceneRefiner | None = None
         self._book_service = BookContentService()
 
-    def extract_book(
-        self, book_path: Union[str, os.PathLike[str]]
-    ) -> Dict[str, object]:
+    def extract_book(self, book_path: str | os.PathLike[str]) -> dict[str, object]:
         resolved_book_path = self._resolve_book_path(book_path)
         book_slug = self._resolve_book_slug(resolved_book_path)
         chapters = self._load_chapters(resolved_book_path)
@@ -150,8 +147,12 @@ class SceneExtractor:
                     )
                     continue
             print(f"Starting chapter {chapter.number}: {chapter.title}")
-            chunk_start_index: Optional[int] = None
-            if resume_active and resume_chapter is not None and chapter.number == resume_chapter:
+            chunk_start_index: int | None = None
+            if (
+                resume_active
+                and resume_chapter is not None
+                and chapter.number == resume_chapter
+            ):
                 base_chunk = resume_chunk if resume_chunk is not None else -1
                 chunk_start_index = base_chunk + 1
                 if chunk_start_index <= 0:
@@ -195,11 +196,11 @@ class SceneExtractor:
 
     def extract_preview(
         self,
-        book_path: Union[str, os.PathLike[str]],
+        book_path: str | os.PathLike[str],
         *,
         max_chapters: int = 1,
         max_chunks_per_chapter: int = 1,
-    ) -> Dict[str, object]:
+    ) -> dict[str, object]:
         resolved_book_path = self._resolve_book_path(book_path)
         book_slug = self._resolve_book_slug(resolved_book_path)
         chapters = self._load_chapters(resolved_book_path)
@@ -217,7 +218,7 @@ class SceneExtractor:
         total_chapters = len(selected)
         for idx, chapter in enumerate(selected, start=1):
             print(f"Starting chapter {chapter.number}: {chapter.title}")
-            limit_param: Optional[int]
+            limit_param: int | None
             if chunk_limit == 0:
                 limit_param = None
             else:
@@ -265,15 +266,17 @@ class SceneExtractor:
                 )
         return stats
 
-    def _load_chapters(self, book_path: Path) -> List[Chapter]:
+    def _load_chapters(self, book_path: Path) -> list[Chapter]:
         """Load chapters for the given book path using the shared BookContentService."""
         try:
             content = self._book_service.load_book(book_path)
         except BookContentServiceError as exc:
-            raise RuntimeError(f"Failed to load chapters from {book_path}: {exc}") from exc
+            raise RuntimeError(
+                f"Failed to load chapters from {book_path}: {exc}"
+            ) from exc
 
-        chapters: List[Chapter] = []
-        for chapter_number, book_chapter in sorted(content.chapters.items()):
+        chapters: list[Chapter] = []
+        for _chapter_number, book_chapter in sorted(content.chapters.items()):
             chapters.append(
                 Chapter(
                     number=book_chapter.number,
@@ -288,17 +291,17 @@ class SceneExtractor:
         self,
         chapter: Chapter,
         *,
-        chunk_limit: Optional[int] = None,
-        book_slug: Optional[str] = None,
-        chunk_start_index: Optional[int] = None,
-    ) -> List[RawScene]:
+        chunk_limit: int | None = None,
+        book_slug: str | None = None,
+        chunk_start_index: int | None = None,
+    ) -> list[RawScene]:
         chunks = self._chunk_chapter(chapter)
         if chunk_limit is not None and chunk_limit <= 0:
             return []
         existing_chunk_indexes = (
             self._existing_processed_chunks(book_slug, chapter) if book_slug else set()
         )
-        raw_candidates: List[RawScene] = []
+        raw_candidates: list[RawScene] = []
         processed_chunks = 0
         for chunk in chunks:
             if chunk_limit is not None and processed_chunks >= chunk_limit:
@@ -347,11 +350,11 @@ class SceneExtractor:
             processed_chunks += 1
         return self._coalesce_scenes(raw_candidates)
 
-    def _chunk_chapter(self, chapter: Chapter) -> List[ChapterChunk]:
+    def _chunk_chapter(self, chapter: Chapter) -> list[ChapterChunk]:
         max_chars = max(self.config.max_chunk_chars, 1000)
         overlap = max(self.config.chunk_overlap_paragraphs, 0)
         total = len(chapter.paragraphs)
-        chunks: List[ChapterChunk] = []
+        chunks: list[ChapterChunk] = []
         pointer = 0
         chunk_index = 0
         while pointer < total:
@@ -420,10 +423,10 @@ class SceneExtractor:
 
     def _parse_gemini_response(
         self,
-        response: Dict[str, object],
+        response: dict[str, object],
         chapter: Chapter,
         chunk: ChapterChunk,
-    ) -> List[RawScene]:
+    ) -> list[RawScene]:
         scenes_data = response.get("scenes") if isinstance(response, dict) else None
         if not isinstance(scenes_data, list):
             logger.warning(
@@ -432,7 +435,7 @@ class SceneExtractor:
                 chunk.index,
             )
             return []
-        parsed: List[RawScene] = []
+        parsed: list[RawScene] = []
         for idx, raw_scene in enumerate(scenes_data, start=1):
             if not isinstance(raw_scene, dict):
                 continue
@@ -461,12 +464,12 @@ class SceneExtractor:
             )
         return parsed
 
-    def _coalesce_scenes(self, candidates: List[RawScene]) -> List[RawScene]:
+    def _coalesce_scenes(self, candidates: list[RawScene]) -> list[RawScene]:
         if not candidates:
             return []
         candidates.sort(key=lambda scene: (scene.chunk_index, scene.provisional_id))
-        seen: set[Tuple[str, str]] = set()
-        unique: List[RawScene] = []
+        seen: set[tuple[str, str]] = set()
+        unique: list[RawScene] = []
         for scene in candidates:
             signature = scene.signature()
             if signature in seen:
@@ -504,8 +507,8 @@ class SceneExtractor:
     def _refine_chapter_scenes(
         self,
         chapter: Chapter,
-        scenes: List[RawScene],
-    ) -> Dict[int, RefinedScene]:
+        scenes: list[RawScene],
+    ) -> dict[int, RefinedScene]:
         if not self.config.enable_refinement:
             return {}
         refiner = self._get_refiner()
@@ -514,10 +517,10 @@ class SceneExtractor:
     def _persist_chapter_scenes(
         self,
         book_slug: str,
-        book_path: Union[str, os.PathLike[str]],
+        book_path: str | os.PathLike[str],
         chapter: Chapter,
-        raw_scenes: List[RawScene],
-        refinements: Dict[int, RefinedScene],
+        raw_scenes: list[RawScene],
+        refinements: dict[int, RefinedScene],
     ) -> None:
         if not raw_scenes:
             return
@@ -532,12 +535,12 @@ class SceneExtractor:
                     raw_text = scene.raw_excerpt.strip()
                     raw_word_count = self._word_count(raw_text)
                     raw_char_count = self._char_count(raw_text)
-                    refined_text: Optional[str] = None
-                    decision: Optional[str] = None
-                    rationale: Optional[str] = None
-                    refined_word_count: Optional[int] = None
-                    refined_char_count: Optional[int] = None
-                    refinement_has_excerpt: Optional[bool] = None
+                    refined_text: str | None = None
+                    decision: str | None = None
+                    rationale: str | None = None
+                    refined_word_count: int | None = None
+                    refined_char_count: int | None = None
+                    refinement_has_excerpt: bool | None = None
                     if refinement:
                         decision = refinement.decision
                         rationale = refinement.rationale
@@ -665,7 +668,7 @@ class SceneExtractor:
     @staticmethod
     def _parse_location_marker(
         location_marker: str,
-    ) -> Tuple[Optional[int], Optional[int]]:
+    ) -> tuple[int | None, int | None]:
         text = location_marker.strip()
         if not text:
             return None, None
@@ -696,23 +699,23 @@ class SceneExtractor:
         return None, None
 
     @staticmethod
-    def _word_count(value: Optional[str]) -> Optional[int]:
+    def _word_count(value: str | None) -> int | None:
         if not value:
             return None
         return len(value.split())
 
     @staticmethod
-    def _char_count(value: Optional[str]) -> Optional[int]:
+    def _char_count(value: str | None) -> int | None:
         if value is None:
             return None
         return len(value)
 
     def _hash_signature(self, scene: RawScene) -> str:
         location, excerpt = scene.signature()
-        payload = f"{location}::{excerpt}".encode("utf-8")
+        payload = f"{location}::{excerpt}".encode()
         return hashlib.sha256(payload).hexdigest()
 
-    def _resolve_book_slug(self, book_path: Union[str, os.PathLike[str], Path]) -> str:
+    def _resolve_book_slug(self, book_path: str | os.PathLike[str] | Path) -> str:
         if self.config.book_slug:
             return self.config.book_slug
         path = Path(book_path)
@@ -720,7 +723,7 @@ class SceneExtractor:
         slug = self._slugify(base)
         return slug or "book"
 
-    def _resolve_book_path(self, book_path: Union[str, os.PathLike[str], Path]) -> Path:
+    def _resolve_book_path(self, book_path: str | os.PathLike[str] | Path) -> Path:
         candidate = Path(book_path)
         if candidate.is_absolute() and candidate.exists():
             return candidate
@@ -752,6 +755,7 @@ class SceneExtractor:
         candidate = re.sub(r"-+", "-", candidate).strip("-")
         return candidate or "scene"
 
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Scene extraction CLI entry point")
     subparsers = parser.add_subparsers(dest="command")
@@ -761,9 +765,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "preview",
         help="Extract scenes for a limited number of chapters/chunks.",
     )
-    preview.add_argument(
-        "--book", required=True, help="Path to the EPUB or MOBI file."
-    )
+    preview.add_argument("--book", required=True, help="Path to the EPUB or MOBI file.")
     preview.add_argument(
         "--chapters", type=int, default=1, help="Maximum chapters to process."
     )
@@ -880,7 +882,7 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
                 or primary.chapter_title
                 or f"chapter_{chapter_number}",
             )
-            raw_scenes: List[RawScene] = []
+            raw_scenes: list[RawScene] = []
             for record in chapter_records:
                 raw_scenes.append(
                     RawScene(
@@ -901,7 +903,7 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
                         word_end=record.scene_word_end,
                     )
                 )
-            refinements: Dict[int, RefinedScene] = {}
+            refinements: dict[int, RefinedScene] = {}
             batches = list(_batched_scenes(raw_scenes, REFINEMENT_BATCH_SIZE))
             for batch in batches:
                 try:
@@ -962,7 +964,7 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     return args.func(args)

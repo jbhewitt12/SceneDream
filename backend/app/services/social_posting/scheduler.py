@@ -12,12 +12,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from apscheduler.schedulers.asyncio import (
-    AsyncIOScheduler,  # type: ignore[import-untyped]
-)
-from apscheduler.triggers.interval import (
-    IntervalTrigger,  # type: ignore[import-untyped]
-)
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
 

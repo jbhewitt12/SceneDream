@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter, defaultdict
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from statistics import mean, median
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any
 
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, create_engine, select
@@ -172,7 +173,7 @@ def fetch_records(
         references: list[str] = []
         prompt_attributes = prompt.attributes or {}
         raw_refs = prompt_attributes.get("references")
-        if isinstance(raw_refs, Iterable) and not isinstance(raw_refs, (str, bytes)):
+        if isinstance(raw_refs, Iterable) and not isinstance(raw_refs, str | bytes):
             for raw_ref in raw_refs:
                 cleaned_ref = str(raw_ref).strip()
                 if not cleaned_ref:
@@ -221,7 +222,8 @@ def fetch_records(
         )
 
     style_display = {
-        label: counts.most_common(1)[0][0] for label, counts in style_tag_display.items()
+        label: counts.most_common(1)[0][0]
+        for label, counts in style_tag_display.items()
     }
     reference_display_map = {
         label: counts.most_common(1)[0][0]
@@ -282,7 +284,7 @@ def group_counts(
         values = extractor(record)
         if values is None:
             continue
-        if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
+        if isinstance(values, str | bytes) or not isinstance(values, Iterable):
             values_iterable: Iterable[Any] = (values,)
         else:
             values_iterable = values
@@ -420,7 +422,9 @@ def numeric_summary(
     return summary
 
 
-def print_numeric_summary(title: str, summary: dict[str, dict[str, float | int]] | None):
+def print_numeric_summary(
+    title: str, summary: dict[str, dict[str, float | int]] | None
+):
     print(f"\n{title}:")
     if not summary:
         print("  No data available.")
@@ -440,7 +444,7 @@ def print_numeric_summary(title: str, summary: dict[str, dict[str, float | int]]
 
 def derive_insights(
     *,
-    baseline: float,
+    baseline: float,  # noqa: ARG001
     style_analysis: dict[str, list[GroupEntry]],
     reference_analysis: dict[str, list[GroupEntry]],
     aspect_analysis: dict[str, list[GroupEntry]],
@@ -468,7 +472,10 @@ def derive_insights(
                 f"Aspect ratio '{entry.label}' shows approval {entry.rate:.1%} "
                 f"(Δ{entry.diff:+.1%}, n={entry.total})."
             )
-    def _diff_from_summary(summary: dict[str, dict[str, float | int]] | None) -> float | None:
+
+    def _diff_from_summary(
+        summary: dict[str, dict[str, float | int]] | None,
+    ) -> float | None:
         if not summary or "approved" not in summary or "rejected" not in summary:
             return None
         approved_mean = float(summary["approved"]["mean"])

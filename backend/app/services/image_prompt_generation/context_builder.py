@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from dataclasses import dataclass
-from typing import Any, MutableMapping
+from typing import Any
 
 from app.services.books import BookContentService, BookContentServiceError
 from models.scene_extraction import SceneExtraction

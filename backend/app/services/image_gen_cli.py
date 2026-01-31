@@ -54,6 +54,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -80,6 +81,7 @@ from app.services.scene_ranking.scene_ranking_service import (
     SceneRankingConfig,
     SceneRankingService,
 )
+from models.scene_extraction import SceneExtraction
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +97,7 @@ class PipelineStats:
         self.images_generated = 0
         self.errors: list[str] = []
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, int | list[str]]:
         return {
             "scenes_extracted": self.scenes_extracted,
             "scenes_refined": self.scenes_refined,
@@ -375,12 +377,12 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
 def _filter_scenes_for_ranking(
     *,
     session: Session,
-    scenes: list,
+    scenes: list[SceneExtraction],
     book_slug: str,
     ranking_service: SceneRankingService,
     overwrite: bool,
     limit: int | None = None,
-) -> list:
+) -> list[SceneExtraction]:
     """Return the subset of scenes that still require ranking."""
     if not scenes:
         return []
@@ -428,6 +430,7 @@ def _filter_scenes_for_ranking(
         selected = selected[:limit]
 
     return selected
+
 
 async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
     """Run the complete pipeline."""
@@ -513,17 +516,25 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                                 book_slug=book_slug,
                                 chapter_number=chapter.number,
                             )
-                            missing_indexes = sorted(expected_indexes - existing_indexes)
+                            missing_indexes = sorted(
+                                expected_indexes - existing_indexes
+                            )
                             if missing_indexes:
                                 missing_by_chapter[chapter.number] = missing_indexes
                         if resume_from_chapter is not None:
-                            cutoff_chunk = resume_from_chunk if resume_from_chunk is not None else -1
+                            cutoff_chunk = (
+                                resume_from_chunk
+                                if resume_from_chunk is not None
+                                else -1
+                            )
                             filtered_missing: dict[int, list[int]] = {}
                             for chapter_number, indexes in missing_by_chapter.items():
                                 if chapter_number < resume_from_chapter:
                                     continue
                                 if chapter_number == resume_from_chapter:
-                                    trimmed = [idx for idx in indexes if idx > cutoff_chunk]
+                                    trimmed = [
+                                        idx for idx in indexes if idx > cutoff_chunk
+                                    ]
                                     if trimmed:
                                         filtered_missing[chapter_number] = trimmed
                                 else:
@@ -560,7 +571,9 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                         )
                     if resume_from_chapter is not None:
                         next_chunk = (
-                            (resume_from_chunk + 1) if resume_from_chunk is not None else 0
+                            (resume_from_chunk + 1)
+                            if resume_from_chunk is not None
+                            else 0
                         )
                         logger.info(
                             "Extraction will resume from chapter %s starting at chunk index %s",
@@ -587,10 +600,11 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
             loop = asyncio.get_running_loop()
             extraction_stats = await loop.run_in_executor(
                 None,
-                extractor.extract_book,
+                extractor.extract_book,  # type: ignore[arg-type]
                 book_path,
             )
-            stats.scenes_extracted = extraction_stats.get("scenes", 0)
+            scenes_count = extraction_stats.get("scenes", 0)
+            stats.scenes_extracted = scenes_count if isinstance(scenes_count, int) else 0
             logger.info("Extracted %d scenes", stats.scenes_extracted)
     else:
         logger.info("Skipping scene extraction (already completed)")
@@ -703,7 +717,9 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
             prompt_repo = ImagePromptRepository(session)
 
             # Determine limit based on --prompts-for-scenes parameter
-            limit = effective_prompts_for_scenes if effective_prompts_for_scenes else 100
+            limit = (
+                effective_prompts_for_scenes if effective_prompts_for_scenes else 100
+            )
 
             rankings = ranking_repo.list_top_rankings_for_book(
                 book_slug=book_slug,
@@ -744,9 +760,7 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
         if args.dry_run:
             top_scenes_msg = ""
             if effective_prompts_for_scenes:
-                top_scenes_msg = (
-                    f" for top {effective_prompts_for_scenes} scenes"
-                )
+                top_scenes_msg = f" for top {effective_prompts_for_scenes} scenes"
                 if prompt_limit_inherited_from_images:
                     top_scenes_msg += " (matching --images-for-scenes)"
 
@@ -966,7 +980,8 @@ async def _run_extract(args: argparse.Namespace) -> PipelineStats:
         extractor.extract_book,
         book_path,
     )
-    stats.scenes_extracted = extraction_stats.get("scenes", 0)
+    scenes_count = extraction_stats.get("scenes", 0)
+    stats.scenes_extracted = scenes_count if isinstance(scenes_count, int) else 0
 
     logger.info("Extraction complete: %d scenes", stats.scenes_extracted)
     return stats
@@ -1226,9 +1241,7 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
         if args.ignore_ranking_recommendations:
             variant_msg += " (ignoring ranking recommendations)"
 
-    target_scope = (
-        f"book '{args.book_slug}'" if args.book_slug else "all ranked books"
-    )
+    target_scope = f"book '{args.book_slug}'" if args.book_slug else "all ranked books"
 
     if args.dry_run:
         logger.info(
@@ -1258,7 +1271,7 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
         prompt_repo = ImagePromptRepository(session)
         image_repo = GeneratedImageRepository(session)
 
-        prompt_config_kwargs: dict[str, object] = {}
+        prompt_config_kwargs: dict[str, Any] = {}
         if args.prompts_per_scene is not None:
             prompt_config_kwargs["variants_count"] = args.prompts_per_scene
         if args.ignore_ranking_recommendations:
@@ -1286,7 +1299,7 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
 
         initial_limit = max(args.top_scenes * 10, 50)
         fetch_limit = initial_limit
-        candidate_rankings: list = []
+        candidate_rankings: list[Any] = []
 
         while True:
             if args.book_slug:
@@ -1302,11 +1315,13 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
                 )
 
             if not rankings:
-                logger.warning("No rankings found for %s - cannot backfill scenes", target_scope)
+                logger.warning(
+                    "No rankings found for %s - cannot backfill scenes", target_scope
+                )
                 return stats
 
             candidate_rankings.clear()
-            seen_scene_ids: set = set()
+            seen_scene_ids: set[Any] = set()
 
             for ranking in rankings:
                 if len(candidate_rankings) >= args.top_scenes:
@@ -1325,11 +1340,10 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
 
                 seen_scene_ids.add(scene.id)
 
-                if (
-                    prompt_config.skip_scenes_with_warnings
-                    and blocked_warning_lookup
-                ):
-                    warning_hits = _blocked_warning_hits(getattr(ranking, "warnings", None))
+                if prompt_config.skip_scenes_with_warnings and blocked_warning_lookup:
+                    warning_hits = _blocked_warning_hits(
+                        getattr(ranking, "warnings", None)
+                    )
                     if warning_hits:
                         logger.debug(
                             "Skipping scene %s (priority=%.3f) due to content warnings: %s",
@@ -1395,9 +1409,9 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
             prompt_config.prompt_version,
         )
 
-        new_prompts: list = []
-        prompts_for_imaging: list = []
-        scenes_targeted: set = set()
+        new_prompts: list[Any] = []
+        prompts_for_imaging: list[Any] = []
+        scenes_targeted: set[Any] = set()
         base_metadata = {
             "cli": "image_gen_cli.backfill",
             "backfill_run_id": backfill_run_id,
@@ -1433,7 +1447,7 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
                 ranking.overall_priority or 0.0,
             )
 
-            metadata = dict(base_metadata)
+            metadata: dict[str, Any] = dict(base_metadata)
             metadata["scene_ranking_id"] = str(ranking.id)
             if ranking.overall_priority is not None:
                 metadata["ranking_priority"] = ranking.overall_priority
@@ -1452,7 +1466,9 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
                 continue
 
             if not prompts:
-                logger.warning("Prompt generation returned no variants for scene %s", scene.id)
+                logger.warning(
+                    "Prompt generation returned no variants for scene %s", scene.id
+                )
                 continue
 
             stats.prompts_generated += len(prompts)
@@ -1472,8 +1488,8 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
             stats.prompts_generated,
         )
 
-        prompt_ids: list = []
-        seen_prompt_ids: set = set()
+        prompt_ids: list[Any] = []
+        seen_prompt_ids: set[Any] = set()
         for prompt in prompts_for_imaging:
             if prompt.id in seen_prompt_ids:
                 continue
@@ -1515,13 +1531,13 @@ async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     default_prompt_version = ImagePromptGenerationConfig().prompt_version
-    prompt_version = args.prompt_version or f"{default_prompt_version}-refresh-{timestamp}"
+    prompt_version = (
+        args.prompt_version or f"{default_prompt_version}-refresh-{timestamp}"
+    )
     refresh_run_id = f"refresh-{timestamp}-{uuid4().hex[:8]}"
 
     if args.dry_run:
-        variant_msg = (
-            f"{args.prompts_per_scene or 'auto'} prompt variants per scene"
-        )
+        variant_msg = f"{args.prompts_per_scene or 'auto'} prompt variants per scene"
         if args.prompts_per_scene is None:
             if args.ignore_ranking_recommendations:
                 variant_msg = "ranking recommendations disabled; default prompt count"
@@ -1561,7 +1577,7 @@ async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
         # Ensure environment variables from .env are available before instantiating services
         load_dotenv()
 
-        prompt_config_kwargs: dict[str, object] = {}
+        prompt_config_kwargs: dict[str, Any] = {}
         if args.prompts_per_scene is not None:
             prompt_config_kwargs["variants_count"] = args.prompts_per_scene
         if args.ignore_ranking_recommendations:
@@ -1592,9 +1608,9 @@ async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
             "prompt_version": prompt_version,
         }
 
-        seen_scene_ids: set = set()
-        refreshed_scene_ids: set = set()
-        refreshed_prompts: list = []
+        seen_scene_ids: set[Any] = set()
+        refreshed_scene_ids: set[Any] = set()
+        refreshed_prompts: list[Any] = []
 
         for ranking in rankings:
             if len(refreshed_scene_ids) >= args.top_scenes:
@@ -1617,7 +1633,7 @@ async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
                 ranking.overall_priority or 0.0,
             )
 
-            metadata = dict(base_metadata)
+            metadata: dict[str, Any] = dict(base_metadata)
             metadata["scene_ranking_id"] = str(ranking.id)
             if ranking.overall_priority is not None:
                 metadata["ranking_priority"] = ranking.overall_priority

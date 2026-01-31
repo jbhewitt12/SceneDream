@@ -81,9 +81,7 @@ def _spawn_background_task(
         try:
             completed.result()
         except Exception:
-            logger.exception(
-                "Unhandled exception in background task %s", task_name
-            )
+            logger.exception("Unhandled exception in background task %s", task_name)
 
     task.add_done_callback(_handle_task_result)
     return task
@@ -685,7 +683,9 @@ async def remix_generated_image(
             task_name=f"remix-generated-image-{image_id}",
         )
     except Exception as exc:
-        logger.exception("Failed to create remix generation task for image %s", image_id)
+        logger.exception(
+            "Failed to create remix generation task for image %s", image_id
+        )
         raise HTTPException(
             status_code=500,
             detail="Failed to start remix generation",

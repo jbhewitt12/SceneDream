@@ -14,6 +14,7 @@ import logging
 import sys
 from collections.abc import Iterable
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from sqlmodel import Session
@@ -145,7 +146,7 @@ def _collect_scenes(
     book_slug: str | None,
     chapter: int | None,
     limit: int,
-) -> list:
+) -> list[Any]:
     repository = SceneExtractionRepository(session)
     if scene_ids:
         scenes = []
@@ -230,7 +231,7 @@ async def _handle_rank(args: argparse.Namespace) -> int:
         logger.error("%s", exc)
         return 2
 
-    config_kwargs: dict[str, object] = {
+    config_kwargs: dict[str, Any] = {
         "skip_discarded_scenes": not args.include_discarded,
         "fail_on_error": args.fail_on_error,
     }

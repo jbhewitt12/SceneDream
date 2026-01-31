@@ -1,9 +1,6 @@
 """Unit tests for ImageGenerationService."""
 
-import base64
-import tempfile
 from collections.abc import Callable
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -14,15 +11,15 @@ from app.repositories import (
     ImagePromptRepository,
     SceneExtractionRepository,
 )
+from app.services.image_generation import dalle_image_api
 from app.services.image_generation.image_generation_service import (
     ImageGenerationConfig,
     ImageGenerationService,
-    map_aspect_ratio_to_size,
     derive_style_from_tags,
+    map_aspect_ratio_to_size,
 )
-from app.services.image_generation import dalle_image_api
-from models.scene_extraction import SceneExtraction
 from models.image_prompt import ImagePrompt
+from models.scene_extraction import SceneExtraction
 
 pytestmark = pytest.mark.anyio("asyncio")
 
@@ -196,7 +193,7 @@ async def test_generate_for_selection_idempotency(
 
     # Create an existing image
     image_repo = GeneratedImageRepository(db)
-    existing = image_repo.create(
+    image_repo.create(
         data={
             "scene_extraction_id": scene.id,
             "image_prompt_id": prompt.id,
@@ -248,9 +245,9 @@ async def test_generate_for_selection_filters_by_book(
     scene2 = scene_factory(book_slug=book_slug, chapter_number=2)
     scene3 = scene_factory(book_slug="other-book", chapter_number=1)
 
-    prompt1 = prompt_factory(scene1)
-    prompt2 = prompt_factory(scene2)
-    prompt3 = prompt_factory(scene3)
+    prompt_factory(scene1)
+    prompt_factory(scene2)
+    prompt_factory(scene3)
 
     service = ImageGenerationService(db, api_key="test-key")
 
@@ -316,9 +313,9 @@ async def test_generate_for_selection_filters_by_chapter_range(
     scene2 = scene_factory(book_slug=book_slug, chapter_number=5)
     scene3 = scene_factory(book_slug=book_slug, chapter_number=10)
 
-    prompt1 = prompt_factory(scene1)
-    prompt2 = prompt_factory(scene2)
-    prompt3 = prompt_factory(scene3)
+    prompt_factory(scene1)
+    prompt_factory(scene2)
+    prompt_factory(scene3)
 
     service = ImageGenerationService(db, api_key="test-key")
 
