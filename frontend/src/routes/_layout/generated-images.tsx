@@ -226,11 +226,7 @@ const GeneratedImagesFilters = ({
                 const val = event.target.value
                 handleChange({
                   posted:
-                    val === "posted"
-                      ? true
-                      : val === "all"
-                        ? "all"
-                        : false,
+                    val === "posted" ? true : val === "all" ? "all" : false,
                 })
               }}
             >
