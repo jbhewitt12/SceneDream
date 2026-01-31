@@ -6,8 +6,8 @@ import argparse
 import asyncio
 import json
 import logging
+from collections.abc import Iterator, Sequence
 from datetime import datetime
-from typing import Iterator, Sequence
 
 from sqlmodel import Session
 

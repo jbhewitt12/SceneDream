@@ -2,10 +2,10 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     generated_images,
+    image_prompts,
     items,
     login,
     private,
-    image_prompts,
     scene_extractions,
     scene_rankings,
     users,

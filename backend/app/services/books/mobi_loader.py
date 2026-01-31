@@ -43,7 +43,9 @@ class MobiBookLoader:
         try:
             temp_dir_str, primary_path_str = mobi.extract(str(path))
         except Exception as exc:  # pragma: no cover - defensive wrapper
-            raise MobiExtractionError(f"Failed to extract MOBI '{path}': {exc}") from exc
+            raise MobiExtractionError(
+                f"Failed to extract MOBI '{path}': {exc}"
+            ) from exc
 
         temp_dir = Path(temp_dir_str)
         primary_path = Path(primary_path_str)
@@ -176,7 +178,9 @@ class MobiBookLoader:
                 if is_front_matter_content(paragraphs):
                     continue
 
-                title, body_paragraphs = self._extract_heading_from_paragraphs(paragraphs)
+                title, body_paragraphs = self._extract_heading_from_paragraphs(
+                    paragraphs
+                )
                 if not body_paragraphs:
                     if title and looks_like_heading(title):
                         pending_heading = normalize_whitespace(title)

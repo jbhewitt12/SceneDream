@@ -6,7 +6,6 @@ import pytest
 
 from app.services.books import BookContentService
 
-
 EXCESSION = (
     Path(__file__).resolve().parents[5]
     / "books"

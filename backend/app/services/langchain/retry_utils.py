@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import random
 import time
-from typing import Any, Callable, Iterable, Tuple, TypeVar
-
+from collections.abc import Callable, Iterable
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
 
-def _load_known_rate_limit_errors() -> Tuple[type, ...]:
+def _load_known_rate_limit_errors() -> tuple[type, ...]:
     """Lazily import known rate limit exception types, tolerating missing deps."""
 
-    candidates: Iterable[Tuple[str, str]] = (
+    candidates: Iterable[tuple[str, str]] = (
         ("google.api_core.exceptions", "ResourceExhausted"),
         ("google.api_core.exceptions", "TooManyRequests"),
         ("google.api_core.exceptions", "RetryError"),
@@ -50,7 +50,10 @@ def is_rate_limit_error(exc: BaseException) -> bool:
         return True
 
     message = str(exc).lower()
-    return any(keyword in message for keyword in ("rate limit", "quota", "resourceexhausted", "429"))
+    return any(
+        keyword in message
+        for keyword in ("rate limit", "quota", "resourceexhausted", "429")
+    )
 
 
 def retry_with_backoff(
@@ -89,4 +92,3 @@ def retry_with_backoff(
             )
             time.sleep(sleep_for)
             delay *= backoff_factor
-

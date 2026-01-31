@@ -10,10 +10,10 @@ from app.main import app
 from app.models import Item, User
 from app.tests.utils.user import authentication_token_from_email
 from app.tests.utils.utils import get_superuser_token_headers
+from models.generated_image import GeneratedImage
+from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 from models.scene_ranking import SceneRanking
-from models.image_prompt import ImagePrompt
-from models.generated_image import GeneratedImage
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -29,7 +29,8 @@ def db() -> Generator[Session, None, None]:
         statement = select(SceneExtraction.book_slug).distinct()
         all_book_slugs = session.exec(statement).all()
         test_book_slugs = [
-            slug for slug in all_book_slugs
+            slug
+            for slug in all_book_slugs
             if slug.startswith("test-book") or slug.startswith("gallery-book")
         ]
 

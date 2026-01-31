@@ -34,7 +34,7 @@ class GeneratedImageRepository:
         commit: bool = False,
         refresh: bool = True,
     ) -> GeneratedImage:
-        image = GeneratedImage(**data)  # type: ignore[arg-type]
+        image = GeneratedImage(**data)
         self._session.add(image)
         self._session.flush()
         if commit:
@@ -93,9 +93,7 @@ class GeneratedImageRepository:
         if include_scene:
             statement = statement.options(joinedload(GeneratedImage.scene_extraction))
         if include_posting_status:
-            statement = statement.options(
-                joinedload(GeneratedImage.social_media_posts)
-            )
+            statement = statement.options(joinedload(GeneratedImage.social_media_posts))
 
         if offset is not None:
             statement = statement.offset(offset)
@@ -137,15 +135,19 @@ class GeneratedImageRepository:
         # Filter by posting status
         if posted is True:
             # Has at least one post with status="posted"
-            posted_subquery = select(SocialMediaPost.generated_image_id).where(
-                SocialMediaPost.status == "posted"
-            ).distinct()
+            posted_subquery = (
+                select(SocialMediaPost.generated_image_id)
+                .where(SocialMediaPost.status == "posted")
+                .distinct()
+            )
             statement = statement.where(GeneratedImage.id.in_(posted_subquery))
         elif posted is False:
             # Has no posts with status="posted"
-            posted_subquery = select(SocialMediaPost.generated_image_id).where(
-                SocialMediaPost.status == "posted"
-            ).distinct()
+            posted_subquery = (
+                select(SocialMediaPost.generated_image_id)
+                .where(SocialMediaPost.status == "posted")
+                .distinct()
+            )
             statement = statement.where(GeneratedImage.id.notin_(posted_subquery))
 
         ordering = (
@@ -160,9 +162,7 @@ class GeneratedImageRepository:
         if include_scene:
             statement = statement.options(joinedload(GeneratedImage.scene_extraction))
         if include_posting_status:
-            statement = statement.options(
-                joinedload(GeneratedImage.social_media_posts)
-            )
+            statement = statement.options(joinedload(GeneratedImage.social_media_posts))
 
         if offset is not None:
             statement = statement.offset(offset)
@@ -205,15 +205,19 @@ class GeneratedImageRepository:
         # Filter by posting status
         if posted is True:
             # Has at least one post with status="posted"
-            posted_subquery = select(SocialMediaPost.generated_image_id).where(
-                SocialMediaPost.status == "posted"
-            ).distinct()
+            posted_subquery = (
+                select(SocialMediaPost.generated_image_id)
+                .where(SocialMediaPost.status == "posted")
+                .distinct()
+            )
             statement = statement.where(GeneratedImage.id.in_(posted_subquery))
         elif posted is False:
             # Has no posts with status="posted"
-            posted_subquery = select(SocialMediaPost.generated_image_id).where(
-                SocialMediaPost.status == "posted"
-            ).distinct()
+            posted_subquery = (
+                select(SocialMediaPost.generated_image_id)
+                .where(SocialMediaPost.status == "posted")
+                .distinct()
+            )
             statement = statement.where(GeneratedImage.id.notin_(posted_subquery))
 
         ordering = (
@@ -228,9 +232,7 @@ class GeneratedImageRepository:
         if include_scene:
             statement = statement.options(joinedload(GeneratedImage.scene_extraction))
         if include_posting_status:
-            statement = statement.options(
-                joinedload(GeneratedImage.social_media_posts)
-            )
+            statement = statement.options(joinedload(GeneratedImage.social_media_posts))
 
         if offset is not None:
             statement = statement.offset(offset)
@@ -276,9 +278,7 @@ class GeneratedImageRepository:
         if include_scene:
             statement = statement.options(joinedload(GeneratedImage.scene_extraction))
         if include_posting_status:
-            statement = statement.options(
-                joinedload(GeneratedImage.social_media_posts)
-            )
+            statement = statement.options(joinedload(GeneratedImage.social_media_posts))
 
         if offset is not None:
             statement = statement.offset(offset)

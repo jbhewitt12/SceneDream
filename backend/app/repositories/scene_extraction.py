@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable, Mapping
 from datetime import datetime
-from typing import Iterable, Mapping, Optional
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_
@@ -44,7 +44,7 @@ class SceneExtractionRepository:
         self,
         book_slug: str,
         *,
-        chapter_number: Optional[int] = None,
+        chapter_number: int | None = None,
     ) -> list[SceneExtraction]:
         statement = select(SceneExtraction).where(
             SceneExtraction.book_slug == book_slug
@@ -62,9 +62,9 @@ class SceneExtractionRepository:
     def list_unrefined(
         self,
         *,
-        book_slug: Optional[str] = None,
-        chapter_number: Optional[int] = None,
-        limit: Optional[int] = None,
+        book_slug: str | None = None,
+        chapter_number: int | None = None,
+        limit: int | None = None,
         include_refined: bool = False,
     ) -> list[SceneExtraction]:
         statement = select(SceneExtraction)

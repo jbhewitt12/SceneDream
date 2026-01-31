@@ -6,9 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
-DEFAULT_CHEATSHEET_PATH = (
-    "backend/app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md"
-)
+DEFAULT_CHEATSHEET_PATH = "backend/app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md"
 
 
 class ImagePromptGenerationServiceError(RuntimeError):
@@ -42,7 +40,7 @@ class ImagePromptGenerationConfig:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def copy_with(self, **overrides: Any) -> ImagePromptGenerationConfig:
-        data = {
+        data: dict[str, Any] = {
             "model_vendor": self.model_vendor,
             "model_name": self.model_name,
             "prompt_version": self.prompt_version,

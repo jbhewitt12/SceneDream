@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import flickrapi  # type: ignore[import-untyped]
+import flickrapi
 
 from app.core.config import settings
 from app.services.flickr.flickr_service import FlickrService
@@ -20,7 +20,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Flickr error codes that indicate rate limiting
-FLICKR_RATE_LIMIT_CODES = {"99", "105"}  # 99 = User not allowed, 105 = Service unavailable
+FLICKR_RATE_LIMIT_CODES = {
+    "99",
+    "105",
+}  # 99 = User not allowed, 105 = Service unavailable
 FLICKR_RATE_LIMIT_KEYWORDS = ["rate limit", "too many", "throttl"]
 
 
@@ -54,9 +57,7 @@ class FlickrPoster:
                 self._user_nsid = ""
         return self._user_nsid
 
-    async def post(
-        self, image: GeneratedImage, prompt: ImagePrompt
-    ) -> tuple[str, str]:
+    async def post(self, image: GeneratedImage, prompt: ImagePrompt) -> tuple[str, str]:
         """
         Post an image to Flickr.
 

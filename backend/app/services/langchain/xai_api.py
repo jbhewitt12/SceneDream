@@ -25,14 +25,12 @@
 # Dependencies: Install via pip install langchain==0.3.27 langchain-openai
 # Note: langchain-openai is used for OpenAI-compatible APIs.
 
-from typing import List, Dict, Any, Optional, Union
-from langchain_openai import ChatOpenAI
+from typing import Any
+
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
-from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.tools import tool  # For defining tools
 from langchain_core.pydantic_v1 import BaseModel  # For structured outputs
-from pydantic import Field
+from langchain_openai import ChatOpenAI
 
 from .retry_utils import retry_with_backoff
 
@@ -70,8 +68,8 @@ class XAIAPI:
         Example from LangChain docs: ChatOpenAI can be pointed to custom endpoints.
         """
         # Initialize the LLM with OpenAI-compatible settings for xAI
-        self.llm = ChatOpenAI(
-            api_key=api_key,
+        self.llm = ChatOpenAI(  # type: ignore[call-arg]
+            api_key=api_key,  # type: ignore[arg-type]
             base_url=base_url,
             model=model,
             temperature=temperature,
@@ -80,7 +78,7 @@ class XAIAPI:
         self.model = model
         self.base_url = base_url
 
-    def simple_call(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+    def simple_call(self, prompt: str, system_prompt: str | None = None) -> str:
         """
         Makes a simple LLM call: prompt -> response as string.
 
@@ -97,11 +95,13 @@ class XAIAPI:
         """
         # Create a prompt template; if system_prompt, include it
         if system_prompt:
-            template = ChatPromptTemplate.from_messages(
-                [
-                    ("system", system_prompt),
-                    ("human", "{prompt}"),
-                ]
+            template: ChatPromptTemplate | PromptTemplate = (
+                ChatPromptTemplate.from_messages(
+                    [
+                        ("system", system_prompt),
+                        ("human", "{prompt}"),
+                    ]
+                )
             )
         else:
             template = PromptTemplate.from_template("{prompt}")
@@ -116,10 +116,10 @@ class XAIAPI:
     def call_with_functions(
         self,
         prompt: str,
-        tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None,
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
         auto_execute: bool = False,
-    ) -> Union[Dict[str, Any], Any]:
+    ) -> dict[str, Any] | Any:
         """
         Makes an LLM call with function/tool calling.
 
@@ -154,8 +154,9 @@ class XAIAPI:
         response = retry_with_backoff(llm_with_tools.invoke, messages)
 
         # Check if tool calls are present
-        if response.tool_calls:
-            tool_call = response.tool_calls[0]  # Assume single tool call for simplicity
+        tool_calls = getattr(response, "tool_calls", None)
+        if tool_calls:
+            tool_call = tool_calls[0]  # Assume single tool call for simplicity
             if auto_execute:
                 # Find the tool function (assumes tools are callable; in practice, map names to functions)
                 # For demo, you'd need to provide callable tools; here we simulate
@@ -170,16 +171,17 @@ class XAIAPI:
                     "note": "Auto-execute not implemented; implement function mapping.",
                 }
             else:
-                return {"tool_calls": response.tool_calls}
+                return {"tool_calls": tool_calls}
         else:
-            return response.content
+            content: str | list[str | dict[str, Any]] = response.content
+            return content
 
     def call_with_json_output(
         self,
         prompt: str,
-        schema: Union[BaseModel, Dict[str, Any]],
-        system_prompt: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        schema: BaseModel | dict[str, Any],
+        system_prompt: str | None = None,
+    ) -> dict[str, Any]:
         """
         Makes an LLM call enforcing JSON structured output.
 
@@ -201,7 +203,7 @@ class XAIAPI:
         if isinstance(schema, type) and issubclass(schema, BaseModel):
             llm_structured = self.llm.with_structured_output(schema)
         else:
-            llm_structured = self.llm.with_structured_output(schema, method="json_mode")
+            llm_structured = self.llm.with_structured_output(schema, method="json_mode")  # type: ignore[arg-type]
 
         # Create prompt template
         if system_prompt:

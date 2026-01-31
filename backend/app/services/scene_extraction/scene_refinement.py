@@ -4,7 +4,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from textwrap import dedent
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -25,10 +25,10 @@ class _RefinementScenePayload(BaseModel):
 
 
 class _RefinementResponse(BaseModel):
-    scenes: List[_RefinementScenePayload]
+    scenes: list[_RefinementScenePayload]
 
 
-REFINEMENT_SCHEMA: Dict[str, object] = {
+REFINEMENT_SCHEMA: dict[str, object] = {
     "type": "object",
     "properties": {
         "scenes": {
@@ -67,7 +67,7 @@ class SceneRefiner:
         *,
         model: str,
         temperature: float,
-        max_tokens: Optional[int],
+        max_tokens: int | None,
     ) -> None:
         self._model = model
         self._temperature = temperature
@@ -75,11 +75,11 @@ class SceneRefiner:
 
     def refine(
         self,
-        chapter: "Chapter",
-        scenes: List["RawScene"],
+        chapter: Chapter,
+        scenes: list[RawScene],
         *,
         fail_on_error: bool = False,
-    ) -> Dict[int, RefinedScene]:
+    ) -> dict[int, RefinedScene]:
         if not scenes:
             return {}
         prompt = self._build_refinement_prompt(chapter, scenes)
@@ -101,7 +101,7 @@ class SceneRefiner:
                 raise SceneRefinementError(str(exc)) from exc
             return {}
         entries = payload.scenes if hasattr(payload, "scenes") else None
-        refinements: Dict[int, RefinedScene] = {}
+        refinements: dict[int, RefinedScene] = {}
         if isinstance(entries, list):
             for item in entries:
                 if isinstance(item, _RefinementScenePayload):
@@ -142,9 +142,7 @@ class SceneRefiner:
             )
         return refinements
 
-    def _build_refinement_prompt(
-        self, chapter: "Chapter", scenes: List["RawScene"]
-    ) -> str:
+    def _build_refinement_prompt(self, chapter: Chapter, scenes: list[RawScene]) -> str:
         chapter_number = getattr(chapter, "number", "?")
         chapter_title = getattr(chapter, "title", "")
         header = dedent(
@@ -175,7 +173,7 @@ class SceneRefiner:
             - Provide a concise, specific rationale aligned with either `keep` or `discard`.
             """
         ).strip()
-        scenes_text: List[str] = []
+        scenes_text: list[str] = []
         for scene in scenes:
             scene_id = getattr(scene, "scene_id", None)
             if scene_id is None:

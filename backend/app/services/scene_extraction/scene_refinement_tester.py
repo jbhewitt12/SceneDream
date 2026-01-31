@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Sequence, Tuple
 
 CURRENT_FILE = Path(__file__).resolve()
 BACKEND_ROOT = CURRENT_FILE.parents[3]
@@ -28,14 +28,14 @@ try:
 except ModuleNotFoundError:
 
     @dataclass
-    class Chapter:  # type: ignore[override]
+    class Chapter:  # type: ignore[no-redef]
         number: int
         title: str
-        paragraphs: List[str]
+        paragraphs: list[str]
         source_name: str
 
     @dataclass
-    class RawScene:  # type: ignore[override]
+    class RawScene:  # type: ignore[no-redef]
         scene_id: int
         location_marker: str
         raw_excerpt: str
@@ -43,15 +43,17 @@ except ModuleNotFoundError:
         chapter_number: int = 0
         chapter_title: str = "Scene Refinement Tester"
         chunk_index: int = 0
-        chunk_span: Tuple[int, int] = (0, 0)
+        chunk_span: tuple[int, int] = (0, 0)
         paragraph_start: int | None = None
         paragraph_end: int | None = None
         word_start: int | None = None
         word_end: int | None = None
 
 
-from app.services.scene_extraction.scene_refinement import RefinedScene, SceneRefiner
-
+from app.services.scene_extraction.scene_refinement import (  # noqa: E402
+    RefinedScene,
+    SceneRefiner,
+)
 
 KEEP_EXAMPLES: Sequence[str] = [
     """God'shole habitat (it was much too small to be called an Orbital according to the Culture's definitive nomenclature, plus it was enclosed) was - at nearly a thousand years old - one of the Affront's older outposts in a region of space most civilisations had long since agreed to call the Fernblade. The small world was in the shape of a hollow ring; a tube ten kilometres in diameter and two thousand two hundred long which had been joined into a circle; the superconducting coils and EM wave guides formed the inner rim of the enormous wheel. The tiny, rapidly spinning black hole which provided the structure's power sat where the wheel's hub would have been. The circular-sectioned living space was like a highly pressurised tyre bulging from the inner rim, and where its tread would have been hung the gantries and docks where the ships of the Affront and a dozen other species came and went.""",
@@ -93,8 +95,8 @@ class LabeledScene:
     expected_decision: str
 
 
-def _build_labeled_scenes() -> List[LabeledScene]:
-    labeled: List[LabeledScene] = []
+def _build_labeled_scenes() -> list[LabeledScene]:
+    labeled: list[LabeledScene] = []
     scene_counter = 1
     for excerpt in KEEP_EXAMPLES:
         labeled.append(
@@ -178,8 +180,8 @@ def main() -> None:
 
     total = len(labeled_scenes)
     matches = 0
-    results: List[str] = []
-    mismatches: List[str] = []
+    results: list[str] = []
+    mismatches: list[str] = []
 
     for labeled in labeled_scenes:
         scene_id = labeled.scene.scene_id

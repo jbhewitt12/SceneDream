@@ -30,9 +30,6 @@ import asyncio
 import json
 import logging
 import os
-import sys
-from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 from sqlmodel import Session
@@ -268,7 +265,7 @@ async def _handle_generate(args: argparse.Namespace) -> int:
             return 1
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """Main entry point for the image generation CLI."""
     logging.basicConfig(
         level=logging.INFO,

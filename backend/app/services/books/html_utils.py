@@ -302,7 +302,9 @@ def is_front_matter_content(
         first_line = raw_window[0]
         first_lower = window[0]
         if len(raw_window) <= 6 and len(first_line) <= 60:
-            if first_lower.startswith(("for ", "to ", "with thanks", "with gratitude", "dedicated to")):
+            if first_lower.startswith(
+                ("for ", "to ", "with thanks", "with gratitude", "dedicated to")
+            ):
                 return True
             if first_lower in {"for", "dedication"}:
                 return True

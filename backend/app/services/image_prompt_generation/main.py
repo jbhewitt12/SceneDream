@@ -19,6 +19,7 @@ import logging
 import sys
 from collections.abc import Iterable
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func
@@ -31,6 +32,7 @@ from app.services.image_prompt_generation.image_prompt_generation_service import
     ImagePromptGenerationService,
     ImagePromptGenerationServiceError,
 )
+from app.services.image_prompt_generation.models import ImagePromptPreview
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
@@ -211,7 +213,7 @@ def _filter_scenes_without_prompts(
 
 
 def _summarize_prompts(
-    scene: SceneExtraction, prompts: list[ImagePrompt] | list[object] | None
+    scene: SceneExtraction, prompts: list[ImagePrompt] | list[ImagePromptPreview] | None
 ) -> dict[str, object]:
     base = {
         "scene_extraction_id": str(scene.id),
@@ -223,10 +225,12 @@ def _summarize_prompts(
         base.update({"generated": 0})
         return base
     if isinstance(prompts[0], ImagePrompt):
+        # Type narrowing: at this point all elements are ImagePrompt
+        image_prompts = [p for p in prompts if isinstance(p, ImagePrompt)]
         return {
             **base,
             "generated": len(prompts),
-            "prompt_ids": [str(p.id) for p in prompts],
+            "prompt_ids": [str(p.id) for p in image_prompts],
             "committed": True,
         }
     return {
@@ -248,7 +252,7 @@ def _pick_random_scene(
 
 
 async def _handle_run(args: argparse.Namespace) -> int:
-    config_kwargs: dict[str, object] = {}
+    config_kwargs: dict[str, Any] = {}
     if args.model_name:
         config_kwargs["model_name"] = args.model_name
     if args.prompt_version:
@@ -304,7 +308,7 @@ async def _handle_run(args: argparse.Namespace) -> int:
 
 
 def _handle_preview(args: argparse.Namespace) -> int:
-    config_kwargs: dict[str, object] = {}
+    config_kwargs: dict[str, Any] = {}
     if args.prompt_version:
         config_kwargs["prompt_version"] = args.prompt_version
     if args.temperature is not None:

@@ -93,11 +93,7 @@ class EpubBookLoader:
                 pending_heading = normalize_whitespace(paragraphs[0])
                 continue
 
-            final_title = (
-                pending_heading
-                or title
-                or f"Chapter {chapter_number}"
-            )
+            final_title = pending_heading or title or f"Chapter {chapter_number}"
             pending_heading = None
 
             chapters[chapter_number] = BookChapter(

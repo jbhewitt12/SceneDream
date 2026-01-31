@@ -2,7 +2,7 @@
 """
 Test metadata generation on random image prompts.
 
-To run test: 
+To run test:
 ```
 uv run python app/services/prompt_metadata/check_metadata_generation.py 5
 ```
@@ -25,7 +25,7 @@ from app.core.db import engine
 from models.image_prompt import ImagePrompt
 
 # Import from same directory
-from prompt_metadata_service import (
+from .prompt_metadata_service import (
     PromptMetadataConfig,
     PromptMetadataGenerationService,
 )
@@ -125,11 +125,7 @@ async def _run_prompt_checks(args: argparse.Namespace) -> int:
     """Execute the metadata generation checks asynchronously."""
     with Session(engine) as session:
         # Select random prompts
-        statement = (
-            select(ImagePrompt)
-            .order_by(func.random())
-            .limit(args.count)
-        )
+        statement = select(ImagePrompt).order_by(func.random()).limit(args.count)
         prompts = session.exec(statement).all()
 
         if not prompts:

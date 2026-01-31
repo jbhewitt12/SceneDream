@@ -17,8 +17,8 @@
 from pathlib import Path
 from typing import Any
 
-import flickrapi  # type: ignore[import-untyped]
-from flickrapi.auth import FlickrAccessToken  # type: ignore[import-untyped]
+import flickrapi
+from flickrapi.auth import FlickrAccessToken
 
 
 class FlickrService:
@@ -205,15 +205,22 @@ class FlickrService:
             if response.attrib.get("stat") == "ok":
                 sizes_elem = response.find("sizes")
                 if sizes_elem is not None:
-                    size_map = {"s": "Small", "m": "Medium", "b": "Large", "o": "Original"}
+                    size_map = {
+                        "s": "Small",
+                        "m": "Medium",
+                        "b": "Large",
+                        "o": "Original",
+                    }
                     target_label = size_map.get(size, "Large")
                     sizes = list(sizes_elem.iter("size"))
                     for s in sizes:
                         if s.attrib.get("label") == target_label:
-                            return s.attrib.get("source")
+                            source: str | None = s.attrib.get("source")
+                            return source
                     # Fallback to largest available
                     if sizes:
-                        return sizes[-1].attrib.get("source")
+                        source = sizes[-1].attrib.get("source")
+                        return source
         except flickrapi.FlickrError as e:
             print(f"Error getting photo URL: {e}")
         return None

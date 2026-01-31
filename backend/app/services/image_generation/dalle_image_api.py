@@ -32,10 +32,8 @@
 #   https://platform.openai.com/docs/guides/images/image-generation
 
 import base64
-import os
-import requests
-from typing import List, Union
 
+import requests
 from openai import OpenAI
 
 
@@ -48,7 +46,7 @@ def generate_images(
     style: str = "vivid",
     n: int = 1,
     response_format: str = "url",
-) -> List[Union[str, bytes]]:
+) -> list[str | bytes]:
     """
     Generates images using OpenAI's DALL·E model based on the provided text prompt.
 

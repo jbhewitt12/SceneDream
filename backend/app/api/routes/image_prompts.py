@@ -22,7 +22,7 @@ from app.services.prompt_metadata.prompt_metadata_service import (
     PromptMetadataGenerationService,
     PromptMetadataGenerationServiceError,
 )
-
+from models.image_prompt import ImagePrompt
 
 router = APIRouter(prefix="/image-prompts", tags=["image-prompts"])
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ _DEFAULT_BOOK_LIMIT = 24
 _MAX_BOOK_LIMIT = 200
 
 
-def _serialize_prompt(record, *, include_scene: bool) -> ImagePromptRead:
+def _serialize_prompt(record: ImagePrompt, *, include_scene: bool) -> ImagePromptRead:
     item = ImagePromptRead.model_validate(record)
     if include_scene and getattr(record, "scene_extraction", None) is not None:
         item = item.model_copy(
@@ -151,7 +151,9 @@ def get_image_prompt(
     return _serialize_prompt(record, include_scene=bool(include_scene))
 
 
-@router.post("/{prompt_id}/metadata/generate", response_model=MetadataGenerationResponse)
+@router.post(
+    "/{prompt_id}/metadata/generate", response_model=MetadataGenerationResponse
+)
 async def generate_metadata_variants(
     *,
     session: SessionDep,

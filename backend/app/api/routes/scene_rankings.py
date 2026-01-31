@@ -13,6 +13,7 @@ from app.schemas import (
     SceneRankingRead,
     SceneRankingSceneSummary,
 )
+from models.scene_ranking import SceneRanking
 
 router = APIRouter(prefix="/scene-rankings", tags=["scene-rankings"])
 
@@ -23,7 +24,7 @@ _MAX_HISTORY_LIMIT = 100
 
 
 def _serialize_ranking(
-    record,
+    record: SceneRanking,
     *,
     include_scene: bool,
 ) -> SceneRankingRead:

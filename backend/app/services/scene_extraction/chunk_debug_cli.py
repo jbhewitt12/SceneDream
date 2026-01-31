@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from app.services.scene_extraction.scene_extraction import (
     Chapter,
@@ -90,8 +89,7 @@ def _iter_chunks(
     chapter: Chapter,
 ) -> Iterable[ChapterChunk]:
     chunks = extractor._chunk_chapter(chapter)
-    for chunk in chunks:
-        yield chunk
+    yield from chunks
 
 
 def _format_prompt(extractor: SceneExtractor, chunk: ChapterChunk) -> str:
@@ -128,7 +126,9 @@ def inspect_book_chunks(args: argparse.Namespace) -> int:
             if args.chunk_limit is not None and chunk_displayed >= args.chunk_limit:
                 break
 
-            print(f"Chunk {chunk.index} | Paragraphs {chunk.start_paragraph}-{chunk.end_paragraph}")
+            print(
+                f"Chunk {chunk.index} | Paragraphs {chunk.start_paragraph}-{chunk.end_paragraph}"
+            )
             print(f"Paragraph count: {len(chunk.paragraphs)}")
 
             if args.show_prompts or not args.show_paragraphs:

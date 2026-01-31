@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 from uuid import UUID
 
 from sqlalchemy.orm import joinedload
@@ -195,7 +195,7 @@ class SceneRankingRepository:
         commit: bool = False,
         refresh: bool = True,
     ) -> SceneRanking:
-        ranking = SceneRanking(**data)  # type: ignore[arg-type]
+        ranking = SceneRanking(**data)
         self._session.add(ranking)
         self._session.flush()
         if commit:
