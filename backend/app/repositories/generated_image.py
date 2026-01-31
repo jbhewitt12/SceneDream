@@ -11,6 +11,7 @@ from sqlalchemy.orm import joinedload
 from sqlmodel import Session, select
 
 from models.generated_image import GeneratedImage
+from models.social_media_post import SocialMediaPost
 
 
 class GeneratedImageRepository:
@@ -114,6 +115,7 @@ class GeneratedImageRepository:
         provider: str | None = None,
         model: str | None = None,
         approval: bool | None = None,
+        posted: bool | None = None,
         newest_first: bool = True,
         limit: int | None = None,
         offset: int | None = None,
@@ -131,6 +133,20 @@ class GeneratedImageRepository:
             statement = statement.where(GeneratedImage.model == model)
         if approval is not None:
             statement = statement.where(GeneratedImage.user_approved == approval)
+
+        # Filter by posting status
+        if posted is True:
+            # Has at least one post with status="posted"
+            posted_subquery = select(SocialMediaPost.generated_image_id).where(
+                SocialMediaPost.status == "posted"
+            ).distinct()
+            statement = statement.where(GeneratedImage.id.in_(posted_subquery))
+        elif posted is False:
+            # Has no posts with status="posted"
+            posted_subquery = select(SocialMediaPost.generated_image_id).where(
+                SocialMediaPost.status == "posted"
+            ).distinct()
+            statement = statement.where(GeneratedImage.id.notin_(posted_subquery))
 
         ordering = (
             GeneratedImage.created_at.desc()
@@ -165,6 +181,7 @@ class GeneratedImageRepository:
         provider: str | None = None,
         model: str | None = None,
         approval: bool | None = None,
+        posted: bool | None = None,
         newest_first: bool = True,
         limit: int | None = None,
         offset: int | None = None,
@@ -184,6 +201,20 @@ class GeneratedImageRepository:
             statement = statement.where(GeneratedImage.model == model)
         if approval is not None:
             statement = statement.where(GeneratedImage.user_approved == approval)
+
+        # Filter by posting status
+        if posted is True:
+            # Has at least one post with status="posted"
+            posted_subquery = select(SocialMediaPost.generated_image_id).where(
+                SocialMediaPost.status == "posted"
+            ).distinct()
+            statement = statement.where(GeneratedImage.id.in_(posted_subquery))
+        elif posted is False:
+            # Has no posts with status="posted"
+            posted_subquery = select(SocialMediaPost.generated_image_id).where(
+                SocialMediaPost.status == "posted"
+            ).distinct()
+            statement = statement.where(GeneratedImage.id.notin_(posted_subquery))
 
         ordering = (
             GeneratedImage.created_at.desc()

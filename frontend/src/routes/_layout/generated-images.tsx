@@ -6,7 +6,6 @@ import {
   HStack,
   Heading,
   Icon,
-  Input,
   NativeSelectField,
   NativeSelectIndicator,
   NativeSelectRoot,
@@ -56,27 +55,6 @@ const generatedImagesSearchSchema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined))
     .catch(undefined),
-  chapter_number: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .or(z.literal("").transform(() => undefined))
-    .catch(undefined),
-  provider: z
-    .string()
-    .trim()
-    .min(1)
-    .optional()
-    .or(z.literal("").transform(() => undefined))
-    .catch(undefined),
-  model: z
-    .string()
-    .trim()
-    .min(1)
-    .optional()
-    .or(z.literal("").transform(() => undefined))
-    .catch(undefined),
   approval: z
     .preprocess((value) => {
       if (value === undefined || value === "") return undefined
@@ -92,6 +70,19 @@ const generatedImagesSearchSchema = z.object({
       return value
     }, z.boolean().or(z.null()).optional())
     .catch(undefined),
+  posted: z
+    .preprocess((value) => {
+      if (value === undefined || value === "") return false
+      if (value === "all") return "all"
+      if (value === true || value === "true" || value === "posted") {
+        return true
+      }
+      if (value === false || value === "false" || value === "not_posted") {
+        return false
+      }
+      return false
+    }, z.union([z.boolean(), z.literal("all")]).optional())
+    .catch(false),
   page_size: z.coerce.number().int().min(1).max(48).catch(24),
 })
 
@@ -123,9 +114,6 @@ const GeneratedImagesFilters = ({
   isFetching: boolean
 }) => {
   const books = options?.books ?? []
-  const chapters = search.book_slug
-    ? options?.chapters_by_book?.[search.book_slug] ?? []
-    : []
 
   const disabled = !books.length
 
@@ -135,10 +123,8 @@ const GeneratedImagesFilters = ({
 
   const resetFilters = () => {
     handleChange({
-      chapter_number: undefined,
-      provider: undefined,
-      model: undefined,
       approval: undefined,
+      posted: false,
     })
   }
 
@@ -162,7 +148,7 @@ const GeneratedImagesFilters = ({
           Reset
         </Button>
       </Flex>
-      <SimpleGrid columns={{ base: 1, md: 5 }} gap={4}>
+      <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
         <Stack spacing={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Book
@@ -173,7 +159,6 @@ const GeneratedImagesFilters = ({
               onChange={(event) =>
                 handleChange({
                   book_slug: event.target.value || undefined,
-                  chapter_number: undefined,
                 })
               }
             >
@@ -186,61 +171,6 @@ const GeneratedImagesFilters = ({
             </NativeSelectField>
             <NativeSelectIndicator />
           </NativeSelectRoot>
-        </Stack>
-        <Stack spacing={1}>
-          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
-            Chapter
-          </Text>
-          <NativeSelectRoot disabled={!chapters.length} w="full">
-            <NativeSelectField
-              value={search.chapter_number?.toString() ?? ""}
-              onChange={(event) =>
-                handleChange({
-                  chapter_number: event.target.value
-                    ? Number.parseInt(event.target.value, 10)
-                    : undefined,
-                })
-              }
-            >
-              <option value="">All chapters</option>
-              {chapters.map((chapter) => (
-                <option key={chapter} value={chapter}>
-                  Chapter {chapter}
-                </option>
-              ))}
-            </NativeSelectField>
-            <NativeSelectIndicator />
-          </NativeSelectRoot>
-        </Stack>
-        <Stack spacing={1}>
-          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
-            Provider
-          </Text>
-          <Input
-            placeholder="e.g. openai"
-            value={search.provider ?? ""}
-            onChange={(event) =>
-              handleChange({
-                provider: event.target.value.trim() || undefined,
-              })
-            }
-            disabled={disabled}
-          />
-        </Stack>
-        <Stack spacing={1}>
-          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
-            Model
-          </Text>
-          <Input
-            placeholder="e.g. dall-e-3"
-            value={search.model ?? ""}
-            onChange={(event) =>
-              handleChange({
-                model: event.target.value.trim() || undefined,
-              })
-            }
-            disabled={disabled}
-          />
         </Stack>
         <Stack spacing={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
@@ -279,6 +209,38 @@ const GeneratedImagesFilters = ({
             <NativeSelectIndicator />
           </NativeSelectRoot>
         </Stack>
+        <Stack spacing={1}>
+          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
+            Posted
+          </Text>
+          <NativeSelectRoot disabled={disabled} w="full">
+            <NativeSelectField
+              value={
+                search.posted === "all"
+                  ? "all"
+                  : search.posted === true
+                    ? "posted"
+                    : "not_posted"
+              }
+              onChange={(event) => {
+                const val = event.target.value
+                handleChange({
+                  posted:
+                    val === "posted"
+                      ? true
+                      : val === "all"
+                        ? "all"
+                        : false,
+                })
+              }}
+            >
+              <option value="all">All images</option>
+              <option value="posted">Posted</option>
+              <option value="not_posted">Not posted</option>
+            </NativeSelectField>
+            <NativeSelectIndicator />
+          </NativeSelectRoot>
+        </Stack>
       </SimpleGrid>
     </Stack>
   )
@@ -293,10 +255,8 @@ const useGeneratedImagesData = (search: GeneratedImagesSearch) => {
     queryFn: ({ pageParam = 0 }) =>
       GeneratedImageApi.list({
         book: search.book_slug,
-        chapter: search.chapter_number,
-        provider: search.provider,
-        model: search.model,
         approval: search.approval,
+        posted: search.posted === "all" ? undefined : search.posted,
         limit: search.page_size,
         offset: pageParam,
       }),
