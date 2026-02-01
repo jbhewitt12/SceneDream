@@ -19,7 +19,7 @@ from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
 from app.services.books import BookContentService
-from app.services.langchain import openai_api
+from app.services.langchain import gemini_api, openai_api
 from app.services.prompt_metadata import (
     PromptMetadataConfig,
     PromptMetadataGenerationService,
@@ -44,7 +44,7 @@ ALLOWED_ASPECT_RATIO_DISPLAY = ", ".join(ALLOWED_ASPECT_RATIOS)
 
 
 class ImagePromptGenerationService:
-    """Generate structured image prompts for scenes using Gemini."""
+    """Generate structured image prompts for scenes using LLM (Gemini or OpenAI)."""
 
     _system_instruction = (
         "Respond only with strict JSON matching the requested array schema. "
@@ -827,16 +827,26 @@ class ImagePromptGenerationService:
     ) -> tuple[Any, str | None, int]:
         attempts = max(config.retry_attempts, 0) + 1
         last_error: Exception | None = None
+        use_gemini = config.model_vendor.lower() == "google"
         for attempt in range(1, attempts + 1):
             start_time = time.perf_counter()
             try:
-                response = await openai_api.json_output(
-                    prompt=prompt,
-                    system_instruction=system_instruction or self._system_instruction,
-                    model=config.model_name,
-                    temperature=config.temperature,
-                    max_tokens=config.max_output_tokens,
-                )
+                if use_gemini:
+                    response = await gemini_api.json_output(
+                        prompt=prompt,
+                        system_instruction=system_instruction or self._system_instruction,
+                        model=config.model_name,
+                        temperature=config.temperature,
+                        max_tokens=config.max_output_tokens,
+                    )
+                else:
+                    response = await openai_api.json_output(
+                        prompt=prompt,
+                        system_instruction=system_instruction or self._system_instruction,
+                        model=config.model_name,
+                        temperature=config.temperature,
+                        max_tokens=config.max_output_tokens,
+                    )
                 execution_time_ms = int((time.perf_counter() - start_time) * 1000)
                 llm_request_id = None
                 if isinstance(response, dict):
@@ -847,9 +857,10 @@ class ImagePromptGenerationService:
             except Exception as exc:  # pragma: no cover - retry path
                 last_error = exc
                 logger.warning(
-                    "Gemini prompt generation failed (attempt %s/%s): %s",
+                    "LLM prompt generation failed (attempt %s/%s, vendor=%s): %s",
                     attempt,
                     attempts,
+                    config.model_vendor,
                     exc,
                 )
                 if attempt >= attempts:
@@ -858,10 +869,10 @@ class ImagePromptGenerationService:
         assert last_error is not None
         if config.fail_on_error:
             raise ImagePromptGenerationServiceError(
-                f"Gemini prompt generation failed: {last_error}"
+                f"LLM prompt generation failed: {last_error}"
             ) from last_error
         raise ImagePromptGenerationServiceError(
-            "Gemini prompt generation failed after retries"
+            "LLM prompt generation failed after retries"
         ) from last_error
 
     async def _run_metadata_generation(
