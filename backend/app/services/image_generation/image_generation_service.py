@@ -20,6 +20,7 @@ from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
 from app.services.image_generation import (
     dalle_image_api,  # noqa: F401 - ensures provider registration
+    gpt_image_api,  # noqa: F401 - ensures provider registration
 )
 from models.image_prompt import ImagePrompt
 
