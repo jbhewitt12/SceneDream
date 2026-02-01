@@ -101,6 +101,10 @@ class GptImageProvider(ImageGenerationProvider):
                 error=f"Invalid size '{size}'. Supported: {self.SIZES}"
             )
 
+        # Map DALL-E quality values to GPT Image equivalents
+        quality_mapping = {"standard": "auto", "hd": "high"}
+        quality = quality_mapping.get(quality, quality)
+
         if quality not in self.QUALITIES:
             return GeneratedImageResult(
                 error=f"Invalid quality '{quality}'. Supported: {self.QUALITIES}"
