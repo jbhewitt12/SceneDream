@@ -333,6 +333,16 @@ async def _execute_custom_remix_generation(
         )
 
 
+@router.get("/providers", response_model=list[str])
+def list_providers(
+    *,
+    session: SessionDep,
+) -> list[str]:
+    """Return list of distinct providers used in generated images."""
+    repository = GeneratedImageRepository(session)
+    return repository.get_distinct_providers()
+
+
 @router.get("", response_model=GeneratedImageListResponse)
 def list_generated_images(
     *,

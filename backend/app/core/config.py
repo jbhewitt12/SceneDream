@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     FLICKR_API_KEY: str | None = None
     FLICKR_API_SECRET: str | None = None
 
+    # Image generation defaults
+    DEFAULT_IMAGE_PROVIDER: str = "openai"
+    DEFAULT_IMAGE_MODEL: str = "dall-e-3"
+
     # Social media posting settings
     HOURS_BETWEEN_POSTING_IMAGES: float
     FLICKR_ENABLED: bool = True

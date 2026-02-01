@@ -220,10 +220,38 @@ Before starting implementation:
 ### Notes from Previous Claude Instances
 <!-- Each instance should add notes here about important discoveries, gotchas, or decisions -->
 
-### Phase Completion Notes Structure:
-Each phase should document:
-- Completion status
-- Date completed
-- Key findings or learnings
-- Any deviations from the original plan and rationale
-- Warnings or gotchas for future work
+### Phase Completion Notes
+
+#### Phase 1: Backend Provider Abstraction - COMPLETED (2026-01-31)
+**Files created:**
+- `backend/app/services/image_generation/base_provider.py` - Abstract base class `ImageGenerationProvider` and `GeneratedImageResult` dataclass
+- `backend/app/services/image_generation/provider_registry.py` - `ProviderRegistry` class for provider discovery
+
+**Files modified:**
+- `backend/app/services/image_generation/dalle_image_api.py` - Added `DalleProvider` class implementing the interface, registered with `ProviderRegistry.register(DalleProvider())`
+- `backend/app/core/config.py` - Added `DEFAULT_IMAGE_PROVIDER` and `DEFAULT_IMAGE_MODEL` settings
+- `backend/app/services/image_generation/main.py` - Updated CLI defaults to use settings
+- `backend/app/services/image_generation/image_generation_service.py` - Added import to ensure provider registration
+
+**Notes:**
+- Kept the original `generate_images()` module-level function for backwards compatibility with existing code
+- The existing image generation service still uses the module-level function, not the provider registry (this can be refactored later if needed)
+- No `.env.example` file exists in this project, so that task was skipped
+
+#### Phase 2: Backend API Endpoint - COMPLETED (2026-01-31)
+**Files modified:**
+- `backend/app/repositories/generated_image.py` - Added `get_distinct_providers()` method
+- `backend/app/api/routes/generated_images.py` - Added `GET /providers` endpoint
+
+**Notes:**
+- Regenerated frontend client using `uv run python` to generate OpenAPI spec
+
+#### Phase 3: Frontend Changes - COMPLETED (2026-01-31)
+**Files modified:**
+- `frontend/src/api/generatedImages.ts` - Added `listProviders()` method to `GeneratedImageApi`
+- `frontend/src/routes/_layout/generated-images.tsx` - Added provider to search schema, added providers query, added provider filter dropdown
+- `frontend/src/components/GeneratedImages/GeneratedImageCard.tsx` - Replaced aspect ratio/quality/style badges with single provider/model badge
+
+**Notes:**
+- Updated the filter grid from 3 columns to 4 columns to accommodate the new provider filter
+- The frontend lint has some errors in auto-generated files (client SDK, dist), but all source files pass lint

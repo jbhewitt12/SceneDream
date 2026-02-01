@@ -1,42 +1,162 @@
 # dalle_image_api.py
 #
-# This Python module provides utility functions to interact with OpenAI's DALL·E 3 image generation API.
-# It uses the official OpenAI Python library (version 2.2.0 or later recommended).
-#
-# Installation:
-#   pip install openai
+# This Python module provides the DALL-E image generation provider and utility functions.
 #
 # Requirements:
 #   - An OpenAI API key (obtain from https://platform.openai.com/account/api-keys)
 #   - Python 3.8 or higher
 #
-# Usage:
-#   Import this module and call the generate_images function with appropriate parameters.
-#   Example:
-#       from dalle_image_api import generate_images
-#       api_key = "your_openai_api_key"
-#       prompts = "A futuristic cityscape at sunset"
-#       results = generate_images(prompts, api_key)
-#       for result in results:
-#           print(result)  # Prints URLs or base64 strings depending on response_format
-#
-# Note: DALL·E 3 has specific limitations:
+# Note: DALL-E 3 has specific limitations:
 #   - n=1 (only one image per request)
 #   - Prompt length up to 4000 characters
 #   - Sizes: '1024x1024', '1024x1792', '1792x1024'
 #   - Quality: 'standard' (default, faster/cheaper) or 'hd' (higher quality, slower/more expensive)
 #   - Style: 'vivid' (hyper-real, dramatic) or 'natural' (more natural-looking)
 #   - Response format: 'url' (returns expiring URLs, typically valid for 1 hour) or 'b64_json' (returns base64-encoded image data)
-#
-# For more details, refer to the official OpenAI documentation:
-#   https://platform.openai.com/docs/guides/images/image-generation
 
+from __future__ import annotations
+
+import asyncio
 import base64
+import os
 
 import requests
 from openai import OpenAI
 
+from app.services.image_generation.base_provider import (
+    GeneratedImageResult,
+    ImageGenerationProvider,
+)
+from app.services.image_generation.provider_registry import ProviderRegistry
 
+
+class DalleProvider(ImageGenerationProvider):
+    """OpenAI DALL-E image generation provider."""
+
+    DALLE3_SIZES = ["1024x1024", "1024x1792", "1792x1024"]
+    DALLE2_SIZES = ["256x256", "512x512", "1024x1024"]
+
+    @property
+    def provider_name(self) -> str:
+        return "openai"
+
+    @property
+    def supported_models(self) -> list[str]:
+        return ["dall-e-3", "dall-e-2"]
+
+    def get_supported_sizes(self, model: str) -> list[str]:
+        if model == "dall-e-3":
+            return self.DALLE3_SIZES
+        elif model == "dall-e-2":
+            return self.DALLE2_SIZES
+        return self.DALLE3_SIZES
+
+    def validate_config(self, api_key: str | None) -> tuple[bool, str | None]:
+        if not api_key:
+            return False, "OpenAI API key is required"
+        if not api_key.startswith("sk-"):
+            return False, "Invalid OpenAI API key format"
+        return True, None
+
+    async def generate_image(
+        self,
+        prompt: str,
+        *,
+        model: str = "dall-e-3",
+        size: str = "1024x1024",
+        quality: str = "standard",
+        style: str = "vivid",
+        response_format: str = "b64_json",
+        api_key: str | None = None,
+    ) -> GeneratedImageResult:
+        """
+        Generate an image using OpenAI's DALL-E model.
+
+        Args:
+            prompt: Text description of the desired image
+            model: Model to use ('dall-e-3' or 'dall-e-2')
+            size: Image size
+            quality: Image quality ('standard' or 'hd')
+            style: Image style ('vivid' or 'natural')
+            response_format: Response format ('b64_json' or 'url')
+            api_key: OpenAI API key
+
+        Returns:
+            GeneratedImageResult with image data or error
+        """
+        if not api_key:
+            api_key = os.getenv("OPENAI_API_KEY")
+
+        is_valid, error = self.validate_config(api_key)
+        if not is_valid:
+            return GeneratedImageResult(error=error)
+
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(
+                None,
+                lambda: self._generate_sync(
+                    prompt=prompt,
+                    api_key=api_key,  # type: ignore[arg-type]
+                    model=model,
+                    size=size,
+                    quality=quality,
+                    style=style,
+                    response_format=response_format,
+                ),
+            )
+            return result
+        except Exception as e:
+            return GeneratedImageResult(error=f"Error generating image: {e}")
+
+    def _generate_sync(
+        self,
+        prompt: str,
+        api_key: str,
+        model: str,
+        size: str,
+        quality: str,
+        style: str,
+        response_format: str,
+    ) -> GeneratedImageResult:
+        """Synchronous image generation."""
+        client = OpenAI(api_key=api_key)
+
+        try:
+            response = client.images.generate(
+                model=model,
+                prompt=prompt,
+                size=size,
+                quality=quality if model == "dall-e-3" else None,
+                style=style if model == "dall-e-3" else None,
+                n=1,
+                response_format=response_format,
+            )
+
+            data = response.data[0]
+            revised_prompt = getattr(data, "revised_prompt", None)
+
+            if response_format == "url":
+                return GeneratedImageResult(
+                    image_url=data.url,
+                    revised_prompt=revised_prompt,
+                )
+            else:  # b64_json
+                image_bytes = base64.b64decode(data.b64_json) if data.b64_json else None
+                return GeneratedImageResult(
+                    image_data=image_bytes,
+                    revised_prompt=revised_prompt,
+                )
+
+        except Exception as e:
+            return GeneratedImageResult(error=f"Error generating image: {e}")
+
+
+# Register the provider
+ProviderRegistry.register(DalleProvider())
+
+
+# Keep module-level helper functions for backwards compatibility
 def generate_images(
     prompt: str,
     api_key: str,
@@ -48,60 +168,20 @@ def generate_images(
     response_format: str = "url",
 ) -> list[str | bytes]:
     """
-    Generates images using OpenAI's DALL·E model based on the provided text prompt.
+    Generates images using OpenAI's DALL-E model based on the provided text prompt.
 
     Parameters:
-    - prompt (str): A text description of the desired image. Maximum length is 4000 characters for DALL·E 3.
-      The prompt should be descriptive and clear to get the best results. Avoid including sensitive or harmful content,
-      as OpenAI's moderation filters may reject such requests.
-
+    - prompt (str): A text description of the desired image. Maximum length is 4000 characters for DALL-E 3.
     - api_key (str): Your OpenAI API key for authentication.
-
     - model (str, optional): The model to use for generation. Defaults to "dall-e-3".
-      Other options include "dall-e-2" for the previous version, but DALL·E 3 is recommended for better quality.
-
     - size (str, optional): The size of the generated images. Defaults to "1024x1024".
-      For DALL·E 3, valid options are:
-        - "1024x1024" (square)
-        - "1024x1792" (portrait)
-        - "1792x1024" (landscape)
-      For DALL·E 2, valid options are "256x256", "512x512", "1024x1024".
-
     - quality (str, optional): The quality of the generated image. Defaults to "standard".
-      Valid options (DALL·E 3 only):
-        - "standard": Faster generation, lower cost.
-        - "hd": Higher detail and consistency, but slower and more expensive.
-
     - style (str, optional): The style of the generated image. Defaults to "vivid".
-      Valid options (DALL·E 3 only):
-        - "vivid": Generates hyper-real and dramatic images.
-        - "natural": Produces more natural, less hyper-real images.
-
     - n (int, optional): The number of images to generate. Defaults to 1.
-      For DALL·E 3, this must be 1 (API limitation). For DALL·E 2, up to 10 is allowed.
-
     - response_format (str, optional): The format of the response data. Defaults to "url".
-      Valid options:
-        - "url": Returns a list of URLs to the generated images (expiring after ~1 hour).
-        - "b64_json": Returns a list of base64-encoded image data strings.
 
     Returns:
-    - List[Union[str, bytes]]: A list containing either image URLs (str) or base64-encoded image data (str),
-      depending on the response_format. If an error occurs, an empty list is returned.
-
-    Raises:
-    - openai.error.OpenAIError: If there's an issue with the API request (e.g., invalid API key, rate limits).
-
-    Example:
-        results = generate_images(
-            prompt="A serene mountain landscape with a lake",
-            api_key="sk-your-api-key",
-            size="1792x1024",
-            quality="hd",
-            style="natural",
-            response_format="b64_json"
-        )
-        # If b64_json, results[0] is a base64 string; you can decode it to bytes if needed.
+    - List[Union[str, bytes]]: A list containing either image URLs (str) or base64-encoded image data (str).
     """
     client = OpenAI(api_key=api_key)
 
@@ -110,10 +190,8 @@ def generate_images(
             model=model,
             prompt=prompt,
             size=size,
-            quality=quality
-            if model == "dall-e-3"
-            else None,  # Quality only for DALL·E 3
-            style=style if model == "dall-e-3" else None,  # Style only for DALL·E 3
+            quality=quality if model == "dall-e-3" else None,
+            style=style if model == "dall-e-3" else None,
             n=n,
             response_format=response_format,
         )
@@ -140,9 +218,6 @@ def save_image_from_url(url: str, filename: str) -> bool:
 
     Returns:
     - bool: True if the image was saved successfully, False otherwise.
-
-    Example:
-        save_image_from_url("https://example.com/image.png", "local_image.png")
     """
     try:
         response = requests.get(url)
@@ -165,9 +240,6 @@ def save_image_from_b64(b64_data: str, filename: str) -> bool:
 
     Returns:
     - bool: True if the image was saved successfully, False otherwise.
-
-    Example:
-        save_image_from_b64("base64stringhere", "local_image.png")
     """
     try:
         image_data = base64.b64decode(b64_data)

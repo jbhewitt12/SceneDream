@@ -18,7 +18,9 @@ from app.repositories.generated_image import GeneratedImageRepository
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
-from app.services.image_generation import dalle_image_api
+from app.services.image_generation import (
+    dalle_image_api,  # noqa: F401 - ensures provider registration
+)
 from models.image_prompt import ImagePrompt
 
 logger = logging.getLogger(__name__)

@@ -604,7 +604,9 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
                 book_path,
             )
             scenes_count = extraction_stats.get("scenes", 0)
-            stats.scenes_extracted = scenes_count if isinstance(scenes_count, int) else 0
+            stats.scenes_extracted = (
+                scenes_count if isinstance(scenes_count, int) else 0
+            )
             logger.info("Extracted %d scenes", stats.scenes_extracted)
     else:
         logger.info("Skipping scene extraction (already completed)")
