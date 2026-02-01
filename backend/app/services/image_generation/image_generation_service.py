@@ -635,6 +635,27 @@ class ImageGenerationService:
                 task.prompt.prompt_text,
             )
 
+            # Check for provider mismatch and warn if prompt was optimized for a different provider
+            prompt_target_provider = task.prompt.target_provider
+            if prompt_target_provider and prompt_target_provider != config.provider:
+                # Map between provider names for common equivalents
+                provider_family = {
+                    "openai": "openai",
+                    "openai_gpt_image": "gpt-image",
+                    "gpt-image": "gpt-image",
+                }
+                target_family = provider_family.get(prompt_target_provider, prompt_target_provider)
+                current_family = provider_family.get(config.provider, config.provider)
+
+                if target_family != current_family:
+                    logger.warning(
+                        "Provider mismatch: Prompt %s was optimized for '%s' but generating with '%s'. "
+                        "Results may not be optimal.",
+                        task.prompt.id,
+                        prompt_target_provider,
+                        config.provider,
+                    )
+
             # Get the provider from registry
             provider = ProviderRegistry.get(config.provider)
             if not provider:

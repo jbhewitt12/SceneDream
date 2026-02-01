@@ -48,6 +48,7 @@ class ImagePrompt(SQLModel, table=True):
     model_vendor: str = Field(max_length=128)
     model_name: str = Field(max_length=128, index=True)
     prompt_version: str = Field(max_length=64, index=True)
+    target_provider: str | None = Field(default=None, max_length=64, index=True)
     variant_index: int = Field(ge=0)
     title: str | None = Field(default=None, max_length=255)
     flavour_text: str | None = Field(default=None, sa_column=Column(Text))

@@ -27,6 +27,7 @@ class ImagePromptGenerationConfig:
     context_before: int = 3
     context_after: int = 1
     include_cheatsheet_path: str = DEFAULT_CHEATSHEET_PATH
+    target_provider: str = "openai"
     blocked_warnings: set[str] = field(
         default_factory=lambda: {"violence", "sexual", "drugs", "horror", "hate"}
     )
@@ -51,6 +52,7 @@ class ImagePromptGenerationConfig:
             "context_before": self.context_before,
             "context_after": self.context_after,
             "include_cheatsheet_path": self.include_cheatsheet_path,
+            "target_provider": self.target_provider,
             "blocked_warnings": set(self.blocked_warnings),
             "skip_scenes_with_warnings": self.skip_scenes_with_warnings,
             "dry_run": self.dry_run,

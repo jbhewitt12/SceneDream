@@ -125,8 +125,11 @@ class VariantProcessor:
         raw_payload: Mapping[str, Any],
         llm_request_id: str | None,
         execution_time_ms: int,
+        target_provider: str | None = None,
     ) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []
+        # Use target_provider from config if not explicitly provided
+        provider = target_provider if target_provider is not None else getattr(config, "target_provider", None)
         for index, variant in enumerate(variants):
             try:
                 variant_index = variant_indices[index]
@@ -142,6 +145,7 @@ class VariantProcessor:
                     "model_vendor": config.model_vendor,
                     "model_name": config.model_name,
                     "prompt_version": config.prompt_version,
+                    "target_provider": provider,
                     "variant_index": variant_index,
                     "title": variant.title.strip()
                     if isinstance(variant.title, str)

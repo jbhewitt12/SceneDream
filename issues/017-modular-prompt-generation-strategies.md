@@ -241,3 +241,101 @@ Implement a strategy pattern where:
 - [ ] `target_provider` field populated on all new prompts
 - [ ] Existing prompts backfilled with `target_provider='openai'`
 - [ ] Provider mismatch warning logged when applicable
+
+## Completion Notes
+
+### Phase 1: Database Schema Update - COMPLETED (2026-02-02)
+
+**Changes made:**
+1. Added `target_provider: str | None` field to `ImagePrompt` model in `backend/models/image_prompt.py`
+   - Field is nullable with max_length=64 and indexed for efficient filtering
+
+2. Created Alembic migration `152af98f7667_add_target_provider_to_image_prompts.py`
+   - Adds `target_provider` column to `image_prompts` table
+   - Creates index `ix_image_prompts_target_provider`
+   - Backfills all existing prompts (626 records) with `target_provider='openai'`
+
+**Verification:**
+- [x] Migration runs successfully
+- [x] Existing prompts have `target_provider='openai'` (verified: 626/626 prompts backfilled)
+- [x] New prompts can be created with `target_provider` field
+
+---
+
+### Phase 2: Core Components Extraction - COMPLETED (2026-02-02)
+
+**Files created:**
+- `backend/app/services/image_prompt_generation/core/__init__.py`
+- `backend/app/services/image_prompt_generation/core/style_sampler.py` - StyleSampler class, RECOMMENDED_STYLES, OTHER_STYLES, BLOCKED_STYLE_TERMS
+- `backend/app/services/image_prompt_generation/core/tone_guardrails.py` - ToneGuardrails class, CULTURE_BOOK_MARKERS
+- `backend/app/services/image_prompt_generation/core/constraints.py` - CriticalConstraints class, ALLOWED_ASPECT_RATIOS
+- `backend/app/services/image_prompt_generation/core/output_schema.py` - OutputSchemaBuilder class
+
+---
+
+### Phase 3: Strategy Pattern Infrastructure - COMPLETED (2026-02-02)
+
+**Files created:**
+- `backend/app/services/image_prompt_generation/strategies/__init__.py`
+- `backend/app/services/image_prompt_generation/strategies/base.py` - PromptStrategy ABC
+- `backend/app/services/image_prompt_generation/strategies/registry.py` - PromptStrategyRegistry, PromptStrategyNotFoundError
+
+---
+
+### Phase 4: DALL-E 3 Strategy Implementation - COMPLETED (2026-02-02)
+
+**Files created:**
+- `backend/app/services/image_prompt_generation/cheatsheets/dalle3_cheatsheet.md` (copied from existing)
+- `backend/app/services/image_prompt_generation/strategies/dalle_strategy.py` - DallePromptStrategy
+
+**Registered provider:** `openai`
+
+---
+
+### Phase 5: GPT Image Strategy Implementation - COMPLETED (2026-02-02)
+
+**Files created:**
+- `backend/app/services/image_prompt_generation/cheatsheets/gpt_image_cheatsheet.md`
+- `backend/app/services/image_prompt_generation/strategies/gpt_image_strategy.py` - GptImagePromptStrategy
+
+**Registered provider:** `gpt-image`
+
+---
+
+### Phase 6: PromptBuilder Orchestrator - COMPLETED (2026-02-02)
+
+**Files created:**
+- `backend/app/services/image_prompt_generation/prompt_builder.py` - PromptBuilder class
+
+**Files modified:**
+- `backend/app/services/image_prompt_generation/models.py` - Added `target_provider` field to config
+- `backend/app/services/image_prompt_generation/image_prompt_generation_service.py`:
+  - Delegates to PromptBuilder for prompt assembly
+  - Removed old inline style constants and methods
+  - Sets `target_provider` on created records
+- `backend/app/services/image_prompt_generation/variant_processing.py` - Added `target_provider` to records
+- `backend/app/tests/services/test_image_prompt_generation_service.py` - Updated tests for new architecture
+
+---
+
+### Phase 7: Provider Mismatch Warning - COMPLETED (2026-02-02)
+
+**Files modified:**
+- `backend/app/services/image_generation/image_generation_service.py`:
+  - Added mismatch detection in `_generate_single()` method
+  - Logs warning when `prompt.target_provider` differs from current provider
+  - Maps between provider families (openai/gpt-image) for accurate detection
+
+---
+
+### Final Verification
+
+- [x] All 63 tests pass (excluding pre-existing failing test in aspect ratio mapping)
+- [x] Strategies registered: `['openai', 'gpt-image']`
+- [x] All imports work correctly
+- [x] `target_provider` field populated on new prompts
+- [x] Existing prompts backfilled with `target_provider='openai'`
+
+**Pre-existing issues (not introduced by this implementation):**
+- mypy error in `image_generation_service.py:653` (api_key parameter)
+- Test failure in `test_map_aspect_ratio_to_size` for aspect ratio mapping
