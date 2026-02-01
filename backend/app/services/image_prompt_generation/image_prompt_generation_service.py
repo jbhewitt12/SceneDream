@@ -6,11 +6,9 @@ import asyncio
 import hashlib
 import json
 import logging
-import random
 import time
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -35,142 +33,14 @@ from .models import (
     ImagePromptGenerationServiceError,
     ImagePromptPreview,
 )
+from .prompt_builder import PromptBuilder
 from .variant_processing import ALLOWED_ASPECT_RATIOS, VariantProcessor
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]
 REMIX_VARIANTS_COUNT = 2
 ALLOWED_ASPECT_RATIO_DISPLAY = ", ".join(ALLOWED_ASPECT_RATIOS)
-
-RECOMMENDED_STYLES: tuple[str, ...] = (
-    "90's anime",
-    "Ukiyo-e woodblock",
-    "stained glass mosaic",
-    "Art Nouveau",
-    "Impressionism",
-    "Cubism",
-    "knolling",
-    "papercraft",
-    "miniature diorama",
-    "wood burned artwork",
-    "smudged oil painting",
-    "3D voxel art",
-    "technical drawing",
-    "Neo-Expressionist",
-    "electric luminescent low-poly",
-    "paper sculpture",
-    "3D drawing",
-    "neon cubism",
-    "watercolor pixel art",
-    "smudged charcoal",
-    "smudged Chinese ink painting",
-    "anime-style watercolor",
-    "3D Pixar-style cartoon",
-    "neon-line drawing",
-    "isometric LEGO",
-    "illuminated manuscript",
-    "psychedelic art",
-)
-
-OTHER_STYLES: tuple[str, ...] = (
-    "Abstract art",
-    "abstract geometry",
-    "Art Deco",
-    "Bauhaus",
-    "bokeh art",
-    "Brutalism",
-    "Byzantine art",
-    "Celtic art",
-    "chiptune visuals",
-    "concept art",
-    "Constructivism",
-    "Cyber Folk",
-    "cybernetic art",
-    "cyberpunk",
-    "Dadaism",
-    "data art",
-    "digital collage",
-    "digital cubism",
-    "digital Impressionism",
-    "digital painting",
-    "double exposure",
-    "dreamy fantasy",
-    "etching",
-    "Expressionism",
-    "Fauvism",
-    "flat design",
-    "fractal art",
-    "Futurism",
-    "glitch art",
-    "Gothic art",
-    "Greco-Roman art",
-    "ink wash painting",
-    "isometric art",
-    "lithography",
-    "low-poly art",
-    "macabre art",
-    "Magic Realism",
-    "Minimalism",
-    "Modernism",
-    "mosaic art",
-    "neon graffiti",
-    "neon noir",
-    "origami art",
-    "parallax art",
-    "pastel drawing",
-    "pixel art",
-    "pointillism",
-    "polyart",
-    "Pop Art",
-    "Renaissance painting",
-    "Baroque painting",
-    "Retro Wave",
-    "Romanticism",
-    "sci-fi fantasy art",
-    "scratchboard art",
-    "steampunk",
-    "stippling",
-    "Surrealism",
-    "Symbolism",
-    "trompe-l'oeil",
-    "Vaporwave",
-    "vector art",
-    "watercolor painting",
-    "Zen doodle",
-    "graffiti art",
-    "manga style",
-    "comic book style",
-    "cartoon style",
-    "black-and-white",
-    "sepia tone",
-    "vintage style",
-)
-
-BLOCKED_STYLE_TERMS: tuple[str, ...] = (
-    "photorealism",
-    "photorealistic",
-    "hyper-realistic",
-    "hyper realistic",
-    "live-action",
-    "live action",
-    "cinematic realism",
-    "realistic render",
-)
-
-CULTURE_BOOK_MARKERS: tuple[str, ...] = (
-    "consider-phlebas",
-    "player-of-games",
-    "use-of-weapons",
-    "excession",
-    "inversions",
-    "look-to-windward",
-    "matter",
-    "surface-detail",
-    "hydrogen-sonata",
-    "state-of-the-art",
-)
 
 
 class ImagePromptGenerationService:
@@ -195,10 +65,10 @@ class ImagePromptGenerationService:
         self._scene_repo = SceneExtractionRepository(session)
         self._prompt_repo = ImagePromptRepository(session)
         self._ranking_repo = SceneRankingRepository(session)
-        self._cheatsheet_text: dict[str, str] = {}
         self._book_service = BookContentService()
         self._context_builder = SceneContextBuilder(self._book_service)
         self._variant_processor = VariantProcessor()
+        self._prompt_builder = PromptBuilder()
 
     async def generate_for_scene(
         self,
@@ -592,6 +462,7 @@ class ImagePromptGenerationService:
                     "model_vendor": config.model_vendor,
                     "model_name": config.model_name,
                     "prompt_version": prompt_record.prompt_version,
+                    "target_provider": prompt_record.target_provider or config.target_provider,
                     "variant_index": variant_index,
                     "title": variant.title,
                     "prompt_text": variant.prompt_text,
@@ -687,6 +558,7 @@ class ImagePromptGenerationService:
             "model_vendor": prompt_record.model_vendor,
             "model_name": prompt_record.model_name,
             "prompt_version": prompt_record.prompt_version,
+            "target_provider": prompt_record.target_provider or self._config.target_provider,
             "variant_index": variant_index,
             "title": None,
             "flavour_text": None,
@@ -867,27 +739,7 @@ class ImagePromptGenerationService:
 
     def _sample_styles(self, variants_count: int) -> list[str]:
         """Sample recommended and other styles for this request."""
-        recommended_count = min(
-            max(2, variants_count + 2),
-            len(RECOMMENDED_STYLES),
-        )
-        other_count = min(
-            max(1, variants_count // 2),
-            len(OTHER_STYLES),
-        )
-        recommended_choices = random.sample(RECOMMENDED_STYLES, recommended_count)
-        other_choices = random.sample(OTHER_STYLES, other_count)
-
-        blocked_terms = tuple(term.lower() for term in BLOCKED_STYLE_TERMS)
-        sampled: list[str] = []
-        for style in [*recommended_choices, *other_choices]:
-            if any(term in style.lower() for term in blocked_terms):
-                continue
-            sampled.append(style)
-
-        deduped = list(dict.fromkeys(sampled))
-        random.shuffle(deduped)
-        return deduped
+        return self._prompt_builder.sample_styles(variants_count)
 
     def _build_prompt(
         self,
@@ -898,134 +750,14 @@ class ImagePromptGenerationService:
         context_window: Mapping[str, Any],
         sampled_styles: Sequence[str] | None = None,
     ) -> tuple[str, list[str]]:
-        cheatsheet = self._load_cheatsheet_text(config.include_cheatsheet_path)
-        styles = list(sampled_styles) if sampled_styles is not None else None
-        if styles is None or not styles:
-            styles = self._sample_styles(config.variants_count)
-        if not styles:
-            raise ImagePromptGenerationServiceError("No styles available to sample")
-        scene_excerpt = scene.raw.strip()
-        if not scene_excerpt:
-            raise ImagePromptGenerationServiceError(
-                f"Scene {scene.id} is missing raw excerpt text"
-            )
-        metadata_lines = [
-            f"- Book slug: {scene.book_slug}",
-            f"- Chapter number: {scene.chapter_number}",
-            f"- Chapter title: {scene.chapter_title}",
-            f"- Scene number: {scene.scene_number}",
-            f"- Location marker: {scene.location_marker}",
-            f"- Paragraph span: {context_window['paragraph_span'][0]}-{context_window['paragraph_span'][1]}",
-            f"- Context paragraphs: {config.context_before} before, {config.context_after} after",
-        ]
-        metadata_block = "\n".join(metadata_lines)
-        guidance = (
-            "Transform the excerpt into elite DALLE3 prompts that read like avant-garde concept art direction without leaning on photorealism. "
-            "Let each variant amplify the scene's emotional core with concrete sensory cues - textures, ambient motion, symbolic props, weather, and soundscapes - so the moment feels inhabitable. "
-            "Scale can be intimate or colossal; choose what the excerpt implies while steering the tone toward wonder, curiosity, or serene tension instead of fear. "
-            "If people appear, portray them with agency or calm observation, avoiding language of harm or panic while still honoring the story's stakes. "
-            "Respect cultural and temporal signals and elevate them with imaginative yet coherent embellishments that keep the moment uplifting."
+        return self._prompt_builder.build_prompt(
+            scene=scene,
+            config=config,
+            context_text=context_text,
+            context_window=context_window,
+            sampled_styles=sampled_styles,
+            target_provider=config.target_provider,
         )
-        style_strategy = (
-            "- Capture the excerpt's emotional drivers and sensory anchors before drafting prompts.\n"
-            "- Consult the curated Suggested Styles list above and pick unique candidates for each variant.\n"
-            "- Explicitly weave the chosen medium or art era into prompt_text and style_tags for every variant.\n"
-            "- Keep every treatment proudly stylised—never use photorealistic, live-action, or cinematic realism terminology.\n"
-            "- Bind palette, lighting, and composition decisions to narrative clues so the aesthetic choice feels earned."
-        )
-        quality_objectives = (
-            "- Write each prompt like expert art direction, using decisive verbs and tangible nouns over filler language, and keep the text between 28 and 42 words.\n"
-            "- Embed the chosen medium, art movement, and rendering techniques directly into the prompt_text and style_tags, and explain why they fit inside attributes.style_intent.\n"
-            "- Spotlight unique facets of the scene per variant (alternate subjects, emotional beats, or spatial scales) so the set feels complementary, not redundant.\n"
-            f"- Leverage camera language (shot type, lens, framing) and choose aspect ratios from {ALLOWED_ASPECT_RATIO_DISPLAY} to serve the excerpt's intent.\n"
-            "- Maintain neutral-to-positive emotional valence, avoiding words that signal harm, panic, or cruelty while still capturing momentum or quiet tension."
-        )
-        if self._is_culture_book(scene):
-            guidance += (
-                " For Iain M. Banks Culture-universe scenes that mention drones, avoid using the word 'drone'. "
-                "Describe them as elegant autonomous anti-gravity companions—floating AI assistants, hovering service bots, sentient metallic orbs, or compact anti-grav craft—instead of the word 'drone'."
-            )
-        critical_constraints = (
-            "- Select stylised mediums only; never request photorealistic, hyper-realistic, live-action, or adjacent treatments in prompt_text or style_tags.\n"
-            f"- Attributes.aspect_ratio must be exactly one of: {ALLOWED_ASPECT_RATIO_DISPLAY}.\n"
-            "- Ensure style_tags include the chosen medium or technique and remain free of banned realism terms.\n"
-            "- CRITICAL: Never include character names, proper nouns, or invented terminology from the source material in prompt_text. "
-            "The image model has no knowledge of the book and cannot interpret names like 'Navani' or fantasy terms like 'gloryspren'. "
-            "Instead, describe characters by their visual appearance (e.g., 'a regal woman crowned in gold', 'a young warrior in blue plate armor') "
-            "and translate invented concepts into their visual manifestations (e.g., 'rotating golden luminescent rings' instead of 'gloryspren', "
-            "'smoky blue ethereal halos' instead of 'awspren'). The prompt must be fully interpretable by someone who has never read the book."
-        )
-        tone_guardrails = (
-            "- Avoid verbs and adjectives tied to fear, injury, or desperation (e.g., cowering, engulfed, frantic).\n"
-            "- Express intensity through environmental motion, lighting, scale, or symbolic contrast rather than explicit violence.\n"
-            "- When children or civilians appear, depict them in celebratory, inquisitive, or protected contexts.\n"
-            "- Treat mythical or technological forces as awe-inspiring, mystical, or enigmatic instead of menacing.\n"
-            "- Let wonder, serenity, or purposeful dynamism be the prevailing mood even when the scene hints at conflict."
-        )
-        output_schema = json.dumps(
-            {
-                "title": "string",
-                "prompt_text": "string",
-                "style_tags": ["string"],
-                "attributes": {
-                    "camera": "string",
-                    "lens": "string",
-                    "composition": "string",
-                    "lighting": "string",
-                    "palette": "string",
-                    "atmosphere": "string",
-                    "aspect_ratio": "string",
-                    "style_intent": "string",
-                    "references": ["string"],
-                },
-            },
-            indent=2,
-        )
-        prompt_lines = [
-            "You are an elite prompt engineer who converts novel scenes into world-class AI image prompts.",
-            f"Your goal is to produce exactly {config.variants_count} distinct prompt variants that produce exceptional images when fed into the DALLE3 model.",
-            "",
-            "## Scene Metadata",
-            metadata_block,
-            "",
-            "## Scene Excerpt (verbatim)",
-            scene_excerpt,
-        ]
-        prompt = "\n".join(prompt_lines)
-        prompt += (
-            "\n\n## Surrounding Context Paragraphs\n"
-            f"{context_text}\n\n"
-            "## Prompting Cheat Sheet\n"
-            f"{cheatsheet}\n\n"
-            "## Suggested Styles for This Request\n"
-            f"The following {len(styles)} styles have been curated for variety and quality. "
-            f"Select from this list when designing your {config.variants_count} variants, ensuring each variant uses a different style:\n"
-            f"{', '.join(styles)}\n\n"
-            "## Creative Guidance\n"
-            f"{guidance}\n\n"
-            "## Style Variation Strategy\n"
-            f"{style_strategy}\n\n"
-            "## Quality Objectives\n"
-            f"{quality_objectives}\n\n"
-            "## Critical Constraints\n"
-            f"{critical_constraints}\n\n"
-            "## Tone Guardrails\n"
-            f"{tone_guardrails}\n\n"
-            "## Output Requirements\n"
-            f"- Return ONLY strict JSON (no markdown) representing an array of {config.variants_count} objects.\n"
-            "- Each array element must contain the keys: title, prompt_text, style_tags, attributes.\n"
-            "- title can be null; prompt_text must be richly descriptive, self-contained, and free of character names or book-specific terminology.\n"
-            "- style_tags must be a list of short descriptors (2-5 entries).\n"
-            "- attributes must detail composition, camera, lens, lighting, palette, atmosphere, aspect_ratio, style_intent, and references (list of influences or movements).\n"
-            "- Ensure each variant explores a different angle, subject emphasis, or aesthetic; do not reuse the same style family or medium twice.\n"
-            "- Keep prompt_text and style_tags entirely free of photorealistic, hyper-realistic, live-action, or similar wording; rely on stylised techniques only.\n"
-            f"- attributes.aspect_ratio must match one of: {ALLOWED_ASPECT_RATIO_DISPLAY} (no other ratios allowed).\n"
-            "- Ensure prompt_text stays within the 28-42 word target range while remaining vivid, specific, and contradiction-free.\n"
-            "- Do not include notes, warnings, or additional keys.\n"
-            f"- The expected object shape is similar to: {output_schema}.\n"
-            "- Never include copyrighted text beyond the provided excerpts."
-        )
-        return prompt, styles
 
     def _build_remix_prompt(
         self,
@@ -1191,20 +923,6 @@ class ImagePromptGenerationService:
             max_variant = max(max_variant, int(prompt.variant_index))
         return [max_variant + offset + 1 for offset in range(count)]
 
-    def _load_cheatsheet_text(self, path_str: str) -> str:
-        if path_str in self._cheatsheet_text:
-            return self._cheatsheet_text[path_str]
-        path = Path(path_str)
-        if not path.is_absolute():
-            path = _PROJECT_ROOT / path
-        if not path.exists():
-            raise ImagePromptGenerationServiceError(
-                f"Cheat sheet file not found: {path_str}"
-            )
-        text = path.read_text(encoding="utf-8")
-        self._cheatsheet_text[path_str] = text.strip()
-        return self._cheatsheet_text[path_str]
-
     def _scene_has_blocked_warnings(
         self,
         scene: SceneExtraction,
@@ -1277,13 +995,6 @@ class ImagePromptGenerationService:
         if top_n is not None and top_n > 0:
             filtered = filtered[:top_n]
         return filtered
-
-    def _is_culture_book(self, scene: SceneExtraction) -> bool:
-        """Heuristic to detect Iain M. Banks Culture books by slug/path markers."""
-        slug = (scene.book_slug or "").lower()
-        path_hint = (scene.source_book_path or "").lower()
-        haystack = f"{slug} {path_hint}"
-        return any(marker in haystack for marker in CULTURE_BOOK_MARKERS)
 
 
 __all__ = [
