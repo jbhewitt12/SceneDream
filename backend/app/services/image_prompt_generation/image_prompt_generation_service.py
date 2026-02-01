@@ -948,7 +948,12 @@ class ImagePromptGenerationService:
         critical_constraints = (
             "- Select stylised mediums only; never request photorealistic, hyper-realistic, live-action, or adjacent treatments in prompt_text or style_tags.\n"
             f"- Attributes.aspect_ratio must be exactly one of: {ALLOWED_ASPECT_RATIO_DISPLAY}.\n"
-            "- Ensure style_tags include the chosen medium or technique and remain free of banned realism terms."
+            "- Ensure style_tags include the chosen medium or technique and remain free of banned realism terms.\n"
+            "- CRITICAL: Never include character names, proper nouns, or invented terminology from the source material in prompt_text. "
+            "The image model has no knowledge of the book and cannot interpret names like 'Navani' or fantasy terms like 'gloryspren'. "
+            "Instead, describe characters by their visual appearance (e.g., 'a regal woman crowned in gold', 'a young warrior in blue plate armor') "
+            "and translate invented concepts into their visual manifestations (e.g., 'rotating golden luminescent rings' instead of 'gloryspren', "
+            "'smoky blue ethereal halos' instead of 'awspren'). The prompt must be fully interpretable by someone who has never read the book."
         )
         tone_guardrails = (
             "- Avoid verbs and adjectives tied to fear, injury, or desperation (e.g., cowering, engulfed, frantic).\n"
@@ -1009,7 +1014,7 @@ class ImagePromptGenerationService:
             "## Output Requirements\n"
             f"- Return ONLY strict JSON (no markdown) representing an array of {config.variants_count} objects.\n"
             "- Each array element must contain the keys: title, prompt_text, style_tags, attributes.\n"
-            "- title can be null; prompt_text must be richly descriptive and self-contained.\n"
+            "- title can be null; prompt_text must be richly descriptive, self-contained, and free of character names or book-specific terminology.\n"
             "- style_tags must be a list of short descriptors (2-5 entries).\n"
             "- attributes must detail composition, camera, lens, lighting, palette, atmosphere, aspect_ratio, style_intent, and references (list of influences or movements).\n"
             "- Ensure each variant explores a different angle, subject emphasis, or aesthetic; do not reuse the same style family or medium twice.\n"
