@@ -4,6 +4,8 @@ import type { CancelablePromise } from "./core/CancelablePromise"
 import { OpenAPI } from "./core/OpenAPI"
 import { request as __request } from "./core/request"
 import type {
+  GeneratedImagesCropImageData,
+  GeneratedImagesCropImageResponse,
   GeneratedImagesCustomRemixGeneratedImageData,
   GeneratedImagesCustomRemixGeneratedImageResponse,
   GeneratedImagesGetGeneratedImageData,
@@ -16,6 +18,7 @@ import type {
   GeneratedImagesListGeneratedImagesForSceneData,
   GeneratedImagesListGeneratedImagesForSceneResponse,
   GeneratedImagesListGeneratedImagesResponse,
+  GeneratedImagesListProvidersResponse,
   GeneratedImagesQueueImageForPostingData,
   GeneratedImagesQueueImageForPostingResponse,
   GeneratedImagesRemixGeneratedImageData,
@@ -30,10 +33,12 @@ import type {
   ImagePromptsGenerateMetadataVariantsResponse,
   ImagePromptsGetImagePromptData,
   ImagePromptsGetImagePromptResponse,
+  ImagePromptsListPromptsData,
   ImagePromptsListPromptsForBookData,
   ImagePromptsListPromptsForBookResponse,
   ImagePromptsListPromptsForSceneData,
   ImagePromptsListPromptsForSceneResponse,
+  ImagePromptsListPromptsResponse,
   ImagePromptsUpdatePromptMetadataData,
   ImagePromptsUpdatePromptMetadataResponse,
   ItemsCreateItemData,
@@ -93,6 +98,19 @@ import type {
 
 export class GeneratedImagesService {
   /**
+   * List Providers
+   * Return list of distinct providers used in generated images.
+   * @returns string Successful Response
+   * @throws ApiError
+   */
+  public static listProviders(): CancelablePromise<GeneratedImagesListProvidersResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/generated-images/providers",
+    })
+  }
+
+  /**
    * List Generated Images
    * List generated images with optional filters and pagination.
    * @param data The data for the request.
@@ -103,6 +121,7 @@ export class GeneratedImagesService {
    * @param data.provider
    * @param data.model
    * @param data.approval
+   * @param data.posted
    * @param data.newestFirst
    * @param data.limit
    * @param data.offset
@@ -123,6 +142,7 @@ export class GeneratedImagesService {
         provider: data.provider,
         model: data.model,
         approval: data.approval,
+        posted: data.posted,
         newest_first: data.newestFirst,
         limit: data.limit,
         offset: data.offset,
@@ -420,6 +440,35 @@ export class GeneratedImagesService {
       },
     })
   }
+
+  /**
+   * Crop Image
+   * Replace a generated image with a cropped version.
+   *
+   * Accepts a multipart file upload containing the cropped image data
+   * and overwrites the original file on disk.
+   * @param data The data for the request.
+   * @param data.imageId
+   * @param data.formData
+   * @returns string Successful Response
+   * @throws ApiError
+   */
+  public static cropImage(
+    data: GeneratedImagesCropImageData,
+  ): CancelablePromise<GeneratedImagesCropImageResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/generated-images/{image_id}/crop",
+      path: {
+        image_id: data.imageId,
+      },
+      formData: data.formData,
+      mediaType: "multipart/form-data",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
 }
 
 export class ImagePromptsService {
@@ -450,6 +499,45 @@ export class ImagePromptsService {
         newest_first: data.newestFirst,
         model_name: data.modelName,
         prompt_version: data.promptVersion,
+        include_scene: data.includeScene,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List Prompts
+   * List prompts with optional filters, across all books or a specific book.
+   * @param data The data for the request.
+   * @param data.bookSlug
+   * @param data.chapterNumber
+   * @param data.modelName
+   * @param data.promptVersion
+   * @param data.styleTag
+   * @param data.newestFirst
+   * @param data.limit
+   * @param data.offset
+   * @param data.includeScene
+   * @returns ImagePromptListResponse Successful Response
+   * @throws ApiError
+   */
+  public static listPrompts(
+    data: ImagePromptsListPromptsData = {},
+  ): CancelablePromise<ImagePromptsListPromptsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/image-prompts/list",
+      query: {
+        book_slug: data.bookSlug,
+        chapter_number: data.chapterNumber,
+        model_name: data.modelName,
+        prompt_version: data.promptVersion,
+        style_tag: data.styleTag,
+        newest_first: data.newestFirst,
+        limit: data.limit,
+        offset: data.offset,
         include_scene: data.includeScene,
       },
       errors: {
@@ -911,7 +999,7 @@ export class SceneExtractionsService {
 export class SceneRankingsService {
   /**
    * List Top Scene Rankings
-   * Return the highest ranked scenes for a book with optional filters.
+   * Return the highest ranked scenes, optionally filtered by book.
    * @param data The data for the request.
    * @param data.bookSlug
    * @param data.limit
@@ -923,7 +1011,7 @@ export class SceneRankingsService {
    * @throws ApiError
    */
   public static listTopSceneRankings(
-    data: SceneRankingsListTopSceneRankingsData,
+    data: SceneRankingsListTopSceneRankingsData = {},
   ): CancelablePromise<SceneRankingsListTopSceneRankingsResponse> {
     return __request(OpenAPI, {
       method: "GET",

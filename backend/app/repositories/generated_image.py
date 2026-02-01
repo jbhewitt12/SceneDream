@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import distinct
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, select
 
@@ -375,3 +376,11 @@ class GeneratedImageRepository:
                 self._session.commit()
             self._session.refresh(image)
         return image
+
+    def get_distinct_providers(self) -> list[str]:
+        """Return list of distinct provider values from all generated images."""
+        statement = select(distinct(GeneratedImage.provider)).where(
+            GeneratedImage.provider.isnot(None)
+        )
+        result = self._session.exec(statement)
+        return [provider for provider in result if provider is not None]

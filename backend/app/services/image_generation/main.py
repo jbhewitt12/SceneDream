@@ -112,14 +112,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--provider",
         type=str,
-        default="openai",
-        help="Image generation provider (default: openai).",
+        default=settings.DEFAULT_IMAGE_PROVIDER,
+        help=f"Image generation provider (default: {settings.DEFAULT_IMAGE_PROVIDER}).",
     )
     parser.add_argument(
         "--model",
         type=str,
-        default="dall-e-3",
-        help="Model to use (default: dall-e-3).",
+        default=settings.DEFAULT_IMAGE_MODEL,
+        help=f"Model to use (default: {settings.DEFAULT_IMAGE_MODEL}).",
     )
     parser.add_argument(
         "--response-format",

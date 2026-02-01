@@ -39,7 +39,6 @@ const GeneratedImageCard = ({
     storagePath: image.storage_path,
     fileName: image.file_name,
   })
-  const aspectRatioLabel = image.aspect_ratio || image.size
   const borderColor =
     image.user_approved === true
       ? "green.500"
@@ -134,14 +133,8 @@ const GeneratedImageCard = ({
         </HStack>
 
         <HStack gap={2} wrap="wrap" fontSize="2xs">
-          <Badge colorScheme="gray" variant="outline">
-            {aspectRatioLabel}
-          </Badge>
-          <Badge colorScheme="gray" variant="outline">
-            {image.quality}
-          </Badge>
-          <Badge colorScheme="gray" variant="outline">
-            {image.style}
+          <Badge colorScheme="blue" variant="outline">
+            {image.provider} / {image.model}
           </Badge>
         </HStack>
 

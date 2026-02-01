@@ -158,6 +158,13 @@ export type PostingStatusResponse = {
 }
 
 export const GeneratedImageApi = {
+  listProviders(): CancelablePromise<string[]> {
+    return __request<string[]>(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/generated-images/providers",
+    })
+  },
+
   list(
     params: ListGeneratedImagesParams = {},
   ): CancelablePromise<GeneratedImageListResponse> {

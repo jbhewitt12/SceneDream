@@ -55,6 +55,13 @@ const generatedImagesSearchSchema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined))
     .catch(undefined),
+  provider: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .or(z.literal("").transform(() => undefined))
+    .catch(undefined),
   approval: z
     .preprocess((value) => {
       if (value === undefined || value === "") return undefined
@@ -106,11 +113,13 @@ const GeneratedImagesFilters = ({
   search,
   onChange,
   options,
+  providers,
   isFetching,
 }: {
   search: GeneratedImagesSearch
   onChange: FilterUpdater
   options: SceneExtractionFilterOptions | undefined
+  providers: string[]
   isFetching: boolean
 }) => {
   const books = options?.books ?? []
@@ -125,6 +134,7 @@ const GeneratedImagesFilters = ({
     handleChange({
       approval: undefined,
       posted: false,
+      provider: undefined,
     })
   }
 
@@ -148,7 +158,7 @@ const GeneratedImagesFilters = ({
           Reset
         </Button>
       </Flex>
-      <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
+      <SimpleGrid columns={{ base: 1, md: 4 }} gap={4}>
         <Stack spacing={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Book
@@ -166,6 +176,29 @@ const GeneratedImagesFilters = ({
               {books.map((book) => (
                 <option key={book} value={book}>
                   {book}
+                </option>
+              ))}
+            </NativeSelectField>
+            <NativeSelectIndicator />
+          </NativeSelectRoot>
+        </Stack>
+        <Stack spacing={1}>
+          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
+            Provider
+          </Text>
+          <NativeSelectRoot disabled={disabled || isFetching} w="full">
+            <NativeSelectField
+              value={search.provider ?? ""}
+              onChange={(event) =>
+                handleChange({
+                  provider: event.target.value || undefined,
+                })
+              }
+            >
+              <option value="">All providers</option>
+              {providers.map((provider) => (
+                <option key={provider} value={provider}>
+                  {provider}
                 </option>
               ))}
             </NativeSelectField>
@@ -251,6 +284,7 @@ const useGeneratedImagesData = (search: GeneratedImagesSearch) => {
     queryFn: ({ pageParam = 0 }) =>
       GeneratedImageApi.list({
         book: search.book_slug,
+        provider: search.provider,
         approval: search.approval,
         posted: search.posted === "all" ? undefined : search.posted,
         limit: search.page_size,
@@ -288,6 +322,11 @@ function GeneratedImagesGalleryPage() {
   const filtersQuery = useQuery({
     queryKey: ["scene-extractions", "filters"],
     queryFn: () => SceneExtractionService.filters(),
+  })
+
+  const providersQuery = useQuery({
+    queryKey: ["generated-images", "providers"],
+    queryFn: () => GeneratedImageApi.listProviders(),
   })
 
   const handleSearchUpdate = useCallback(
@@ -617,7 +656,8 @@ function GeneratedImagesGalleryPage() {
           search={search}
           onChange={handleSearchUpdate}
           options={filtersQuery.data}
-          isFetching={filtersQuery.isFetching}
+          providers={providersQuery.data ?? []}
+          isFetching={filtersQuery.isFetching || providersQuery.isFetching}
         />
       </Box>
 
