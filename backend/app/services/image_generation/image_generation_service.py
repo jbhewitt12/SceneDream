@@ -22,6 +22,7 @@ from app.services.image_generation import (
     dalle_image_api,  # noqa: F401 - ensures provider registration
     gpt_image_api,  # noqa: F401 - ensures provider registration
 )
+from app.services.image_generation.provider_registry import ProviderRegistry
 from models.image_prompt import ImagePrompt
 
 logger = logging.getLogger(__name__)
@@ -38,8 +39,8 @@ class ImageGenerationServiceError(RuntimeError):
 class ImageGenerationConfig:
     """Runtime configuration for image generation."""
 
-    provider: str = "openai"
-    model: str = "dall-e-3"
+    provider: str = "openai_gpt_image"
+    model: str = "gpt-image-1.5"
     quality: str = "standard"
     preferred_style: str | None = None
     aspect_ratio: str | None = None
@@ -104,21 +105,33 @@ class GenerationResult:
     skipped: bool = False
 
 
-def map_aspect_ratio_to_size(aspect_ratio: str | None) -> str:
+def map_aspect_ratio_to_size(
+    aspect_ratio: str | None, provider: str = "openai_gpt_image"
+) -> str:
     """
-    Map aspect ratio to DALL·E 3 size.
+    Map aspect ratio to provider-specific size.
 
     Args:
         aspect_ratio: Aspect ratio string (1:1, 9:16, 16:9) or None
+        provider: Image provider name (affects available sizes)
 
     Returns:
-        Size string for DALL·E 3 API (1024x1024, 1024x1792, or 1792x1024)
+        Size string appropriate for the provider
     """
-    mapping = {
-        "1:1": "1024x1024",
-        "9:16": "1024x1792",
-        "16:9": "1792x1024",
-    }
+    # GPT Image uses different sizes than DALL-E 3
+    if provider == "openai_gpt_image":
+        mapping = {
+            "1:1": "1024x1024",
+            "9:16": "1024x1536",
+            "16:9": "1536x1024",
+        }
+    else:
+        # DALL-E 3 sizes
+        mapping = {
+            "1:1": "1024x1024",
+            "9:16": "1024x1792",
+            "16:9": "1792x1024",
+        }
     return mapping.get(aspect_ratio or "", "1024x1024")
 
 
@@ -197,8 +210,8 @@ class ImageGenerationService:
         quality: str = "standard",
         preferred_style: str | None = None,
         aspect_ratio: str | None = None,
-        provider: str = "openai",
-        model: str = "dall-e-3",
+        provider: str = "openai_gpt_image",
+        model: str = "gpt-image-1.5",
         response_format: str = "b64_json",
         concurrency: int = 3,
         dry_run: bool = False,
@@ -495,7 +508,7 @@ class ImageGenerationService:
                 prompt.attributes.get("aspect_ratio") if prompt.attributes else None
             )
             aspect_ratio = config.aspect_ratio or prompt_aspect
-            size = map_aspect_ratio_to_size(aspect_ratio)
+            size = map_aspect_ratio_to_size(aspect_ratio, config.provider)
             style = derive_style_from_tags(prompt.style_tags, config.preferred_style)
 
             if prompt.variant_index is not None:
@@ -622,57 +635,58 @@ class ImageGenerationService:
                 task.prompt.prompt_text,
             )
 
-            # Call DALL·E API (runs in thread pool to avoid blocking)
+            # Get the provider from registry
+            provider = ProviderRegistry.get(config.provider)
+            if not provider:
+                raise ImageGenerationServiceError(
+                    f"Unknown provider: {config.provider}. "
+                    f"Available: {ProviderRegistry.list_providers()}"
+                )
+
+            # Validate API key
             if not self._api_key:
                 raise ImageGenerationServiceError(
                     "API key is required for image generation"
                 )
-            api_key = self._api_key
-            loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
-                None,
-                lambda: dalle_image_api.generate_images(
-                    prompt=task.prompt.prompt_text,
-                    api_key=api_key,
-                    model=config.model,
-                    size=task.size,
-                    quality=task.quality,
-                    style=task.style,
-                    n=1,
-                    response_format=config.response_format,
-                ),
+
+            # Call provider's generate_image method
+            result = await provider.generate_image(
+                prompt=task.prompt.prompt_text,
+                model=config.model,
+                size=task.size,
+                quality=task.quality,
+                style=task.style,
+                response_format=config.response_format,
+                api_key=self._api_key,
             )
 
-            if not results:
-                raise ImageGenerationServiceError("API returned no results")
+            if result.error:
+                raise ImageGenerationServiceError(result.error)
 
             # Save image to disk
             storage_dir = _PROJECT_ROOT / task.storage_path
             storage_dir.mkdir(parents=True, exist_ok=True)
             file_path = storage_dir / task.file_name
 
-            result_data = (
-                results[0]
-                if isinstance(results[0], str)
-                else results[0].decode("utf-8")
-            )
-            if config.response_format == "b64_json":
-                success = await loop.run_in_executor(
+            loop = asyncio.get_event_loop()
+            if result.image_data:
+                # Save from bytes directly
+                await loop.run_in_executor(
                     None,
-                    lambda: dalle_image_api.save_image_from_b64(
-                        result_data, str(file_path)
-                    ),
+                    lambda: file_path.write_bytes(result.image_data),  # type: ignore[arg-type]
                 )
-            else:  # url format
+            elif result.image_url:
+                # Save from URL
                 success = await loop.run_in_executor(
                     None,
                     lambda: dalle_image_api.save_image_from_url(
-                        result_data, str(file_path)
+                        result.image_url, str(file_path)  # type: ignore[arg-type]
                     ),
                 )
-
-            if not success:
-                raise ImageGenerationServiceError("Failed to save image to disk")
+                if not success:
+                    raise ImageGenerationServiceError("Failed to save image from URL")
+            else:
+                raise ImageGenerationServiceError("No image data or URL in result")
 
             # Compute file metadata
             file_size = file_path.stat().st_size
