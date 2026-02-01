@@ -24,12 +24,16 @@ class GptImagePromptStrategy(PromptStrategy):
     def get_creative_guidance(self) -> str:
         return (
             "Transform the excerpt into elite GPT Image prompts that read like detailed concept art direction without leaning on photorealism. "
-            "GPT Image excels at parsing longer, more detailed prompts - take advantage of this to create rich, layered descriptions. "
-            "Let each variant amplify the scene's emotional core with concrete sensory cues - textures, ambient motion, symbolic props, weather, and soundscapes - so the moment feels inhabitable. "
-            "Include nuanced details about spatial relationships, lighting sources, and material interactions. "
+            "GPT Image 1.5 excels at parsing longer, richly layered prompts - leverage this capacity to create immersive, multi-sensory descriptions. "
+            "Structure each prompt in clear layers: scene/environment first, then subject/action, followed by materials and details, then style/medium, technical direction (camera, lens, lighting), and finally explicit constraints. "
+            "Let each variant amplify the scene's emotional core with concrete sensory cues - specific material textures, ambient motion, symbolic props, weather, and soundscapes - so the moment feels inhabitable. "
+            "Use precise photography language (lens focal lengths, lighting terminology, composition rules) to guide the visual treatment. "
+            "Describe materials with tangible specificity rather than generic quality words - 'weathered brass with verdigris patina' rather than 'detailed metal'. "
+            "Include explicit spatial relationships: where elements sit in the frame, how foreground relates to background, what occupies negative space. "
+            "GPT Image 1.5 has strong world knowledge - include cultural and temporal markers that inform period-appropriate details automatically. "
             "Scale can be intimate or colossal; choose what the excerpt implies while steering the tone toward wonder, curiosity, or serene tension instead of fear. "
             "If people appear, portray them with agency or calm observation, avoiding language of harm or panic while still honoring the story's stakes. "
-            "Respect cultural and temporal signals and elevate them with imaginative yet coherent embellishments that keep the moment uplifting."
+            "End each prompt with explicit constraints stating what must NOT appear (no photorealism, no modern elements, etc.)."
         )
 
     def get_cheatsheet_path(self) -> str | None:
@@ -37,11 +41,14 @@ class GptImagePromptStrategy(PromptStrategy):
 
     def get_quality_objectives(self, variants_count: int, aspect_ratio_display: str) -> str:
         return (
-            "- Write each prompt like expert art direction, using decisive verbs and tangible nouns over filler language. GPT Image handles longer prompts well, so aim for 40-80 words with rich detail.\n"
+            "- Write each prompt like expert art direction with structured layers: scene → subject → materials → style → technical → constraints. GPT Image 1.5 handles rich detail exceptionally well, so aim for 80-150 words per prompt.\n"
             "- Embed the chosen medium, art movement, and rendering techniques directly into the prompt_text and style_tags, and explain why they fit inside attributes.style_intent.\n"
-            "- Include secondary details about lighting sources, material textures, and spatial relationships that add depth to the scene.\n"
+            "- Replace generic quality words with tangible material descriptions - specify actual textures, surface properties, and how light interacts with each material.\n"
+            "- Include explicit spatial relationships: where the subject sits in the frame, foreground/background layering, negative space usage, and depth cues.\n"
+            "- Use precise photography language: lens focal length (24mm wide, 85mm portrait), lighting terminology (rim light, soft box, golden hour), and composition rules (rule of thirds, leading lines).\n"
             "- Spotlight unique facets of the scene per variant (alternate subjects, emotional beats, or spatial scales) so the set feels complementary, not redundant.\n"
-            f"- Leverage camera language (shot type, lens, framing) and choose aspect ratios from {aspect_ratio_display} to serve the excerpt's intent.\n"
+            f"- Leverage camera language and choose aspect ratios from {aspect_ratio_display} to serve the excerpt's intent.\n"
+            "- End each prompt with explicit constraints (no photorealism, no modern elements, etc.) to prevent unwanted drift.\n"
             "- Maintain neutral-to-positive emotional valence, avoiding words that signal harm, panic, or cruelty while still capturing momentum or quiet tension."
         )
 
@@ -52,15 +59,19 @@ class GptImagePromptStrategy(PromptStrategy):
             "- Explicitly weave the chosen medium or art era into prompt_text and style_tags for every variant.\n"
             "- Keep every treatment proudly stylised—never use photorealistic, live-action, or cinematic realism terminology.\n"
             "- Bind palette, lighting, and composition decisions to narrative clues so the aesthetic choice feels earned.\n"
-            "- Take advantage of GPT Image's ability to parse complex descriptions - include nuanced details about how style choices manifest in specific elements."
+            "- Describe how the chosen style manifests in specific elements: brush stroke texture, color blending technique, line weight variation, surface treatment.\n"
+            "- Include artist or movement references that reinforce the technique and palette logic (e.g., 'Moebius-inspired line work', 'Miyazaki-esque environmental detail').\n"
+            "- Use GPT Image 1.5's world knowledge by including cultural and temporal context that informs period-appropriate stylistic choices."
         )
 
     def get_model_constraints(self) -> str:
         return (
-            "GPT Image supports longer prompts (~32k characters) and excels at understanding complex, multi-layered descriptions. "
-            "Use this capacity to include rich details about lighting, materials, and spatial relationships. "
-            "The style parameter (vivid/natural) is not used by GPT Image - all stylistic direction comes from the prompt itself. "
-            "Be explicit about the artistic style and medium in the prompt text."
+            "GPT Image 1.5 supports significantly longer prompts (~32k characters) and excels at understanding complex, multi-layered descriptions. "
+            "Use this capacity to include rich details about lighting sources and their effects on materials, explicit spatial relationships, and tangible texture descriptions. "
+            "The style parameter (vivid/natural) is not used by GPT Image - all stylistic direction comes from the prompt itself, so be explicit and detailed about artistic style and medium. "
+            "The model has strong world knowledge and can infer period-appropriate details from cultural and temporal cues. "
+            "Structure prompts in clear layers for best results: scene/environment → subject/action → materials/details → style/medium → technical direction → constraints. "
+            "End prompts with explicit constraints stating what must NOT appear to prevent unwanted elements."
         )
 
     def get_supported_aspect_ratios(self) -> list[str]:
