@@ -27,7 +27,7 @@ class ImagePromptGenerationConfig:
     context_before: int = 3
     context_after: int = 1
     include_cheatsheet_path: str = DEFAULT_CHEATSHEET_PATH
-    target_provider: str = "openai"
+    target_provider: str = "gpt-image"
     blocked_warnings: set[str] = field(
         default_factory=lambda: {"violence", "sexual", "drugs", "horror", "hate"}
     )
