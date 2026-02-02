@@ -93,6 +93,16 @@ class SocialPostingService:
 
         return created_posts
 
+    @staticmethod
+    def get_cooldown_hours(service_name: str | None) -> float:
+        """Get the cooldown hours for a specific service."""
+        if service_name == "x":
+            return settings.X_HOURS_BETWEEN_POSTS
+        elif service_name == "flickr":
+            return settings.FLICKR_HOURS_BETWEEN_POSTS
+        # Default to the longer X delay if service unknown or None
+        return settings.X_HOURS_BETWEEN_POSTS
+
     def should_post_now(self, service_name: str | None = None) -> bool:
         """Check if enough time has passed since the last post.
 
@@ -104,7 +114,8 @@ class SocialPostingService:
         if last_posted_at is None:
             return True
 
-        cooldown = timedelta(hours=settings.HOURS_BETWEEN_POSTING_IMAGES)
+        cooldown_hours = self.get_cooldown_hours(service_name)
+        cooldown = timedelta(hours=cooldown_hours)
         next_allowed = last_posted_at + cooldown
         return datetime.now(timezone.utc) >= next_allowed
 
@@ -138,7 +149,8 @@ class SocialPostingService:
                 continue
 
             # Get oldest queued post for this service
-            post = self._repo.get_oldest_queued(service_name)
+            cooldown_hours = self.get_cooldown_hours(service_name)
+            post = self._repo.get_oldest_queued(service_name, cooldown_hours)
             if not post:
                 logger.debug("No queued posts for service %s", service_name)
                 continue

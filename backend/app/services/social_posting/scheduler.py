@@ -31,10 +31,14 @@ def _get_scheduler_interval_minutes() -> float:
     """
     Calculate scheduler interval based on posting cooldown.
 
-    The scheduler checks at least as often as the posting interval,
-    but never more than every 15 minutes.
+    Uses the minimum cooldown across all services so we check often enough
+    for the service with the shortest interval. Never more than every 15 minutes.
     """
-    posting_interval_minutes = settings.HOURS_BETWEEN_POSTING_IMAGES * 60
+    min_cooldown_hours = min(
+        settings.X_HOURS_BETWEEN_POSTS,
+        settings.FLICKR_HOURS_BETWEEN_POSTS,
+    )
+    posting_interval_minutes = min_cooldown_hours * 60
     return min(posting_interval_minutes, MAX_SCHEDULER_INTERVAL_MINUTES)
 
 

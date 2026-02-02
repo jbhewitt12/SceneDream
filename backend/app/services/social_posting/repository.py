@@ -50,7 +50,7 @@ class SocialMediaPostRepository:
         return self._session.exec(statement).first()
 
     def get_oldest_queued(
-        self, service_name: str | None = None
+        self, service_name: str | None = None, cooldown_hours: float | None = None
     ) -> SocialMediaPost | None:
         """
         Get the oldest queued post that hasn't been posted yet.
@@ -60,8 +60,11 @@ class SocialMediaPostRepository:
 
         Args:
             service_name: Optionally filter by service name (e.g., "x", "flickr")
+            cooldown_hours: Cooldown period in hours. If None, uses X delay as default.
         """
-        cooldown = timedelta(hours=settings.HOURS_BETWEEN_POSTING_IMAGES)
+        if cooldown_hours is None:
+            cooldown_hours = settings.X_HOURS_BETWEEN_POSTS
+        cooldown = timedelta(hours=cooldown_hours)
         cooldown_threshold = datetime.now(timezone.utc) - cooldown
 
         statement = (
