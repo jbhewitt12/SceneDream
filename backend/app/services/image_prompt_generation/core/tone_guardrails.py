@@ -31,11 +31,8 @@ class ToneGuardrails:
     def get_guardrails_text(self) -> str:
         """Return the standard tone guardrails text block."""
         return (
-            "- Avoid verbs and adjectives tied to fear, injury, or desperation (e.g., cowering, engulfed, frantic).\n"
-            "- Express intensity through environmental motion, lighting, scale, or symbolic contrast rather than explicit violence.\n"
-            "- When children or civilians appear, depict them in celebratory, inquisitive, or protected contexts.\n"
+            "- Avoid fearful language; express intensity through environment, lighting, or scale instead.\n"
             "- Treat mythical or technological forces as awe-inspiring, mystical, or enigmatic instead of menacing.\n"
-            "- Let wonder, serenity, or purposeful dynamism be the prevailing mood even when the scene hints at conflict."
         )
 
     def get_book_specific_guidance(self, scene: SceneExtraction) -> str | None:
