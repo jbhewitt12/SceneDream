@@ -22,11 +22,8 @@ For complex requests, use short labeled sections or line breaks rather than one 
 ### Extended Prompt Capabilities
 
 GPT Image 1.5 supports significantly longer prompts (~32k characters vs 4k for DALL-E 3), enabling:
-- Richer scene descriptions with multiple layers of detail
-- More nuanced emotional and atmospheric direction
-- Detailed character descriptions without sacrificing environmental context
-- Complex multi-element compositions with clear spatial hierarchies
-- Explicit material and texture descriptions for every visible surface
+- Complex multi-element compositions with clear spatial hierarchies and layered detail
+- Explicit material, texture, and atmospheric descriptions for every visible surface
 
 ### World Knowledge & Contextual Inference
 
@@ -46,25 +43,7 @@ GPT Image 1.5 has strong world knowledge and reasoning. Leverage this by:
 
 ### Photography & Camera Language
 
-Use specific technical terminology to guide composition and mood:
-
-**Lens & Perspective:**
-- Wide-angle (14-24mm): expansive environments, dramatic scale
-- Standard (35-50mm): natural perspective, documentary feel
-- Portrait (85-135mm): subject isolation, shallow depth
-- Macro: intimate detail, texture revelation
-- Bird's-eye, worm's-eye, Dutch angle, eye-level witness
-
-**Lighting Terminology:**
-- Rim lighting from behind, soft box diffusion, golden hour warmth
-- High-contrast side lighting, diffused overcast, dramatic chiaroscuro
-- Practical lights (lamps, fires, screens) as motivated sources
-- Describe how light interacts with specific materials in the scene
-
-**Framing & Composition:**
-- Rule of thirds placement, centered symmetry, diagonal leading lines
-- Negative space crescents, layered silhouettes, spiral compositions
-- Foreground framing elements, depth layers, atmospheric perspective
+Use specific technical terminology: lens focal lengths (wide 14-24mm, standard 35-50mm, portrait 85-135mm, macro); perspectives (bird's-eye, worm's-eye, Dutch angle); lighting (rim, soft box, golden hour, chiaroscuro, practical sources); framing (rule of thirds, leading lines, negative space, layered silhouettes, foreground framing).
 
 ### Explicit Placement & Spatial Relationships
 
@@ -123,28 +102,6 @@ When describing scenes, explicitly state what must NOT appear:
 - Include artist or movement references that reinforce the chosen technique and palette logic.
 - Build prompts progressively: establish foundation → add atmosphere → incorporate details.
 
-### Iterative Refinement Strategy
+### Example Spark Prompt
 
-GPT Image 1.5 responds well to progressive building:
-- Start with core scene and subject, verify the foundation
-- Add atmospheric and lighting details in refinement passes
-- Layer in secondary elements and fine details
-- Use consistent terminology across iterations to maintain coherence
-
-### Variant Mapping Worksheet
-
-- After assigning mediums, log each selection and annotate which story beat it amplifies.
-- Sketch a micro storyboard per variant covering focal subject, supporting detail, palette, camera move.
-- Track how perspective, scale, and sensory focus evolve from variant to variant.
-- Ensure each variant explores a genuinely different angle, not just surface variations.
-
-### Example Spark Prompts
-
-**Atmospheric Wide:**
-"Kinetic light sculpture vision of twin airships gliding above a turquoise canyon at golden hour. Their rigging woven with luminous glyphs that pulse in slow rhythm, each glyph casting faint prismatic shadows on the brass hulls. Dusk backlight streaming through canyon walls of striated red sandstone, long amber shadows stretching across the canyon floor where a winding river catches the last light. Foreground silhouette of wind-bent juniper trees framing the scene. 16:9 wide sweep composition with slight upward tilt, 24mm lens perspective. Palette of teal atmospheric vapor, amber-gold highlights, deep violet canyon depths, and copper metallic accents. No modern elements, no text."
-
-**Intimate Vertical:**
-"Sumi-e animation tableau of a wandering archivist cataloguing floating seed lanterns along a midnight river. Each lantern emits soft bioluminescent amber glow, reflecting as scattered gold coins across ink-black water. The archivist rendered small against the vast river expanse, wearing layered robes in muted indigo, holding a luminous scroll that illuminates their focused expression. Mist curls at the water's surface in delicate wisps, paper lanterns ascending in a gentle spiral toward a crescent moon. 9:16 vertical framing with the river filling the lower two-thirds. Palette of tranquil jade, warm saffron accents, deep indigo shadows, and silver moonlight highlights. Ink wash texture with visible brush strokes, no photorealism."
-
-**Intimate Square:**
-"Textile tapestry close-up of children weaving constellation threads across a lunar observatory loom. Silver dust motes suspended in shafts of auroral light streaming through a domed glass ceiling. The loom constructed of dark polished wood with brass fittings, threads glowing in stellar blues and golds. Children's hands rendered with care, showing concentration and wonder. Background showing curved walls lined with astronomical instruments in warm copper. 1:1 square composition with tilt-shift focus on the weaving hands. Palette of pearl white, deep violet, ember gold, and midnight blue. Woven textile texture throughout, visible thread patterns, no realistic rendering."
+Kinetic light sculpture vision of twin airships gliding above a turquoise canyon at golden hour. Their rigging woven with luminous glyphs that pulse in slow rhythm, each glyph casting faint prismatic shadows on the brass hulls. Dusk backlight streaming through canyon walls of striated red sandstone, long amber shadows stretching across the canyon floor where a winding river catches the last light. Foreground silhouette of wind-bent juniper trees framing the scene. 16:9 wide sweep composition with slight upward tilt, 24mm lens perspective. Palette of teal atmospheric vapor, amber-gold highlights, deep violet canyon depths, and copper metallic accents. No modern elements, no text.

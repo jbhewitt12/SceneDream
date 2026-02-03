@@ -58,18 +58,43 @@ class SceneContextBuilder:
         before = max(config.context_before, 0)
         after = max(config.context_after, 0)
         total_paragraphs = len(chapter_context.paragraphs)
-        start = max(1, base_start - before)
-        end = min(total_paragraphs, base_end + after)
+
+        # Only include paragraphs OUTSIDE the scene span as context.
+        # The scene content is already provided verbatim in the "Scene Excerpt" section,
+        # so we only need the surrounding context (before/after) here.
+        before_start = max(1, base_start - before)
+        before_end = base_start - 1  # Stop before the scene starts
+        after_start = base_end + 1  # Start after the scene ends
+        after_end = min(total_paragraphs, base_end + after)
 
         formatted_lines: list[str] = []
-        for index in range(start, end + 1):
-            paragraph_text = chapter_context.paragraphs[index - 1]
-            formatted_lines.append(f"[Paragraph {index}] {paragraph_text}")
-        context_text = "\n".join(formatted_lines)
+        # Add context paragraphs BEFORE the scene
+        if before_end >= before_start:
+            formatted_lines.append("### Context Before Scene")
+            for index in range(before_start, before_end + 1):
+                paragraph_text = chapter_context.paragraphs[index - 1]
+                formatted_lines.append(f"[Paragraph {index}] {paragraph_text}")
+
+        # Add context paragraphs AFTER the scene
+        if after_end >= after_start:
+            if formatted_lines:
+                formatted_lines.append("")  # blank line separator
+            formatted_lines.append("### Context After Scene")
+            for index in range(after_start, after_end + 1):
+                paragraph_text = chapter_context.paragraphs[index - 1]
+                formatted_lines.append(f"[Paragraph {index}] {paragraph_text}")
+
+        context_text = (
+            "\n".join(formatted_lines)
+            if formatted_lines
+            else "(No surrounding context paragraphs available)"
+        )
         context_window = {
             "chapter_number": scene.chapter_number,
             "chapter_title": chapter_context.title,
-            "paragraph_span": [start, end],
+            "paragraph_span": [base_start, base_end],
+            "context_before_span": [before_start, before_end] if before_end >= before_start else None,
+            "context_after_span": [after_start, after_end] if after_end >= after_start else None,
             "paragraphs_before": before,
             "paragraphs_after": after,
         }
