@@ -15,7 +15,7 @@ from app.services.image_prompt_generation import (
     ImagePromptGenerationServiceError,
     ImagePromptPreview,
 )
-from app.services.langchain import openai_api
+from app.services.langchain import gemini_api, openai_api
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
@@ -223,7 +223,7 @@ def test_generate_for_scene_creates_prompts(
         captured_prompt["prompt"] = kwargs.get("prompt", "")
         return _variants()
 
-    monkeypatch.setattr(openai_api, "json_output", fake_json_output)
+    monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
 
     results = asyncio.run(service.generate_for_scene(scene))
 
@@ -256,7 +256,7 @@ def test_generate_for_scene_dry_run_returns_previews(
     async def fake_json_output(**_: object) -> list[dict[str, object]]:
         return _variants()
 
-    monkeypatch.setattr(openai_api, "json_output", fake_json_output)
+    monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
 
     results = asyncio.run(service.generate_for_scene(scene))
 
@@ -313,7 +313,7 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(
     async def fail_json_output(**_: object) -> list[dict[str, object]]:
         pytest.fail("json_output should not be invoked")
 
-    monkeypatch.setattr(openai_api, "json_output", fail_json_output)
+    monkeypatch.setattr(gemini_api, "json_output", fail_json_output)
 
     results = asyncio.run(service.generate_for_scene(scene))
 
@@ -426,7 +426,7 @@ def test_generate_for_scene_overwrites_when_allowed(
     async def fake_json_output(**_: object) -> list[dict[str, object]]:
         return _variants()
 
-    monkeypatch.setattr(openai_api, "json_output", fake_json_output)
+    monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
 
     results = asyncio.run(service.generate_for_scene(scene))
 

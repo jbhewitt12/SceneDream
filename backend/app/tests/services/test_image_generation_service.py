@@ -124,11 +124,17 @@ def prompt_factory(db: Session) -> Callable[..., ImagePrompt]:
 
 def test_map_aspect_ratio_to_size():
     """Test aspect ratio to size mapping."""
+    # GPT Image provider (default)
     assert map_aspect_ratio_to_size("1:1") == "1024x1024"
-    assert map_aspect_ratio_to_size("9:16") == "1024x1792"
-    assert map_aspect_ratio_to_size("16:9") == "1792x1024"
+    assert map_aspect_ratio_to_size("9:16") == "1024x1536"
+    assert map_aspect_ratio_to_size("16:9") == "1536x1024"
     assert map_aspect_ratio_to_size(None) == "1024x1024"
     assert map_aspect_ratio_to_size("invalid") == "1024x1024"
+
+    # DALL-E 3 provider
+    assert map_aspect_ratio_to_size("1:1", provider="dalle") == "1024x1024"
+    assert map_aspect_ratio_to_size("9:16", provider="dalle") == "1024x1792"
+    assert map_aspect_ratio_to_size("16:9", provider="dalle") == "1792x1024"
 
 
 def test_derive_style_from_tags():
