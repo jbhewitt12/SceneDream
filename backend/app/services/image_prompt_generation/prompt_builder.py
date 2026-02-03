@@ -207,7 +207,6 @@ class PromptBuilder:
             "- style_tags must be a list of short descriptors (2-5 entries).\n"
             "- attributes must detail composition, camera, lens, lighting, palette, atmosphere, aspect_ratio, style_intent, and references (list of influences or movements).\n"
             "- Ensure each variant explores a different angle, subject emphasis, or aesthetic; do not reuse the same style family or medium twice.\n"
-            "- Keep prompt_text and style_tags entirely free of photorealistic, hyper-realistic, live-action, or similar wording; rely on stylised techniques only.\n"
             f"- attributes.aspect_ratio must match one of: {aspect_ratio_display} (no other ratios allowed).\n"
             "- Do not include notes, warnings, or additional keys.\n"
             f"- The expected object shape is similar to: {output_schema}.\n"

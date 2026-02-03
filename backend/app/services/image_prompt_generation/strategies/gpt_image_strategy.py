@@ -41,27 +41,19 @@ class GptImagePromptStrategy(PromptStrategy):
 
     def get_quality_objectives(self, variants_count: int, aspect_ratio_display: str) -> str:
         return (
-            "- Write each prompt like expert art direction with structured layers: scene → subject → materials → style → technical → constraints. GPT Image 1.5 handles rich detail exceptionally well, so aim for 80-150 words per prompt.\n"
-            "- Embed the chosen medium, art movement, and rendering techniques directly into the prompt_text and style_tags, and explain why they fit inside attributes.style_intent.\n"
-            "- Replace generic quality words with tangible material descriptions - specify actual textures, surface properties, and how light interacts with each material.\n"
-            "- Include explicit spatial relationships: where the subject sits in the frame, foreground/background layering, negative space usage, and depth cues.\n"
-            "- Use precise photography language: lens focal length (24mm wide, 85mm portrait), lighting terminology (rim light, soft box, golden hour), and composition rules (rule of thirds, leading lines).\n"
+            "- Aim for 80-150 words per prompt; GPT Image 1.5 handles rich detail exceptionally well.\n"
+            "- Embed the chosen medium, art movement, and rendering techniques directly into prompt_text and style_tags, and explain why they fit in attributes.style_intent.\n"
             "- Spotlight unique facets of the scene per variant (alternate subjects, emotional beats, or spatial scales) so the set feels complementary, not redundant.\n"
-            f"- Leverage camera language and choose aspect ratios from {aspect_ratio_display} to serve the excerpt's intent.\n"
-            "- End each prompt with explicit constraints (no photorealism, no modern elements, etc.) to prevent unwanted drift.\n"
+            f"- Choose aspect ratios from {aspect_ratio_display} to serve the excerpt's intent.\n"
             "- Maintain neutral-to-positive emotional valence, avoiding words that signal harm, panic, or cruelty while still capturing momentum or quiet tension."
         )
 
     def get_style_strategy(self) -> str:
         return (
-            "- Capture the excerpt's emotional drivers and sensory anchors before drafting prompts.\n"
             "- Consult the curated Suggested Styles list above and pick unique candidates for each variant.\n"
-            "- Explicitly weave the chosen medium or art era into prompt_text and style_tags for every variant.\n"
-            "- Keep every treatment proudly stylised—never use photorealistic, live-action, or cinematic realism terminology.\n"
+            "- Explicitly weave the chosen medium or art era into prompt_text and style_tags, describing how it manifests (brush strokes, color blending, line weight, surface treatment).\n"
             "- Bind palette, lighting, and composition decisions to narrative clues so the aesthetic choice feels earned.\n"
-            "- Describe how the chosen style manifests in specific elements: brush stroke texture, color blending technique, line weight variation, surface treatment.\n"
-            "- Include artist or movement references that reinforce the technique and palette logic (e.g., 'Moebius-inspired line work', 'Miyazaki-esque environmental detail').\n"
-            "- Use GPT Image 1.5's world knowledge by including cultural and temporal context that informs period-appropriate stylistic choices."
+            "- Include artist or movement references that reinforce the technique and palette logic (e.g., 'Moebius-inspired line work', 'Miyazaki-esque environmental detail')."
         )
 
     def get_model_constraints(self) -> str:

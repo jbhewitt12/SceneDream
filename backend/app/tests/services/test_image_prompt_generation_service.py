@@ -234,7 +234,8 @@ def test_generate_for_scene_creates_prompts(
     stored = repository.list_for_scene(scene.id)
     assert len(stored) == 2
     first = stored[0]
-    assert first.context_window["paragraph_span"] == [2, 6]
+    # paragraph_span is now just the scene span, not including context
+    assert first.context_window["paragraph_span"] == [5, 6]
     assert "prompt" not in first.raw_response
     assert first.raw_response["service"]["prompt_hash"]
     # Check that sampled_styles contains expected styles (order may vary due to shuffle)
@@ -529,6 +530,8 @@ def test_build_scene_context_paragraph_numbering(
     db: Session,
     scene_factory,
 ) -> None:
+    """Context builder should return scene span in paragraph_span and only
+    include context paragraphs OUTSIDE the scene span in context_text."""
     scene = scene_factory(
         book_slug="excession",
         source_book_path=str(EXCESSION_EPUB),
@@ -550,17 +553,38 @@ def test_build_scene_context_paragraph_numbering(
         config=config,
     )
 
-    expected_start = max(1, scene.scene_paragraph_start - config.context_before)
+    # paragraph_span should be the scene span, not including context
+    assert context_window["paragraph_span"] == [
+        scene.scene_paragraph_start,
+        scene.scene_paragraph_end,
+    ]
+
+    # context_before_span should be paragraphs before scene start
+    expected_before_start = max(1, scene.scene_paragraph_start - config.context_before)
+    expected_before_end = scene.scene_paragraph_start - 1
+    assert context_window["context_before_span"] == [
+        expected_before_start,
+        expected_before_end,
+    ]
+
+    # context_after_span should be paragraphs after scene end
     cached_chapters = service._context_builder._book_cache[scene.source_book_path]
     total_paragraphs = len(cached_chapters[scene.chapter_number].paragraphs)
-    expected_end = min(
+    expected_after_start = scene.scene_paragraph_end + 1
+    expected_after_end = min(
         total_paragraphs,
         scene.scene_paragraph_end + config.context_after,
     )
+    assert context_window["context_after_span"] == [
+        expected_after_start,
+        expected_after_end,
+    ]
 
-    assert context_window["paragraph_span"] == [expected_start, expected_end]
-    lines = context_text.splitlines()
-    assert lines
-    assert lines[0].startswith(f"[Paragraph {expected_start}]")
-    assert lines[-1].startswith(f"[Paragraph {expected_end}]")
-    assert len(lines) == expected_end - expected_start + 1
+    # context_text should have section headers and only context paragraphs
+    assert "### Context Before Scene" in context_text
+    assert "### Context After Scene" in context_text
+    assert f"[Paragraph {expected_before_start}]" in context_text
+    assert f"[Paragraph {expected_after_end}]" in context_text
+    # Scene paragraphs should NOT be in context text (they're in the scene excerpt)
+    for para_num in range(scene.scene_paragraph_start, scene.scene_paragraph_end + 1):
+        assert f"[Paragraph {para_num}]" not in context_text
