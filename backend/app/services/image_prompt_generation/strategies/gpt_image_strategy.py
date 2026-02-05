@@ -67,7 +67,7 @@ class GptImagePromptStrategy(PromptStrategy):
         )
 
     def get_supported_aspect_ratios(self) -> list[str]:
-        return ["1:1", "16:9", "9:16"]
+        return ["1:1", "3:2", "2:3"]
 
 
 # Register the strategy

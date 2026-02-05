@@ -60,7 +60,7 @@ class DallePromptStrategy(PromptStrategy):
         )
 
     def get_supported_aspect_ratios(self) -> list[str]:
-        return ["1:1", "16:9", "9:16"]
+        return ["1:1", "7:4", "4:7"]
 
 
 # Register the strategy

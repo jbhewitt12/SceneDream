@@ -112,25 +112,33 @@ def map_aspect_ratio_to_size(
     Map aspect ratio to provider-specific size.
 
     Args:
-        aspect_ratio: Aspect ratio string (1:1, 9:16, 16:9) or None
+        aspect_ratio: Aspect ratio string (1:1, 3:2, 2:3, etc.) or None
         provider: Image provider name (affects available sizes)
 
     Returns:
         Size string appropriate for the provider
     """
-    # GPT Image uses different sizes than DALL-E 3
+    # GPT Image 1.5 native sizes: 1024x1024, 1536x1024, 1024x1536
     if provider == "openai_gpt_image":
         mapping = {
             "1:1": "1024x1024",
-            "9:16": "1024x1536",
+            "3:2": "1536x1024",
+            "2:3": "1024x1536",
+            # Legacy mappings for backwards compatibility
             "16:9": "1536x1024",
+            "9:16": "1024x1536",
         }
     else:
-        # DALL-E 3 sizes
+        # DALL-E 3 sizes: 1024x1024, 1792x1024, 1024x1792
         mapping = {
             "1:1": "1024x1024",
-            "9:16": "1024x1792",
+            "7:4": "1792x1024",
+            "4:7": "1024x1792",
+            # Legacy/approximate mappings
             "16:9": "1792x1024",
+            "9:16": "1024x1792",
+            "3:2": "1792x1024",
+            "2:3": "1024x1792",
         }
     return mapping.get(aspect_ratio or "", "1024x1024")
 

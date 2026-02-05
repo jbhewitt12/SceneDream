@@ -125,7 +125,7 @@ class GeneratedImageGenerateRequest(BaseModel):
     limit: int | None = Field(None, ge=1, le=100)
     quality: str = Field("standard", pattern="^(standard|hd)$")
     preferred_style: str | None = Field(None, pattern="^(vivid|natural)$")
-    aspect_ratio: str | None = Field(None, pattern="^(1:1|9:16|16:9)$")
+    aspect_ratio: str | None = Field(None, pattern="^(1:1|3:2|2:3|16:9|9:16|7:4|4:7)$")
     provider: str = "openai"
     model: str = "dall-e-3"
     response_format: str = Field("b64_json", pattern="^(b64_json|url)$")

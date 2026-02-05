@@ -131,10 +131,13 @@ def test_map_aspect_ratio_to_size():
     assert map_aspect_ratio_to_size(None) == "1024x1024"
     assert map_aspect_ratio_to_size("invalid") == "1024x1024"
 
-    # DALL-E 3 provider
+    # DALL-E 3 provider - native ratios (7:4 and 4:7 match actual 1792x1024/1024x1792 dimensions)
     assert map_aspect_ratio_to_size("1:1", provider="dalle") == "1024x1024"
-    assert map_aspect_ratio_to_size("9:16", provider="dalle") == "1024x1792"
+    assert map_aspect_ratio_to_size("7:4", provider="dalle") == "1792x1024"
+    assert map_aspect_ratio_to_size("4:7", provider="dalle") == "1024x1792"
+    # DALL-E 3 provider - legacy ratios (backwards compatibility)
     assert map_aspect_ratio_to_size("16:9", provider="dalle") == "1792x1024"
+    assert map_aspect_ratio_to_size("9:16", provider="dalle") == "1024x1792"
 
 
 def test_derive_style_from_tags():

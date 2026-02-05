@@ -34,13 +34,13 @@ from .models import (
     ImagePromptPreview,
 )
 from .prompt_builder import PromptBuilder
-from .variant_processing import ALLOWED_ASPECT_RATIOS, VariantProcessor
+from .strategies import PromptStrategyRegistry
+from .variant_processing import VariantProcessor
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 REMIX_VARIANTS_COUNT = 2
-ALLOWED_ASPECT_RATIO_DISPLAY = ", ".join(ALLOWED_ASPECT_RATIOS)
 
 
 class ImagePromptGenerationService:
@@ -67,8 +67,12 @@ class ImagePromptGenerationService:
         self._ranking_repo = SceneRankingRepository(session)
         self._book_service = BookContentService()
         self._context_builder = SceneContextBuilder(self._book_service)
-        self._variant_processor = VariantProcessor()
         self._prompt_builder = PromptBuilder()
+
+    def _get_variant_processor(self, target_provider: str) -> VariantProcessor:
+        """Get a VariantProcessor configured with the provider's aspect ratios."""
+        strategy = PromptStrategyRegistry.get(target_provider)
+        return VariantProcessor(allowed_aspect_ratios=strategy.get_supported_aspect_ratios())
 
     async def generate_for_scene(
         self,
@@ -151,7 +155,8 @@ class ImagePromptGenerationService:
             prompt=prompt,
             config=config,
         )
-        variants = self._variant_processor.extract_variants(raw_payload, config)
+        variant_processor = self._get_variant_processor(config.target_provider)
+        variants = variant_processor.extract_variants(raw_payload, config)
         if len(variants) != len(variant_indices):
             raise ImagePromptGenerationServiceError(
                 "Variant count mismatch while assigning variant indices"
@@ -175,7 +180,7 @@ class ImagePromptGenerationService:
             "response": raw_payload,
             "service": service_payload,
         }
-        records = self._variant_processor.build_records(
+        records = variant_processor.build_records(
             scene=target_scene,
             config=config,
             variants=variants,
@@ -187,7 +192,7 @@ class ImagePromptGenerationService:
         )
 
         if config.dry_run:
-            preview_prompts = self._variant_processor.instantiate_prompts_from_records(
+            preview_prompts = variant_processor.instantiate_prompts_from_records(
                 records
             )
             metadata_results = await self._run_metadata_generation(
@@ -427,7 +432,9 @@ class ImagePromptGenerationService:
             config=config,
             system_instruction=self._remix_system_instruction,
         )
-        variants = self._variant_processor.extract_variants(raw_payload, config)
+        target_provider = prompt_record.target_provider or config.target_provider
+        variant_processor = self._get_variant_processor(target_provider)
+        variants = variant_processor.extract_variants(raw_payload, config)
 
         service_payload = {
             "mode": "remix",
@@ -478,7 +485,7 @@ class ImagePromptGenerationService:
             )
 
         if config.dry_run:
-            preview_prompts = self._variant_processor.instantiate_prompts_from_records(
+            preview_prompts = variant_processor.instantiate_prompts_from_records(
                 records
             )
             metadata_results = await self._run_metadata_generation(
@@ -587,7 +594,9 @@ class ImagePromptGenerationService:
         }
 
         if dry_run:
-            preview_prompts = self._variant_processor.instantiate_prompts_from_records(
+            target_provider = prompt_record.target_provider or self._config.target_provider
+            variant_processor = self._get_variant_processor(target_provider)
+            preview_prompts = variant_processor.instantiate_prompts_from_records(
                 [record]
             )
             metadata_results = await self._run_metadata_generation(

@@ -26,12 +26,10 @@ class PromptBuilder:
         *,
         style_sampler: StyleSampler | None = None,
         tone_guardrails: ToneGuardrails | None = None,
-        constraints: CriticalConstraints | None = None,
         output_schema: OutputSchemaBuilder | None = None,
     ) -> None:
         self._style_sampler = style_sampler or StyleSampler()
         self._tone_guardrails = tone_guardrails or ToneGuardrails()
-        self._constraints = constraints or CriticalConstraints()
         self._output_schema = output_schema or OutputSchemaBuilder()
         self._cheatsheet_cache: dict[str, str] = {}
 
@@ -100,14 +98,19 @@ class PromptBuilder:
         # Get style strategy
         style_strategy = strategy.get_style_strategy()
 
+        # Create constraints using strategy's aspect ratios (strategy is the source of truth)
+        constraints = CriticalConstraints(
+            allowed_aspect_ratios=strategy.get_supported_aspect_ratios()
+        )
+        aspect_ratio_display = constraints.aspect_ratio_display
+
         # Get quality objectives
-        aspect_ratio_display = self._constraints.aspect_ratio_display
         quality_objectives = strategy.get_quality_objectives(
             config.variants_count, aspect_ratio_display
         )
 
         # Get constraints
-        critical_constraints = self._constraints.get_constraints_text()
+        critical_constraints = constraints.get_constraints_text()
 
         # Get tone guardrails
         tone_guardrails = self._tone_guardrails.get_guardrails_text()
