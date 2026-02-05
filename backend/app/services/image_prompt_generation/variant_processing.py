@@ -18,7 +18,6 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_ASPECT_RATIOS = ("1:1", "16:9", "9:16")
 _BANNED_STYLE_TERMS = (
     "photorealistic",
     "photorealism",
@@ -61,8 +60,8 @@ class VariantProcessor:
     def __init__(
         self,
         *,
+        allowed_aspect_ratios: Sequence[str],
         banned_style_terms: Sequence[str] = _BANNED_STYLE_TERMS,
-        allowed_aspect_ratios: Sequence[str] = ALLOWED_ASPECT_RATIOS,
     ) -> None:
         self._banned_style_terms = tuple(banned_style_terms)
         self._allowed_aspect_ratios = tuple(allowed_aspect_ratios)
@@ -214,7 +213,6 @@ class VariantProcessor:
 
 
 __all__ = [
-    "ALLOWED_ASPECT_RATIOS",
     "VariantModel",
     "VariantProcessor",
 ]

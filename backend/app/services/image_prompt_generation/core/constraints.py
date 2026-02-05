@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-ALLOWED_ASPECT_RATIOS: tuple[str, ...] = ("1:1", "16:9", "9:16")
-
 
 class CriticalConstraints:
     """Generate critical constraint text blocks for prompts."""
@@ -13,7 +11,7 @@ class CriticalConstraints:
     def __init__(
         self,
         *,
-        allowed_aspect_ratios: Sequence[str] = ALLOWED_ASPECT_RATIOS,
+        allowed_aspect_ratios: Sequence[str],
     ) -> None:
         self._allowed_aspect_ratios = tuple(allowed_aspect_ratios)
 
@@ -42,6 +40,5 @@ class CriticalConstraints:
 
 
 __all__ = [
-    "ALLOWED_ASPECT_RATIOS",
     "CriticalConstraints",
 ]
