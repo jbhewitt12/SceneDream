@@ -52,6 +52,7 @@ import argparse
 import asyncio
 import json
 import logging
+import random
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1299,108 +1300,89 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
                     hits.append(str(warning))
             return hits
 
-        initial_limit = max(args.top_scenes * 10, 50)
-        fetch_limit = initial_limit
-        candidate_rankings: list[Any] = []
-
-        while True:
-            if args.book_slug:
-                rankings = ranking_repo.list_top_rankings_for_book(
-                    book_slug=args.book_slug,
-                    limit=fetch_limit,
-                    include_scene=True,
-                )
-            else:
-                rankings = ranking_repo.list_top_rankings(
-                    limit=fetch_limit,
-                    include_scene=True,
-                )
-
-            if not rankings:
-                logger.warning(
-                    "No rankings found for %s - cannot backfill scenes", target_scope
-                )
-                return stats
-
-            candidate_rankings.clear()
-            seen_scene_ids: set[Any] = set()
-
-            for ranking in rankings:
-                if len(candidate_rankings) >= args.top_scenes:
-                    break
-
-                scene = ranking.scene_extraction
-                if not scene:
-                    logger.debug(
-                        "Ranking %s missing scene reference - skipping",
-                        ranking.id,
-                    )
-                    continue
-
-                if scene.id in seen_scene_ids:
-                    continue
-
-                seen_scene_ids.add(scene.id)
-
-                if prompt_config.skip_scenes_with_warnings and blocked_warning_lookup:
-                    warning_hits = _blocked_warning_hits(
-                        getattr(ranking, "warnings", None)
-                    )
-                    if warning_hits:
-                        logger.debug(
-                            "Skipping scene %s (priority=%.3f) due to content warnings: %s",
-                            scene.id,
-                            ranking.overall_priority or 0.0,
-                            ", ".join(warning_hits),
-                        )
-                        continue
-
-                existing_images = image_repo.list_for_scene(scene.id, limit=1)
-                if existing_images:
-                    logger.debug(
-                        "Skipping scene %s (priority=%.3f) - images already exist",
-                        scene.id,
-                        ranking.overall_priority or 0.0,
-                    )
-                    continue
-
-                candidate_rankings.append(ranking)
-
-            if len(candidate_rankings) >= args.top_scenes:
-                logger.info(
-                    "Found %d candidate scene(s) needing backfill after scanning top %d rankings",
-                    len(candidate_rankings),
-                    fetch_limit,
-                )
-                break
-
-            if len(rankings) < fetch_limit:
-                logger.info(
-                    "Scanned all %d rankings; only %d scene(s) still missing images",
-                    len(rankings),
-                    len(candidate_rankings),
-                )
-                break
-
-            previous_limit = fetch_limit
-            fetch_limit *= 2
-            logger.info(
-                "Only %d candidate scene(s) found within top %d rankings; expanding search to top %d",
-                len(candidate_rankings),
-                previous_limit,
-                fetch_limit,
+        # Fetch all rankings to determine the top 20% pool
+        if args.book_slug:
+            all_rankings = ranking_repo.list_top_rankings_for_book(
+                book_slug=args.book_slug,
+                limit=10000,  # Large limit to get all rankings
+                include_scene=True,
+            )
+        else:
+            all_rankings = ranking_repo.list_top_rankings(
+                limit=10000,
+                include_scene=True,
             )
 
-        if not candidate_rankings:
-            logger.info(
-                "No scenes without images found after scanning top %d rankings",
-                fetch_limit,
+        if not all_rankings:
+            logger.warning(
+                "No rankings found for %s - cannot backfill scenes", target_scope
             )
             return stats
 
+        # Build list of eligible rankings (scenes without images, not blocked by warnings)
+        eligible_rankings: list[Any] = []
+        seen_scene_ids: set[Any] = set()
+
+        for ranking in all_rankings:
+            scene = ranking.scene_extraction
+            if not scene:
+                continue
+
+            if scene.id in seen_scene_ids:
+                continue
+            seen_scene_ids.add(scene.id)
+
+            if prompt_config.skip_scenes_with_warnings and blocked_warning_lookup:
+                warning_hits = _blocked_warning_hits(getattr(ranking, "warnings", None))
+                if warning_hits:
+                    logger.debug(
+                        "Skipping scene %s (priority=%.3f) due to content warnings: %s",
+                        scene.id,
+                        ranking.overall_priority or 0.0,
+                        ", ".join(warning_hits),
+                    )
+                    continue
+
+            existing_images = image_repo.list_for_scene(scene.id, limit=1)
+            if existing_images:
+                logger.debug(
+                    "Skipping scene %s (priority=%.3f) - images already exist",
+                    scene.id,
+                    ranking.overall_priority or 0.0,
+                )
+                continue
+
+            eligible_rankings.append(ranking)
+
+        if not eligible_rankings:
+            logger.info(
+                "No scenes without images found after scanning %d rankings",
+                len(all_rankings),
+            )
+            return stats
+
+        # Calculate top 20% pool (minimum of 1 to handle small sets)
+        top_20_percent_count = max(1, len(eligible_rankings) // 5)
+        top_20_percent_pool = eligible_rankings[:top_20_percent_count]
+
+        logger.info(
+            "Found %d eligible scene(s) without images; selecting randomly from top 20%% (%d scenes)",
+            len(eligible_rankings),
+            len(top_20_percent_pool),
+        )
+
+        # Randomly select from the top 20% pool
+        num_to_select = min(args.top_scenes, len(top_20_percent_pool))
+        candidate_rankings = random.sample(top_20_percent_pool, num_to_select)
+
+        logger.info(
+            "Randomly selected %d scene(s) from top 20%% pool for backfill",
+            len(candidate_rankings),
+        )
+
         if len(candidate_rankings) < args.top_scenes:
             logger.warning(
-                "Only %d scenes require backfill out of requested %d",
+                "Only %d scene(s) available in top 20%% pool (requested %d)",
                 len(candidate_rankings),
                 args.top_scenes,
             )
