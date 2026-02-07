@@ -61,6 +61,11 @@ _DEFAULT_SCENE_LIMIT = 20
 _MAX_SCENE_LIMIT = 100
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
+# In Docker the backend code lives one level higher (/app/app/...) so parents[4]
+# resolves to "/" instead of the real project root.  Fall back to parents[3] when
+# the img/ directory cannot be found at the first candidate.
+if not (_PROJECT_ROOT / "img").is_dir():
+    _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _GENERATED_IMAGES_ROOT = (_PROJECT_ROOT / "img").resolve()
 _LIKED_IMAGES_DIR = Path("/Users/joshhewitt/dev/SceneDream/liked_images")
 logger = logging.getLogger(__name__)

@@ -52,6 +52,9 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # Mount static files for generated images
 # Path resolution: backend/app/main.py -> backend -> project root -> img
+# In Docker the code lives at /app/app/main.py so parent.parent is the project root.
 img_dir = Path(__file__).parent.parent.parent / "img"
+if not img_dir.is_dir():
+    img_dir = Path(__file__).parent.parent / "img"
 if img_dir.exists() and img_dir.is_dir():
     app.mount("/img", StaticFiles(directory=str(img_dir)), name="images")
