@@ -19,7 +19,7 @@ import {
   createFileRoute,
   useNavigate,
 } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { FiArrowLeft, FiFilter, FiRefreshCcw, FiZap } from "react-icons/fi"
 import { z } from "zod"
 
@@ -197,7 +197,6 @@ function ScenePromptsPage() {
         includeScene: search.include_scene,
       }),
     placeholderData: (previousData) => previousData,
-    keepPreviousData: true,
   })
 
   const prompts = promptQuery.data?.data ?? []
@@ -214,9 +213,6 @@ function ScenePromptsPage() {
     }
     return undefined
   }, [prompts, promptQuery.data?.meta])
-
-  const [selectedPrompt, setSelectedPrompt] = useState<any | null>(null)
-  const detailDisclosure = useDisclosure()
 
   const generationMutation = useMutation({
     mutationFn: () =>
@@ -244,27 +240,27 @@ function ScenePromptsPage() {
       <Flex align="center" justify="space-between" gap={4} flexWrap="wrap">
         <Heading size="lg">Scene prompts</Heading>
         <HStack gap={2}>
-          <Button
-            as={RouterLink}
+          <RouterLink
             to="/prompt-gallery"
-            size="sm"
-            leftIcon={<Icon as={FiArrowLeft} />}
             search={
               sceneSummary?.book_slug
                 ? { book_slug: sceneSummary.book_slug }
                 : undefined
             }
-            variant="ghost"
           >
-            Back to gallery
-          </Button>
+            <Button size="sm" variant="ghost" gap={1}>
+              <Icon as={FiArrowLeft} />
+              Back to gallery
+            </Button>
+          </RouterLink>
           <Button
-            leftIcon={<Icon as={FiZap} />}
             colorScheme="purple"
             onClick={() => generationMutation.mutate()}
-            isLoading={generationMutation.isPending}
+            loading={generationMutation.isPending}
             disabled={disableGenerate}
+            gap={1}
           >
+            <Icon as={FiZap} />
             Generate prompts
           </Button>
         </HStack>
