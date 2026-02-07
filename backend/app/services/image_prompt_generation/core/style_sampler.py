@@ -31,11 +31,11 @@ RECOMMENDED_STYLES: tuple[str, ...] = (
     "psychedelic art",
     "double exposure",
     "fractal art",
-    "sci-fi fantasy art",
 )
 
 OTHER_STYLES: tuple[str, ...] = (
     "miniature diorama",
+    "sci-fi fantasy art",
     "isometric LEGO",
     "Abstract art",
     "abstract geometry",
@@ -107,6 +107,11 @@ OTHER_STYLES: tuple[str, ...] = (
     "black-and-white",
     "sepia tone",
     "vintage style",
+    "Dutch Golden Age",
+    "Tibetan thangka",
+    "botanical illustration",
+    "visionary art",
+    "mandala art",
 )
 
 BLOCKED_STYLE_TERMS: tuple[str, ...] = (
