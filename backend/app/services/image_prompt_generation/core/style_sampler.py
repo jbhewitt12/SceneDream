@@ -26,7 +26,6 @@ RECOMMENDED_STYLES: tuple[str, ...] = (
     "smudged Chinese ink painting",
     "anime-style watercolor",
     "3D Pixar-style cartoon",
-    "neon-line drawing",
     "illuminated manuscript",
     "psychedelic art",
     "double exposure",
@@ -34,6 +33,7 @@ RECOMMENDED_STYLES: tuple[str, ...] = (
 )
 
 OTHER_STYLES: tuple[str, ...] = (
+     "neon-line drawing",
     "miniature diorama",
     "sci-fi fantasy art",
     "isometric LEGO",
