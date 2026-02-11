@@ -36,6 +36,9 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.core.db import engine
+from app.services.image_generation.batch_image_generation_service import (
+    BatchImageGenerationService,
+)
 from app.services.image_generation.image_generation_service import (
     ImageGenerationConfig,
     ImageGenerationService,
@@ -131,6 +134,25 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Execution control
     parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["batch", "sync"],
+        default=settings.IMAGE_GENERATION_MODE,
+        help=f"Generation mode: 'batch' for OpenAI Batch API (50%% cheaper), 'sync' for immediate (default: {settings.IMAGE_GENERATION_MODE}).",
+    )
+    parser.add_argument(
+        "--poll-timeout",
+        type=int,
+        default=3600,
+        help="Batch mode: max seconds to poll before deferring to background scheduler (default: 3600).",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=int,
+        default=30,
+        help="Batch mode: seconds between poll requests (default: 30).",
+    )
+    parser.add_argument(
         "--concurrency",
         type=int,
         default=3,
@@ -220,7 +242,20 @@ async def _handle_generate(args: argparse.Namespace) -> int:
 
     # Run generation
     with Session(engine) as session:
-        service = ImageGenerationService(session, config=config, api_key=api_key)
+        if args.mode == "batch":
+            service: ImageGenerationService | BatchImageGenerationService = (
+                BatchImageGenerationService(
+                    session,
+                    config=config,
+                    api_key=api_key,
+                    poll_timeout=args.poll_timeout,
+                    poll_interval=args.poll_interval,
+                )
+            )
+            logger.info("Using batch generation mode (50%% cost reduction)")
+        else:
+            service = ImageGenerationService(session, config=config, api_key=api_key)
+            logger.info("Using sync generation mode")
 
         try:
             generated_ids = await service.generate_for_selection(

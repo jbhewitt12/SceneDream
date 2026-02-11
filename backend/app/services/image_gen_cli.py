@@ -66,6 +66,9 @@ from app.repositories.generated_image import GeneratedImageRepository
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
+from app.services.image_generation.batch_image_generation_service import (
+    BatchImageGenerationService,
+)
 from app.services.image_generation.image_generation_service import (
     ImageGenerationConfig,
     ImageGenerationService,
@@ -158,6 +161,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip prompt generation (use existing prompts)",
     )
     _add_quality_args(run)
+    _add_mode_args(run)
     _add_common_args(run)
 
     # Extract-only command
@@ -244,6 +248,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Number of top-ranked scenes to generate images for",
     )
     _add_quality_args(images)
+    _add_mode_args(images)
     images.add_argument(
         "--concurrency",
         type=int,
@@ -317,6 +322,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Always use --prompts-per-scene value, ignoring scene complexity analysis",
     )
     _add_quality_args(backfill)
+    _add_mode_args(backfill)
     backfill.add_argument(
         "--concurrency",
         type=int,
@@ -357,6 +363,30 @@ def _add_quality_args(parser: argparse.ArgumentParser) -> None:
         "--aspect-ratio",
         choices=["1:1", "9:16", "16:9"],
         help="Image aspect ratio",
+    )
+
+
+def _add_mode_args(parser: argparse.ArgumentParser) -> None:
+    """Add image generation mode arguments."""
+    from app.core.config import settings
+
+    parser.add_argument(
+        "--mode",
+        choices=["batch", "sync"],
+        default=settings.IMAGE_GENERATION_MODE,
+        help=f"Generation mode: 'batch' for OpenAI Batch API (50%% cheaper), 'sync' for immediate (default: {settings.IMAGE_GENERATION_MODE})",
+    )
+    parser.add_argument(
+        "--poll-timeout",
+        type=int,
+        default=3600,
+        help="Batch mode: max seconds to poll before deferring to background scheduler (default: 3600)",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=int,
+        default=30,
+        help="Batch mode: seconds between poll requests (default: 30)",
     )
 
 
@@ -936,7 +966,20 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
         )
 
         with Session(engine) as session:
-            image_service = ImageGenerationService(session, config=image_config)
+            mode = getattr(args, "mode", "sync")
+            if mode == "batch":
+                image_service: ImageGenerationService | BatchImageGenerationService = (
+                    BatchImageGenerationService(
+                        session,
+                        config=image_config,
+                        poll_timeout=getattr(args, "poll_timeout", 3600),
+                        poll_interval=getattr(args, "poll_interval", 30),
+                    )
+                )
+                logger.info("Using batch generation mode (50%% cost reduction)")
+            else:
+                image_service = ImageGenerationService(session, config=image_config)
+                logger.info("Using sync generation mode")
 
             try:
                 generated_ids = await image_service.generate_for_selection(
@@ -1203,7 +1246,20 @@ async def _run_images(args: argparse.Namespace) -> PipelineStats:
     )
 
     with Session(engine) as session:
-        image_service = ImageGenerationService(session, config=image_config)
+        mode = getattr(args, "mode", "sync")
+        if mode == "batch":
+            image_service: ImageGenerationService | BatchImageGenerationService = (
+                BatchImageGenerationService(
+                    session,
+                    config=image_config,
+                    poll_timeout=getattr(args, "poll_timeout", 3600),
+                    poll_interval=getattr(args, "poll_interval", 30),
+                )
+            )
+            logger.info("Using batch generation mode (50%% cost reduction)")
+        else:
+            image_service = ImageGenerationService(session, config=image_config)
+            logger.info("Using sync generation mode")
 
         try:
             generated_ids = await image_service.generate_for_selection(
@@ -1479,15 +1535,28 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
                 continue
             seen_prompt_ids.add(prompt.id)
             prompt_ids.append(prompt.id)
-        image_service = ImageGenerationService(
-            session,
-            config=ImageGenerationConfig(
-                quality=args.quality,
-                preferred_style=args.style,
-                aspect_ratio=args.aspect_ratio,
-                concurrency=args.concurrency,
-            ),
+
+        image_config = ImageGenerationConfig(
+            quality=args.quality,
+            preferred_style=args.style,
+            aspect_ratio=args.aspect_ratio,
+            concurrency=args.concurrency,
         )
+
+        mode = getattr(args, "mode", "sync")
+        if mode == "batch":
+            image_service: ImageGenerationService | BatchImageGenerationService = (
+                BatchImageGenerationService(
+                    session,
+                    config=image_config,
+                    poll_timeout=getattr(args, "poll_timeout", 3600),
+                    poll_interval=getattr(args, "poll_interval", 30),
+                )
+            )
+            logger.info("Using batch generation mode (50%% cost reduction)")
+        else:
+            image_service = ImageGenerationService(session, config=image_config)
+            logger.info("Using sync generation mode")
 
         try:
             generated_ids = await image_service.generate_for_selection(
