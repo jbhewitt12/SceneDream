@@ -10,6 +10,10 @@ from starlette.middleware.cors import CORSMiddleware
 import sentry_sdk
 from app.api.main import api_router
 from app.core.config import settings
+from app.services.image_generation.batch_scheduler import (
+    start_batch_scheduler,
+    stop_batch_scheduler,
+)
 from app.services.social_posting.scheduler import start_scheduler, stop_scheduler
 
 
@@ -26,8 +30,10 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application lifespan events."""
     # Startup
     await start_scheduler()
+    await start_batch_scheduler()
     yield
     # Shutdown
+    await stop_batch_scheduler()
     await stop_scheduler()
 
 

@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     # Image generation defaults
     DEFAULT_IMAGE_PROVIDER: str = "openai_gpt_image"
     DEFAULT_IMAGE_MODEL: str = "gpt-image-1.5"
+    IMAGE_GENERATION_MODE: str = "batch"  # "batch" or "sync"
 
     # Social media posting settings (per-service delay in hours)
     X_HOURS_BETWEEN_POSTS: float = 2.0
