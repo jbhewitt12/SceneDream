@@ -80,6 +80,8 @@ services:
     # TODO: remove once coverage is done locally
     volumes:
       - ./backend/htmlcov:/app/htmlcov
+      - ~/.flickr:/root/.flickr
+      - ~/.flickr_token:/root/.flickr_token:ro
     environment:
       SMTP_HOST: "mailcatcher"
       SMTP_PORT: "1025"

@@ -250,3 +250,21 @@ class SocialPostingService:
         """Check if an image is currently queued for any service."""
         posts = self._repo.get_by_image_id(image_id)
         return any(p.status == "queued" for p in posts)
+
+    def retry_failed(
+        self,
+        service_name: str | None = None,
+        since: datetime | None = None,
+    ) -> list[SocialMediaPost]:
+        """Reset failed posts back to queued for retry.
+
+        Args:
+            service_name: Optionally filter by service (e.g. "flickr").
+            since: Optionally only requeue posts that failed after this time.
+
+        Returns:
+            The list of posts that were requeued.
+        """
+        posts = self._repo.requeue_failed(service_name=service_name, since=since)
+        logger.info("Requeued %d failed posts for retry", len(posts))
+        return posts

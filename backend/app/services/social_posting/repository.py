@@ -132,3 +132,34 @@ class SocialMediaPostRepository:
         """Count the number of images currently in the queue."""
         statement = select(SocialMediaPost).where(SocialMediaPost.status == "queued")
         return len(list(self._session.exec(statement)))
+
+    def requeue_failed(
+        self,
+        service_name: str | None = None,
+        since: datetime | None = None,
+    ) -> list[SocialMediaPost]:
+        """Reset failed posts back to queued so they will be retried.
+
+        Args:
+            service_name: Optionally filter by service (e.g. "flickr").
+            since: Optionally only requeue posts that failed after this time.
+
+        Returns:
+            The list of posts that were requeued.
+        """
+        statement = select(SocialMediaPost).where(SocialMediaPost.status == "failed")
+        if service_name is not None:
+            statement = statement.where(SocialMediaPost.service_name == service_name)
+        if since is not None:
+            statement = statement.where(SocialMediaPost.last_attempt_at >= since)
+
+        posts = list(self._session.exec(statement))
+        for post in posts:
+            post.status = "queued"
+            post.error_message = None
+            self._session.add(post)
+        if posts:
+            self._session.commit()
+            for post in posts:
+                self._session.refresh(post)
+        return posts
