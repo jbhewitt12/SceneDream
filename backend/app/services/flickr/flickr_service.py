@@ -74,7 +74,21 @@ class FlickrService:
         self._authenticate()
 
     def _authenticate(self) -> None:
-        """Perform OAuth authentication flow."""
+        """Perform OAuth authentication flow.
+
+        Requires an interactive terminal. In non-interactive environments
+        (e.g. Docker), ensure the token file exists at the expected path.
+        """
+        import sys
+
+        if not sys.stdin or not sys.stdin.isatty():
+            raise RuntimeError(
+                f"Flickr OAuth requires interactive authentication but no terminal "
+                f"is available. Please run authentication locally first to create "
+                f"the token file at {self.token_file}, then mount it into the "
+                f"container."
+            )
+
         print("Starting Flickr OAuth authentication (one-time process)...")
 
         # Use out-of-band authentication

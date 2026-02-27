@@ -78,7 +78,11 @@ class FlickrPoster:
         # Determine the full path to the image
         # storage_path is the directory relative to project root (e.g., "img/generated/book/chapter-X")
         # file_name is the actual image file (e.g., "uuid.png")
+        # In Docker, the code lives at /app/app/... (one fewer level), so parents[4]
+        # resolves to / instead of /app. Fall back to parents[3] when img/ isn't found.
         project_root = Path(__file__).parents[4]  # Go up from services/social_posting
+        if not (project_root / "img").is_dir():
+            project_root = Path(__file__).parents[3]
         image_path = project_root / image.storage_path / image.file_name
 
         if not image_path.exists():

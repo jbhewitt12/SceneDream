@@ -942,6 +942,47 @@ def get_image_posting_status(
     )
 
 
+@router.post(
+    "/retry-failed-posts",
+    response_model=QueueForPostingResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def retry_failed_posts(
+    *,
+    session: SessionDep,
+    service_name: str | None = Query(None, description="Filter by service (e.g. 'flickr')"),
+) -> QueueForPostingResponse:
+    """
+    Requeue all failed social media posts so they will be retried.
+
+    Optionally filter by service name. Requeued posts will be picked up by
+    the scheduler on its next run.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    # Requeue posts that failed in the last 24 hours
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    svc = SocialPostingService(session)
+    posts = svc.retry_failed(service_name=service_name, since=since)
+
+    if not posts:
+        return QueueForPostingResponse(posts=[], message="No failed posts to retry")
+
+    # Trigger immediate queue check
+    scheduler = get_scheduler()
+    if scheduler.is_running:
+        _spawn_background_task(
+            scheduler.trigger_immediate_check(),
+            task_name="retry-failed-posts-check",
+        )
+
+    post_schemas = [SocialMediaPostRead.model_validate(p) for p in posts]
+    return QueueForPostingResponse(
+        posts=post_schemas,
+        message=f"Requeued {len(posts)} failed post(s) for retry",
+    )
+
+
 @router.put("/{image_id}/crop")
 async def crop_image(
     *,
