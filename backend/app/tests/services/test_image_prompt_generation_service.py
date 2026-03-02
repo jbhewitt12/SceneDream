@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 from sqlmodel import Session
 
-from app.repositories import ImagePromptRepository, SceneExtractionRepository
+from app.repositories import ImagePromptRepository
 from app.services.image_prompt_generation import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationService,
@@ -54,51 +54,6 @@ def _stub_prompt_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
         "app.services.prompt_metadata.prompt_metadata_service.PromptMetadataGenerationService.generate_metadata_for_prompts",
         _fake_generate,
     )
-
-
-@pytest.fixture()
-def scene_factory(db: Session) -> Callable[..., SceneExtraction]:
-    created = []
-
-    def _create(**overrides: object) -> SceneExtraction:
-        repository = SceneExtractionRepository(db)
-        counter = len(created) + 1
-        data: dict[str, object] = {
-            "book_slug": f"test-book-{uuid4()}",
-            "source_book_path": "books/test.epub",
-            "chapter_number": 1,
-            "chapter_title": "Chapter 1",
-            "chapter_source_name": "Test",
-            "scene_number": counter,
-            "location_marker": f"chapter-1-scene-{counter}",
-            "raw": "A scout surveys a neon city skyline from a rooftop garden.",
-            "refined": "A lone scout surveys a neon skyline from a windswept rooftop garden.",
-            "chunk_index": 0,
-            "chunk_paragraph_start": 4,
-            "chunk_paragraph_end": 6,
-            "raw_word_count": 12,
-            "raw_char_count": 72,
-            "refined_word_count": 15,
-            "refined_char_count": 92,
-            "scene_paragraph_start": 5,
-            "scene_paragraph_end": 6,
-            "scene_word_start": 10,
-            "scene_word_end": 52,
-            "extraction_model": "unit-test",
-            "refinement_model": "unit-test",
-        }
-        data.update(overrides)
-        scene = repository.create(data=data, commit=True)
-        created.append(scene)
-        return scene
-
-    yield _create
-
-    image_prompt_repo = ImagePromptRepository(db)
-    for scene in created:
-        image_prompt_repo.delete_for_scene(scene.id, commit=False)
-        db.delete(scene)
-    db.commit()
 
 
 def _variants(
@@ -210,7 +165,12 @@ def _create_prompt(
 def test_generate_for_scene_creates_prompts(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    scene = scene_factory()
+    scene = scene_factory(
+        chunk_paragraph_start=4,
+        chunk_paragraph_end=6,
+        scene_paragraph_start=5,
+        scene_paragraph_end=6,
+    )
     config = ImagePromptGenerationConfig(variants_count=2)
     service = ImagePromptGenerationService(db, config=config)
     _patch_context(service, monkeypatch)

@@ -38,3 +38,14 @@ This project is built with the FastAPI Template.
 ## Testing Guidelines
 - Backend tests live in `backend/app/tests`; prefer unit and service tests that stub external LLM/image calls, and mark any live API smoke tests (e.g. `test_gemini_api_live.py`) with `pytest.mark.integration` so they auto-skip without credentials.
 - Never do frontend E2E tests.
+
+## Testing Requirements for New Code
+- Every new service must have corresponding unit tests in `backend/app/tests/services/`.
+- Every new API route must have corresponding route tests in `backend/app/tests/api/routes/`.
+- Every new repository must have corresponding tests in `backend/app/tests/repositories/`.
+- All external API calls (LLM, image generation, etc.) must be mocked using `monkeypatch` — never call live services in unit tests.
+- Run `cd backend && uv run pytest` after making changes and ensure all tests pass before considering work complete.
+- New test data must be cleaned up: use the shared `scene_factory` and `prompt_factory` fixtures from `conftest.py` which handle FK-safe teardown automatically.
+- Do not duplicate fixture definitions — reuse the shared factories in `backend/app/tests/conftest.py`.
+- For async service tests, use `@pytest.mark.anyio("asyncio")` and define the test as `async def`.
+- Follow the existing test patterns in `backend/app/tests/services/test_scene_ranking_service.py` as the reference for service-level unit tests (factory + monkeypatch + assertions + cleanup).

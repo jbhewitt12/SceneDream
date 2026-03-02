@@ -10,11 +10,7 @@ from uuid import uuid4
 import pytest
 from sqlmodel import Session
 
-from app.repositories import (
-    GeneratedImageRepository,
-    ImagePromptRepository,
-    SceneExtractionRepository,
-)
+from app.repositories import GeneratedImageRepository
 from app.repositories.image_generation_batch import ImageGenerationBatchRepository
 from app.services.image_generation.batch_image_generation_service import (
     _QUALITY_MAPPING,
@@ -26,88 +22,6 @@ from app.services.image_generation.image_generation_service import (
 )
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
-
-
-@pytest.fixture()
-def scene_factory(db: Session) -> Callable[..., SceneExtraction]:
-    """Factory for creating test scene extractions."""
-    created: list[SceneExtraction] = []
-
-    def _create(**overrides: object) -> SceneExtraction:
-        repository = SceneExtractionRepository(db)
-        counter = len(created) + 1
-        data: dict[str, object] = {
-            "book_slug": f"test-book-{uuid4()}",
-            "source_book_path": "books/test.epub",
-            "chapter_number": 1,
-            "chapter_title": "Test Chapter",
-            "chapter_source_name": "chapter1.xhtml",
-            "scene_number": counter,
-            "location_marker": f"chapter-1-scene-{counter}",
-            "raw": "A futuristic cityscape at sunset with neon lights.",
-            "refined": "A sprawling futuristic cityscape at sunset.",
-            "chunk_index": 0,
-            "chunk_paragraph_start": 1,
-            "chunk_paragraph_end": 3,
-            "raw_word_count": 10,
-            "raw_char_count": 50,
-            "scene_paragraph_start": 1,
-            "scene_paragraph_end": 3,
-            "scene_word_start": 1,
-            "scene_word_end": 30,
-            "extraction_model": "test-model",
-            "refinement_model": "test-model",
-        }
-        data.update(overrides)
-        scene = repository.create(data=data, commit=True)
-        created.append(scene)
-        return scene
-
-    yield _create  # type: ignore[misc]
-
-    image_repo = GeneratedImageRepository(db)
-    prompt_repo = ImagePromptRepository(db)
-    batch_repo = ImageGenerationBatchRepository(db)
-    for scene in created:
-        for image in image_repo.list_for_scene(scene.id):
-            db.delete(image)
-        prompt_repo.delete_for_scene(scene.id, commit=False)
-        db.delete(scene)
-    # Clean up batches
-    for batch in batch_repo.list_pending():
-        db.delete(batch)
-    db.commit()
-
-
-@pytest.fixture()
-def prompt_factory(db: Session) -> Callable[..., ImagePrompt]:
-    """Factory for creating test image prompts."""
-    created: list[ImagePrompt] = []
-
-    def _create(scene: SceneExtraction, **overrides: object) -> ImagePrompt:
-        repository = ImagePromptRepository(db)
-        counter = len(created)
-        data: dict[str, object] = {
-            "scene_extraction_id": scene.id,
-            "model_vendor": "test-vendor",
-            "model_name": "test-model",
-            "prompt_version": "test-v1",
-            "variant_index": counter,
-            "title": f"Test Prompt {counter}",
-            "prompt_text": "A dramatic sci-fi scene with vibrant neon colors.",
-            "style_tags": ["cinematic", "vivid"],
-            "attributes": {"aspect_ratio": "16:9"},
-            "context_window": {"chapter_number": 1},
-            "raw_response": {},
-            "temperature": 0.7,
-            "max_output_tokens": 2048,
-        }
-        data.update(overrides)
-        prompt = repository.create(data=data, commit=True)
-        created.append(prompt)
-        return prompt
-
-    yield _create  # type: ignore[misc]
 
 
 # -- Tests for _build_jsonl --
