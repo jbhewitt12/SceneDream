@@ -1,62 +1,12 @@
 import asyncio
-from collections.abc import Callable
 
 import pytest
 from sqlmodel import Session
 
-from app.repositories import SceneExtractionRepository, SceneRankingRepository
+from app.repositories import SceneRankingRepository
 from app.services.langchain import gemini_api
 from app.services.scene_ranking import SceneRankingPreview, SceneRankingService
 from models.scene_ranking import SceneRanking
-
-
-@pytest.fixture()
-def scene_factory(db: Session) -> Callable[..., object]:
-    created: list[object] = []
-
-    def _create(**overrides: object) -> object:
-        repository = SceneExtractionRepository(db)
-        counter = len(created) + 1
-        data: dict[str, object] = {
-            "book_slug": "test-book",
-            "source_book_path": "books/test.epub",
-            "chapter_number": counter,
-            "chapter_title": f"Chapter {counter}",
-            "chapter_source_name": "Test",
-            "scene_number": 1,
-            "location_marker": f"chapter-{counter}-scene-1",
-            "raw": "A hero walks into a mysterious forest.",
-            "refined": "The hero enters a luminous forest filled with whispers.",
-            "chunk_index": 0,
-            "chunk_paragraph_start": 0,
-            "chunk_paragraph_end": 0,
-            "raw_word_count": 9,
-            "raw_char_count": 52,
-            "refined_word_count": 11,
-            "refined_char_count": 68,
-            "scene_paragraph_start": 1,
-            "scene_paragraph_end": 2,
-            "scene_word_start": 0,
-            "scene_word_end": 25,
-            "extraction_model": "unit-test",
-            "refinement_model": "unit-test",
-        }
-        data.update(overrides)
-        scene = repository.create(data=data, commit=True)
-        created.append(scene)
-        return scene
-
-    yield _create
-
-    # Cleanup: delete rankings before scenes due to FK constraints
-    ranking_repo = SceneRankingRepository(db)
-    for scene in created:
-        # Delete all rankings for this scene
-        rankings = ranking_repo.list_for_scene(scene.id)
-        for ranking in rankings:
-            db.delete(ranking)
-        db.delete(scene)
-    db.commit()
 
 
 def _mock_response(score: float = 6.0) -> dict[str, object]:

@@ -1,4 +1,5 @@
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +9,12 @@ from app.core.config import settings
 from app.core.db import engine, init_db
 from app.main import app
 from app.models import Item, User
+from app.repositories import (
+    GeneratedImageRepository,
+    ImagePromptRepository,
+    SceneExtractionRepository,
+    SceneRankingRepository,
+)
 from app.tests.utils.user import authentication_token_from_email
 from app.tests.utils.utils import get_superuser_token_headers
 from models.generated_image import GeneratedImage
@@ -88,3 +95,109 @@ def normal_user_token_headers(client: TestClient, db: Session) -> dict[str, str]
     return authentication_token_from_email(
         client=client, email=settings.EMAIL_TEST_USER, db=db
     )
+
+
+@pytest.fixture()
+def scene_factory(db: Session) -> Callable[..., SceneExtraction]:
+    """Shared factory for creating test SceneExtraction records.
+
+    Accepts keyword overrides for any field. Automatically cleans up
+    created scenes and all related records (images, prompts, rankings)
+    after the test.
+    """
+    created: list[SceneExtraction] = []
+
+    def _create(**overrides: object) -> SceneExtraction:
+        repository = SceneExtractionRepository(db)
+        counter = len(created) + 1
+        data: dict[str, object] = {
+            "book_slug": f"test-book-{uuid4()}",
+            "source_book_path": "books/test.epub",
+            "chapter_number": 1,
+            "chapter_title": "Test Chapter",
+            "chapter_source_name": "chapter1.xhtml",
+            "scene_number": counter,
+            "location_marker": f"chapter-1-scene-{counter}",
+            "raw": "A futuristic cityscape at sunset with neon lights.",
+            "refined": "A sprawling futuristic cityscape at sunset, neon lights reflecting.",
+            "chunk_index": 0,
+            "chunk_paragraph_start": 1,
+            "chunk_paragraph_end": 3,
+            "raw_word_count": 10,
+            "raw_char_count": 50,
+            "scene_paragraph_start": 1,
+            "scene_paragraph_end": 3,
+            "scene_word_start": 1,
+            "scene_word_end": 30,
+            "extraction_model": "test-model",
+            "refinement_model": "test-model",
+        }
+        data.update(overrides)
+        scene = repository.create(data=data, commit=True)
+        created.append(scene)
+        return scene
+
+    yield _create  # type: ignore[misc]
+
+    # Cleanup in FK-safe order: images -> prompts -> rankings -> scenes
+    image_repo = GeneratedImageRepository(db)
+    prompt_repo = ImagePromptRepository(db)
+    ranking_repo = SceneRankingRepository(db)
+    for scene in created:
+        for image in image_repo.list_for_scene(scene.id):
+            db.delete(image)
+        prompt_repo.delete_for_scene(scene.id, commit=False)
+        for ranking in ranking_repo.list_for_scene(scene.id):
+            db.delete(ranking)
+        db.delete(scene)
+    db.commit()
+
+
+@pytest.fixture()
+def prompt_factory(db: Session) -> Callable[..., ImagePrompt]:
+    """Shared factory for creating test ImagePrompt records.
+
+    Requires a SceneExtraction as the first argument. Accepts keyword
+    overrides for any field. Cleanup is handled by scene_factory teardown.
+    """
+    created: list[ImagePrompt] = []
+
+    def _create(scene: SceneExtraction, **overrides: object) -> ImagePrompt:
+        repository = ImagePromptRepository(db)
+        counter = len(created)
+        data: dict[str, object] = {
+            "scene_extraction_id": scene.id,
+            "model_vendor": "test-vendor",
+            "model_name": "test-model",
+            "prompt_version": "test-v1",
+            "variant_index": counter,
+            "title": f"Test Prompt {counter}",
+            "prompt_text": "A dramatic sci-fi scene with vibrant neon colors and dynamic composition.",
+            "negative_prompt": None,
+            "style_tags": ["cinematic", "vivid"],
+            "attributes": {
+                "camera": "dslr",
+                "lens": "35mm",
+                "composition": "rule-of-thirds",
+                "lighting": "neon glow",
+                "palette": "cyan and magenta",
+                "aspect_ratio": "16:9",
+                "references": ["Blade Runner"],
+            },
+            "notes": None,
+            "context_window": {
+                "chapter_number": scene.chapter_number,
+                "paragraph_span": [1, 3],
+            },
+            "raw_response": {},
+            "temperature": 0.7,
+            "max_output_tokens": 2048,
+            "llm_request_id": None,
+            "execution_time_ms": 1000,
+        }
+        data.update(overrides)
+        prompt = repository.create(data=data, commit=True)
+        created.append(prompt)
+        return prompt
+
+    yield _create  # type: ignore[misc]
