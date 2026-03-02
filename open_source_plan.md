@@ -9,6 +9,116 @@ This project is being prepared for open-source release so it can be used and ext
 - Prefer clear defaults with optional per-run overrides.
 - Build observability and operational safeguards into first-class features.
 
+## Execution Tracking
+
+Use this section for short agent updates per step.
+
+### Agent Update Template
+
+Copy this block for each step update:
+
+```md
+#### Step N - <title>
+- Done: no
+- Date: YYYY-MM-DD
+- What was implemented: <short summary>
+- Important implementation details: <key technical choices/files changed>
+- Differences from plan: <none or short note>
+```
+
+### Step Updates
+
+#### Step 1 - Core Domain Model Consolidation
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 2 - Document Ingestion Abstraction
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 3 - Content Directory Generalization (`books` to `documents`)
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 4 - Settings System and User Defaults
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 5 - Pipeline Orchestration and Job Model
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 6 - Document Dashboard and Status Tracking
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 7 - One-Click Pipeline Launch with Runtime Overrides
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 8 - Cost and Safety Guardrails
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 9 - Observability and Diagnostics
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 10 - Contributor and Community Standards
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 11 - Public Developer Experience
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 12 - CI Quality Gates for Public Contributions
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
+#### Step 13 - Open-Source License Finalization
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
 ## Feature Roadmap (Ordered)
 
 ### 1) Core Domain Model Consolidation
