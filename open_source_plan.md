@@ -21,15 +21,15 @@ This creates a stable foundation for all upcoming UI, API, and process features.
 
 ### 2) Document Ingestion Abstraction
 Introduce a format-agnostic ingestion layer so extraction is no longer EPUB-only:
-- Add support for PDF and DOCX (and leave room for TXT/MD).
+- Add support for .txt, .md, DOCX
 - Normalize extracted text into one internal format used by scene extraction.
 - Capture source metadata and parsing errors consistently.
 
 This keeps downstream services independent of input file type.
 
-### 3) Content Directory Generalization (`books` to `text_files`)
+### 3) Content Directory Generalization (`books` to `documents`)
 Generalize input storage from book-specific to document-generic:
-- Rename the default folder from `books/` to `text_files/` (or `documents/` equivalent).
+- Rename the default folder from `books/` to `documents/`.
 - Track files in subfolders with relative paths.
 - Add backward compatibility so existing `books/` users are not broken immediately.
 
@@ -71,7 +71,7 @@ This provides HTTP-triggered pipeline execution with status visibility, without 
 
 ### 6) Document Dashboard and Status Tracking
 Create a dashboard focused on source files and lifecycle visibility:
-- Show all files in `text_files/`, including nested folders.
+- Show all files in `documents/`, including nested folders.
 - Display pipeline state per file (extracted, ranked, prompts generated, images generated).
 - Surface last run outcome and failure reasons.
 
