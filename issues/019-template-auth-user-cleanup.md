@@ -259,7 +259,7 @@ cd frontend && npm run build
 ## 3-Session Execution Status
 - [x] Macro-Phase 1: Backend cleanup
 - [x] Macro-Phase 2: Frontend/client/tests cleanup
-- [ ] Macro-Phase 3: CI/docs + optional template-table retirement
+- [x] Macro-Phase 3: CI/docs + optional template-table retirement
 
 ## Completion Notes
 
@@ -316,3 +316,24 @@ cd frontend && npm run build
   - `cd backend && uv run bash scripts/lint.sh` (failed: pre-existing mypy issues in non-auth files)
 - Deviations from plan:
   - `npm run build` did not pass due unrelated pre-existing frontend type errors; no additional fixes made outside this macro-phase scope.
+
+### Macro-Phase 3: CI/docs + optional template-table retirement
+- Date completed: 2026-03-03
+- Files changed:
+  - `.github/workflows/deploy-staging.yml` (removed `FIRST_SUPERUSER*` secret wiring)
+  - `.github/workflows/deploy-production.yml` (removed `FIRST_SUPERUSER*` secret wiring)
+  - `.github/workflows/generate-client.yml` (removed `FIRST_SUPERUSER_PASSWORD` env for client generation)
+  - `README.md` (replaced template-auth docs with SceneDream no-auth project docs)
+  - `backend/README.md` (updated backend guide to current SceneDream structure and no-auth behavior)
+  - `frontend/README.md` (updated frontend guide and client generation instructions)
+  - `deployment.md` (removed superuser/auth assumptions and documented no-auth deployment vars)
+  - `issues/019-template-auth-user-cleanup.md` (status + completion notes)
+- Validation run:
+  - `cd backend && uv run pytest` (succeeded: 113 passed, 7 deselected)
+  - `cd backend && uv run bash scripts/lint.sh` (failed: pre-existing mypy issues in non-auth files)
+  - `./scripts/generate-client.sh` (failed: script uses system `python`, missing `fastapi`)
+  - Equivalent regeneration run manually with `uv run` backend OpenAPI export + frontend `npm run generate-client` (succeeded)
+  - `cd frontend && npm run lint` (succeeded; auto-fixed 1 file)
+  - `cd frontend && npm run build` (failed due pre-existing TypeScript/Chakra typing issues unrelated to this macro-phase)
+- Deviations from plan:
+  - Optional template-table retirement (`user`/`item`) was intentionally deferred in this session. Safe checks for destructive schema changes on a protected DB snapshot were not performed here, so no table-drop migration was created or applied.
