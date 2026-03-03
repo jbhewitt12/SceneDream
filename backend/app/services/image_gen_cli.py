@@ -6,7 +6,7 @@ This CLI orchestrates the full pipeline from scene extraction through image gene
 3. Generate prompts for top-ranked scenes
 4. Generate images for top-ranked scenes with prompts
 
-Book paths may reference either .epub or .mobi files.
+Book paths may reference .epub, .mobi/.azw, .txt, .md, or .docx files.
 
 Usage examples:
     # Run full pipeline with automatic variant counts from scene complexity analysis
@@ -342,7 +342,7 @@ def _add_book_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--book-path",
-        help="Path to EPUB file. Required for scene extraction. Can be absolute or relative to project root.",
+        help="Path to source document file for scene extraction. Can be absolute or relative to project root.",
     )
 
 

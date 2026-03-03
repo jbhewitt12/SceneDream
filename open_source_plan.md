@@ -41,11 +41,11 @@ Copy this block for each step update:
 - Differences from plan: Follow-up test stabilization was required for async test backend selection (`anyio_backend="asyncio"`) in batch polling/scheduler tests; after this adjustment, full backend test suite passed.
 
 #### Step 2 - Document Ingestion Abstraction
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-03
+- What was implemented: Extended the format-agnostic ingestion layer to support `.txt`, `.md`, and `.docx` inputs in addition to existing EPUB/MOBI support, with normalized chapter/paragraph output compatible with the existing scene extraction pipeline.
+- Important implementation details: Added new loaders for plain text, markdown, and DOCX (`backend/app/services/books/{text_loader,markdown_loader,docx_loader}.py`), plus shared plain-text normalization/chapter-splitting utilities (`backend/app/services/books/plain_text_utils.py`); wired extension-based dispatch into `BookContentService` for `.txt`, `.md`, and `.docx` while preserving cache behavior and service-level errors (`backend/app/services/books/book_content_service.py`); expanded ingestion metadata to consistently capture warnings, parse errors, and source metadata across formats (`backend/app/services/books/base.py`); updated CLI/help text to reflect new accepted source formats (`backend/app/services/scene_extraction/scene_extraction.py`, `backend/app/services/scene_extraction/chunk_debug_cli.py`, `backend/app/services/image_gen_cli.py`); added unit tests for each new loader using real files from `example_docs/` and extended service routing tests (`backend/app/tests/services/books/test_{text_loader,markdown_loader,docx_loader}.py`, `backend/app/tests/services/books/test_book_content_service.py`).
+- Differences from plan: Added `python-docx` dependency (`backend/pyproject.toml`, `backend/uv.lock`) to improve DOCX parsing robustness per implementation request.
 
 #### Step 3 - Content Directory Generalization (`books` to `documents`)
 - Done: no

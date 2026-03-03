@@ -2,7 +2,8 @@
 Book content parsing service.
 
 This module exposes the shared BookContentService entry point used across the
-codebase to load normalized book structure from EPUB and MOBI sources.
+codebase to load normalized document structure from EPUB, MOBI, TXT, Markdown,
+and DOCX sources.
 
 Main entry point:
     BookContentService - loads and caches book content

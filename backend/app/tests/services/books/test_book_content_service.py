@@ -13,6 +13,10 @@ EXCESSION_EPUB = (
     / "Excession"
     / "Excession - Iain M. Banks.epub"
 )
+EXAMPLE_DOCS_DIR = Path(__file__).resolve().parents[5] / "example_docs"
+EXAMPLE_TXT = EXAMPLE_DOCS_DIR / "H_G_Wells-The_Star.txt"
+EXAMPLE_MD = EXAMPLE_DOCS_DIR / "E_A_Poe-The_Cask_of_Amontillado.md"
+EXAMPLE_DOCX = EXAMPLE_DOCS_DIR / "F_R_Stockton-The_Lady_or_the_Tiger.docx"
 
 
 @pytest.mark.skipif(not EXCESSION_EPUB.exists(), reason="Test EPUB not available")
@@ -46,6 +50,36 @@ def test_load_book_relative_path() -> None:
     relative_path = "books/Iain Banks/Excession/Excession - Iain M. Banks.epub"
     content = service.load_book(relative_path)
     assert content.chapters
+
+
+@pytest.mark.skipif(not EXAMPLE_TXT.exists(), reason="Example TXT document not available")
+def test_load_book_example_txt() -> None:
+    service = BookContentService()
+    content = service.load_book(EXAMPLE_TXT)
+
+    assert content.chapters
+    assert content.metadata.format == "txt"
+    assert content.metadata.source_metadata["paragraph_count"] > 0
+
+
+@pytest.mark.skipif(not EXAMPLE_MD.exists(), reason="Example Markdown document not available")
+def test_load_book_example_markdown() -> None:
+    service = BookContentService()
+    content = service.load_book(EXAMPLE_MD)
+
+    assert content.chapters
+    assert content.metadata.format == "md"
+    assert content.metadata.source_metadata["chapter_count"] >= 1
+
+
+@pytest.mark.skipif(not EXAMPLE_DOCX.exists(), reason="Example DOCX document not available")
+def test_load_book_example_docx() -> None:
+    service = BookContentService()
+    content = service.load_book(EXAMPLE_DOCX)
+
+    assert content.chapters
+    assert content.metadata.format == "docx"
+    assert content.metadata.source_metadata["paragraph_count"] > 0
 
 
 def test_load_book_not_found() -> None:

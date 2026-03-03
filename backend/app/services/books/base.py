@@ -19,8 +19,10 @@ class BookMetadata:
     file_path: Path
     file_checksum: str  # SHA256
     parser_version: str  # e.g., "1.0"
-    format: str  # "epub" or "mobi"
+    format: str  # e.g. "epub", "mobi", "txt", "md", "docx"
     warnings: list[str] = field(default_factory=list)
+    parse_errors: list[str] = field(default_factory=list)
+    source_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
