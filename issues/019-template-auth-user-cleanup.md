@@ -256,12 +256,12 @@ cd frontend && npm run lint
 cd frontend && npm run build
 ```
 
-## Completion Notes
-
 ## 3-Session Execution Status
 - [x] Macro-Phase 1: Backend cleanup
 - [ ] Macro-Phase 2: Frontend/client/tests cleanup
 - [ ] Macro-Phase 3: CI/docs + optional template-table retirement
+
+## Completion Notes
 
 ### Phase Completion Notes Structure
 - Phase name
@@ -269,3 +269,14 @@ cd frontend && npm run build
 - Files changed
 - Validation run
 - Any deviations from plan
+
+### Macro-Phase 1: Backend cleanup
+- Date completed: 2026-03-03
+- Files changed: `issues/019-template-auth-user-cleanup.md` (status tracking update only in this session)
+- Validation run:
+  - `./scripts/generate-client.sh` (failed: system `python` missing `fastapi`)
+  - Equivalent regeneration run manually with `uv run` backend OpenAPI export + frontend client generation (succeeded; no artifact diffs)
+  - `cd backend && uv run pytest` (failed: test scaffolding still imports removed `init_db` from `app.core.db`)
+  - `cd backend && uv run bash scripts/lint.sh` (failed: pre-existing mypy issues, including legacy test imports of removed `app.models`)
+- Deviations from plan:
+  - Backend phase 1-3 code cleanup already existed before this session; this session re-verified and updated execution tracking.
