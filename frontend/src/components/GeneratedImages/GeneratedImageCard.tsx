@@ -78,16 +78,32 @@ const GeneratedImageCard = ({
           image.width && image.height ? image.width / image.height : 1
         }
       >
-        <Image
-          src={fullPath}
-          alt={`Generated image for chapter ${image.chapter_number}, variant ${
-            image.variant_index + 1
-          }`}
-          objectFit="cover"
-          w="full"
-          h="full"
-          loading="lazy"
-        />
+        {image.file_deleted ? (
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            w="full"
+            h="full"
+            bg="gray.200"
+            _dark={{ bg: "gray.700" }}
+          >
+            <Text fontSize="sm" color="fg.muted">
+              File deleted
+            </Text>
+          </Box>
+        ) : (
+          <Image
+            src={fullPath}
+            alt={`Generated image for chapter ${image.chapter_number}, variant ${
+              image.variant_index + 1
+            }`}
+            objectFit="cover"
+            w="full"
+            h="full"
+            loading="lazy"
+          />
+        )}
         {image.error && (
           <Box
             position="absolute"
@@ -147,11 +163,13 @@ const GeneratedImageCard = ({
                 variant="outline"
                 colorPalette="purple"
                 isLoading={isRemixing}
-                isDisabled={isRemixing || remixCompleted}
+                isDisabled={isRemixing || remixCompleted || image.file_deleted}
                 title={
-                  remixCompleted
-                    ? "Remix already triggered"
-                    : "Generate subtle variations of this image"
+                  image.file_deleted
+                    ? "File deleted"
+                    : remixCompleted
+                      ? "Remix already triggered"
+                      : "Generate subtle variations of this image"
                 }
                 onClick={async (event) => {
                   event.stopPropagation()
@@ -211,7 +229,8 @@ const GeneratedImageCard = ({
 
             {onQueueForPosting &&
               image.user_approved === true &&
-              !image.has_been_posted && (
+              !image.has_been_posted &&
+              !image.file_deleted && (
                 <IconButton
                   aria-label="Queue for posting"
                   size="sm"

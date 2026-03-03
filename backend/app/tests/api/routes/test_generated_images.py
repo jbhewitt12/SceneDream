@@ -1,4 +1,4 @@
-"""Tests for generated image API routes related to remix tasks."""
+"""Tests for generated image API routes."""
 
 from __future__ import annotations
 
@@ -271,3 +271,143 @@ def test_spawn_background_task_logs_exception(
         "Unhandled exception in background task test-task" in message
         for message in caplog.messages
     )
+
+
+# ---------------------------------------------------------------------------
+# File-deletion / 410 Gone tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def file_deleted_image(db: Session) -> Generator[dict[str, object], None, None]:
+    """Create a generated image marked as file-deleted."""
+    scene_repo = SceneExtractionRepository(db)
+    prompt_repo = ImagePromptRepository(db)
+    image_repo = GeneratedImageRepository(db)
+
+    scene = scene_repo.create(
+        data={
+            "book_slug": f"test-book-deleted-{uuid4()}",
+            "source_book_path": "books/test.epub",
+            "chapter_number": 1,
+            "chapter_title": "Test Chapter",
+            "chapter_source_name": "chapter1.xhtml",
+            "scene_number": 1,
+            "location_marker": "chapter-1-scene-1",
+            "raw": "A quiet street at dawn.",
+            "refined": "A quiet cobblestone street at dawn.",
+            "chunk_index": 0,
+            "chunk_paragraph_start": 1,
+            "chunk_paragraph_end": 2,
+            "raw_word_count": 8,
+            "raw_char_count": 40,
+            "scene_paragraph_start": 1,
+            "scene_paragraph_end": 2,
+            "scene_word_start": 1,
+            "scene_word_end": 20,
+            "extraction_model": "test-model",
+            "refinement_model": "test-model",
+        },
+        commit=True,
+    )
+    prompt = prompt_repo.create(
+        data={
+            "scene_extraction_id": scene.id,
+            "model_vendor": "test-vendor",
+            "model_name": "test-model",
+            "prompt_version": "test-v1",
+            "variant_index": 0,
+            "title": "Dawn Street",
+            "prompt_text": "A quiet cobblestone street at dawn.",
+            "negative_prompt": None,
+            "style_tags": ["serene"],
+            "attributes": {},
+            "notes": None,
+            "context_window": {"chapter_number": 1},
+            "raw_response": {},
+            "temperature": 0.5,
+            "max_output_tokens": 2048,
+            "llm_request_id": None,
+            "execution_time_ms": 400,
+        },
+        commit=True,
+    )
+    image = image_repo.create(
+        data={
+            "scene_extraction_id": scene.id,
+            "image_prompt_id": prompt.id,
+            "book_slug": scene.book_slug,
+            "chapter_number": 1,
+            "variant_index": 0,
+            "provider": "openai",
+            "model": "dall-e-3",
+            "size": "1024x1024",
+            "quality": "standard",
+            "style": "vivid",
+            "response_format": "b64_json",
+            "storage_path": "img/generated/test",
+            "file_name": "test-deleted.png",
+        },
+        commit=True,
+    )
+    image_repo.mark_file_deleted(image.id, commit=True)
+
+    yield {"scene": scene, "prompt": prompt, "image": image}
+
+    db.delete(image)
+    db.delete(prompt)
+    db.delete(scene)
+    db.commit()
+
+
+def test_content_endpoint_returns_410_for_deleted_image(
+    client: TestClient,
+    file_deleted_image: dict[str, object],
+) -> None:
+    image: GeneratedImage = file_deleted_image["image"]  # type: ignore[assignment]
+    response = client.get(f"/api/v1/generated-images/{image.id}/content")
+    assert response.status_code == 410
+    assert response.json()["detail"] == "Image file has been deleted"
+
+
+def test_crop_endpoint_returns_410_for_deleted_image(
+    client: TestClient,
+    file_deleted_image: dict[str, object],
+) -> None:
+    image: GeneratedImage = file_deleted_image["image"]  # type: ignore[assignment]
+    # Send a minimal file upload
+    response = client.put(
+        f"/api/v1/generated-images/{image.id}/crop",
+        files={"file": ("crop.png", b"fake-png-data", "image/png")},
+    )
+    assert response.status_code == 410
+    assert response.json()["detail"] == "Image file has been deleted"
+
+
+def test_list_response_includes_file_deleted_field(
+    client: TestClient,
+    file_deleted_image: dict[str, object],
+) -> None:
+    image: GeneratedImage = file_deleted_image["image"]  # type: ignore[assignment]
+    response = client.get(
+        f"/api/v1/generated-images",
+        params={"book": image.book_slug, "limit": 10},
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    matching = [d for d in data if d["id"] == str(image.id)]
+    assert len(matching) == 1
+    assert matching[0]["file_deleted"] is True
+    assert matching[0]["file_deleted_at"] is not None
+
+
+def test_detail_response_includes_file_deleted_field(
+    client: TestClient,
+    file_deleted_image: dict[str, object],
+) -> None:
+    image: GeneratedImage = file_deleted_image["image"]  # type: ignore[assignment]
+    response = client.get(f"/api/v1/generated-images/{image.id}")
+    assert response.status_code == 200
+    img_data = response.json()["image"]
+    assert img_data["file_deleted"] is True
+    assert img_data["file_deleted_at"] is not None

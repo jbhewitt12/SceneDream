@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import distinct
+from sqlalchemy import distinct, update
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, select
 
@@ -384,3 +384,55 @@ class GeneratedImageRepository:
         )
         result = self._session.exec(statement)
         return [provider for provider in result if provider is not None]
+
+    def mark_file_deleted(
+        self,
+        image_id: UUID,
+        *,
+        commit: bool = False,
+    ) -> GeneratedImage | None:
+        """Mark a single image's file as deleted."""
+        image = self.get(image_id)
+        if image:
+            image.file_deleted = True
+            image.file_deleted_at = datetime.now(timezone.utc)
+            self._session.add(image)
+            self._session.flush()
+            if commit:
+                self._session.commit()
+            self._session.refresh(image)
+        return image
+
+    def bulk_mark_files_deleted(
+        self,
+        image_ids: Sequence[UUID],
+        *,
+        commit: bool = False,
+    ) -> int:
+        """Batch-mark multiple images as file-deleted. Returns count updated."""
+        if not image_ids:
+            return 0
+        now = datetime.now(timezone.utc)
+        stmt = (
+            update(GeneratedImage)
+            .where(GeneratedImage.id.in_(image_ids))
+            .values(file_deleted=True, file_deleted_at=now)
+        )
+        result = self._session.execute(stmt)
+        if commit:
+            self._session.commit()
+        return result.rowcount  # type: ignore[return-value]
+
+    def list_non_approved_with_files(
+        self,
+        book_slug: str | None = None,
+    ) -> list[GeneratedImage]:
+        """Return images where user_approved is not True and file_deleted is False."""
+        statement = select(GeneratedImage).where(
+            GeneratedImage.file_deleted == False,  # noqa: E712
+            GeneratedImage.user_approved.is_not(True),
+        )
+        if book_slug:
+            statement = statement.where(GeneratedImage.book_slug == book_slug)
+        statement = statement.order_by(GeneratedImage.created_at.asc())
+        return list(self._session.exec(statement))
