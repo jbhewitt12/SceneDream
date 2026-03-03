@@ -4,9 +4,9 @@ set -e
 set -x
 
 cd backend
-python -c "import app.main; import json; print(json.dumps(app.main.app.openapi()))" > ../openapi.json
+uv run python -c "import app.main; import json; print(json.dumps(app.main.app.openapi()))" > ../openapi.json
 cd ..
-mv openapi.json frontend/
+cp openapi.json frontend/openapi.json
 cd frontend
 npm run generate-client
-npx biome format --write ./src/client
+npx biome format --write --no-errors-on-unmatched --files-ignore-unknown=true ./src/client

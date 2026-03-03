@@ -21,6 +21,7 @@ jobs:
     # Set job outputs to values from filter step
     outputs:
       changed: ${{ steps.filter.outputs.changed }}
+      has_tests: ${{ steps.check-tests.outputs.has_tests }}
     steps:
     - uses: actions/checkout@v4
     # For pull requests it's not necessary to checkout the code but for the main branch it is
@@ -34,11 +35,19 @@ jobs:
             - .env
             - docker-compose*.yml
             - .github/workflows/playwright.yml
+    - id: check-tests
+      run: |
+        if [ -d frontend/tests ] && find frontend/tests -type f | grep -q .; then
+          echo "has_tests=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_tests=false" >> "$GITHUB_OUTPUT"
+          echo "No Playwright tests found; skipping test-playwright job."
+        fi
 
   test-playwright:
     needs:
       - changes
-    if: ${{ needs.changes.outputs.changed == 'true' }}
+    if: ${{ needs.changes.outputs.changed == 'true' && needs.changes.outputs.has_tests == 'true' }}
     timeout-minutes: 60
     runs-on: ubuntu-latest
     strategy:
@@ -90,7 +99,7 @@ jobs:
       - test-playwright
       - changes
     # Merge reports after playwright-tests, even if some shards have failed
-    if: ${{ !cancelled() && needs.changes.outputs.changed == 'true' }}
+    if: ${{ !cancelled() && needs.changes.outputs.changed == 'true' && needs.changes.outputs.has_tests == 'true' }}
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
