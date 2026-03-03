@@ -157,3 +157,60 @@ def test_list_non_approved_with_files_book_filter(
     result_ids_a = {r.id for r in results_a}
     assert img_a.id in result_ids_a
     assert img_b.id not in result_ids_a
+
+
+def test_list_methods_exclude_file_deleted_by_default(
+    db: Session,
+    scene_factory: Callable[..., SceneExtraction],
+    prompt_factory: Callable[..., ImagePrompt],
+) -> None:
+    scene = scene_factory()
+    prompt = prompt_factory(scene)
+    repo = GeneratedImageRepository(db)
+
+    active = repo.create(
+        data=_image_payload(scene, prompt, variant_index=0),
+        commit=True,
+    )
+    deleted = repo.create(
+        data=_image_payload(scene, prompt, variant_index=1),
+        commit=True,
+    )
+    repo.mark_file_deleted(deleted.id, commit=True)
+
+    scene_ids = {img.id for img in repo.list_for_scene(scene.id)}
+    prompt_ids = {img.id for img in repo.list_for_prompt(prompt.id)}
+    book_ids = {img.id for img in repo.list_for_book(scene.book_slug)}
+    all_ids = {img.id for img in repo.list_all()}
+
+    assert active.id in scene_ids
+    assert active.id in prompt_ids
+    assert active.id in book_ids
+    assert active.id in all_ids
+    assert deleted.id not in scene_ids
+    assert deleted.id not in prompt_ids
+    assert deleted.id not in book_ids
+    assert deleted.id not in all_ids
+
+
+def test_list_for_scene_can_include_file_deleted(
+    db: Session,
+    scene_factory: Callable[..., SceneExtraction],
+    prompt_factory: Callable[..., ImagePrompt],
+) -> None:
+    scene = scene_factory()
+    prompt = prompt_factory(scene)
+    repo = GeneratedImageRepository(db)
+
+    image = repo.create(
+        data=_image_payload(scene, prompt),
+        commit=True,
+    )
+    repo.mark_file_deleted(image.id, commit=True)
+
+    excluded = repo.list_for_scene(scene.id)
+    included = repo.list_for_scene(scene.id, include_file_deleted=True)
+
+    assert excluded == []
+    assert len(included) == 1
+    assert included[0].id == image.id

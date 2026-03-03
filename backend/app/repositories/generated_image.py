@@ -67,6 +67,7 @@ class GeneratedImageRepository:
         *,
         provider: str | None = None,
         model: str | None = None,
+        include_file_deleted: bool = False,
         newest_first: bool = True,
         limit: int | None = None,
         offset: int | None = None,
@@ -81,6 +82,8 @@ class GeneratedImageRepository:
             statement = statement.where(GeneratedImage.provider == provider)
         if model:
             statement = statement.where(GeneratedImage.model == model)
+        if not include_file_deleted:
+            statement = statement.where(GeneratedImage.file_deleted.is_(False))
 
         ordering = (
             GeneratedImage.created_at.desc()
@@ -113,6 +116,7 @@ class GeneratedImageRepository:
         chapter_number: int | None = None,
         provider: str | None = None,
         model: str | None = None,
+        include_file_deleted: bool = False,
         approval: bool | None = None,
         posted: bool | None = None,
         newest_first: bool = True,
@@ -130,6 +134,8 @@ class GeneratedImageRepository:
             statement = statement.where(GeneratedImage.provider == provider)
         if model:
             statement = statement.where(GeneratedImage.model == model)
+        if not include_file_deleted:
+            statement = statement.where(GeneratedImage.file_deleted.is_(False))
         if approval is not None:
             statement = statement.where(GeneratedImage.user_approved == approval)
 
@@ -181,6 +187,7 @@ class GeneratedImageRepository:
         chapter_number: int | None = None,
         provider: str | None = None,
         model: str | None = None,
+        include_file_deleted: bool = False,
         approval: bool | None = None,
         posted: bool | None = None,
         newest_first: bool = True,
@@ -200,6 +207,8 @@ class GeneratedImageRepository:
             statement = statement.where(GeneratedImage.provider == provider)
         if model:
             statement = statement.where(GeneratedImage.model == model)
+        if not include_file_deleted:
+            statement = statement.where(GeneratedImage.file_deleted.is_(False))
         if approval is not None:
             statement = statement.where(GeneratedImage.user_approved == approval)
 
@@ -251,6 +260,7 @@ class GeneratedImageRepository:
         *,
         provider: str | None = None,
         model: str | None = None,
+        include_file_deleted: bool = False,
         newest_first: bool = True,
         limit: int | None = None,
         offset: int | None = None,
@@ -266,6 +276,8 @@ class GeneratedImageRepository:
             statement = statement.where(GeneratedImage.provider == provider)
         if model:
             statement = statement.where(GeneratedImage.model == model)
+        if not include_file_deleted:
+            statement = statement.where(GeneratedImage.file_deleted.is_(False))
 
         ordering = (
             GeneratedImage.created_at.desc()
@@ -380,7 +392,8 @@ class GeneratedImageRepository:
     def get_distinct_providers(self) -> list[str]:
         """Return list of distinct provider values from all generated images."""
         statement = select(distinct(GeneratedImage.provider)).where(
-            GeneratedImage.provider.isnot(None)
+            GeneratedImage.provider.isnot(None),
+            GeneratedImage.file_deleted.is_(False),
         )
         result = self._session.exec(statement)
         return [provider for provider in result if provider is not None]
