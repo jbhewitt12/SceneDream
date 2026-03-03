@@ -1,5 +1,6 @@
 """Pydantic schemas for API responses."""
 
+from .common import Message
 from .document import DocumentCreate, DocumentListResponse, DocumentRead
 from .generated_asset import (
     GeneratedAssetCreate,
@@ -51,6 +52,7 @@ from .social_media_post import (
 )
 
 __all__ = [
+    "Message",
     "DocumentCreate",
     "DocumentListResponse",
     "DocumentRead",
