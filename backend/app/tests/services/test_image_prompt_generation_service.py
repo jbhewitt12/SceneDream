@@ -436,6 +436,61 @@ def test_sample_styles_filters_blocked_terms(
     assert "Stylised" in styles
 
 
+def test_sample_styles_keeps_preferred_style_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.image_prompt_generation.core.style_sampler import StyleSampler
+
+    sampler = StyleSampler(
+        recommended_styles=("Style A", "Style B", "Style C"),
+        other_styles=("Style D",),
+        preferred_style="Style C",
+    )
+    monkeypatch.setattr(random, "sample", lambda seq, k: list(seq)[:k])
+    monkeypatch.setattr(random, "shuffle", lambda seq: None)
+
+    styles = sampler.sample(variants_count=2)
+
+    assert styles[0] == "Style C"
+    assert "Style A" in styles
+    assert "Style D" in styles
+
+
+def test_service_uses_art_style_repository_catalog(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    scene = scene_factory()
+
+    monkeypatch.setattr(
+        "app.repositories.art_style.ArtStyleRepository.list_for_sampling",
+        lambda self: (["DB Style A", "DB Style B"], ["DB Style C"]),
+    )
+    monkeypatch.setattr(
+        "app.repositories.app_settings.AppSettingsRepository.get_or_create_global",
+        lambda self, commit=False, refresh=True: SimpleNamespace(
+            default_art_style_id=uuid4()
+        ),
+    )
+    monkeypatch.setattr(
+        "app.repositories.art_style.ArtStyleRepository.get",
+        lambda self, _id: SimpleNamespace(display_name="DB Style B", is_active=True),
+    )
+    monkeypatch.setattr(random, "sample", lambda seq, k: list(seq)[:k])
+    monkeypatch.setattr(random, "shuffle", lambda seq: None)
+
+    service = ImagePromptGenerationService(db)
+    _patch_context(service, monkeypatch)
+
+    sampled_styles = service._sample_styles(variants_count=2)
+
+    assert sampled_styles[0] == "DB Style B"
+    assert "DB Style A" in sampled_styles
+    assert "DB Style C" in sampled_styles
+
+
 def test_render_prompt_template_includes_suggested_styles(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:

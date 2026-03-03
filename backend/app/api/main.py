@@ -5,6 +5,7 @@ from app.api.routes import (
     image_prompts,
     scene_extractions,
     scene_rankings,
+    settings,
     utils,
 )
 
@@ -14,3 +15,4 @@ api_router.include_router(image_prompts.router)
 api_router.include_router(scene_extractions.router)
 api_router.include_router(scene_rankings.router)
 api_router.include_router(generated_images.router)
+api_router.include_router(settings.router)

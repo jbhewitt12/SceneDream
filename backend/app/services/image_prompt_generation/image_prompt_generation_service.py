@@ -15,6 +15,8 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
+from app.repositories.app_settings import AppSettingsRepository
+from app.repositories.art_style import ArtStyleRepository
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
@@ -27,6 +29,7 @@ from app.services.prompt_metadata import (
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
+from .core import OTHER_STYLES, RECOMMENDED_STYLES, StyleSampler
 from .context_builder import SceneContextBuilder
 from .models import (
     ImagePromptGenerationConfig,
@@ -65,9 +68,50 @@ class ImagePromptGenerationService:
         self._scene_repo = SceneExtractionRepository(session)
         self._prompt_repo = ImagePromptRepository(session)
         self._ranking_repo = SceneRankingRepository(session)
+        self._art_style_repo = ArtStyleRepository(session)
+        self._app_settings_repo = AppSettingsRepository(session)
         self._book_service = BookContentService()
         self._context_builder = SceneContextBuilder(self._book_service)
-        self._prompt_builder = PromptBuilder()
+        self._prompt_builder = PromptBuilder(style_sampler=self._build_style_sampler())
+
+    def _build_style_sampler(self) -> StyleSampler:
+        """Build a style sampler using DB catalog values with safe fallbacks."""
+        try:
+            recommended, other = self._art_style_repo.list_for_sampling()
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.warning(
+                "Falling back to static style catalog; failed to load DB styles: %s",
+                exc,
+            )
+            return StyleSampler()
+
+        if not recommended and not other:
+            return StyleSampler(preferred_style=self._resolve_default_art_style_name())
+
+        resolved_recommended = tuple(recommended) if recommended else RECOMMENDED_STYLES
+        resolved_other = tuple(other) if other else OTHER_STYLES
+        return StyleSampler(
+            recommended_styles=resolved_recommended,
+            other_styles=resolved_other,
+            preferred_style=self._resolve_default_art_style_name(),
+        )
+
+    def _resolve_default_art_style_name(self) -> str | None:
+        """Resolve the active default art-style display name from app settings."""
+        try:
+            settings = self._app_settings_repo.get_or_create_global(
+                commit=False, refresh=True
+            )
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.warning("Unable to resolve default art style from settings: %s", exc)
+            return None
+
+        if settings.default_art_style_id is None:
+            return None
+        style = self._art_style_repo.get(settings.default_art_style_id)
+        if style is None or not style.is_active:
+            return None
+        return style.display_name
 
     def _get_variant_processor(self, target_provider: str) -> VariantProcessor:
         """Get a VariantProcessor configured with the provider's aspect ratios."""

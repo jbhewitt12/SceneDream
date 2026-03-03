@@ -62,6 +62,7 @@ from dotenv import load_dotenv
 from sqlmodel import Session
 
 from app.core.db import engine
+from app.repositories.app_settings import AppSettingsRepository
 from app.repositories.generated_image import GeneratedImageRepository
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
@@ -142,8 +143,8 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--images-for-scenes",
         type=int,
-        default=5,
-        help="Number of top-ranked scenes to generate images for (default: 5)",
+        default=None,
+        help="Number of top-ranked scenes to generate images for (default: app settings value)",
     )
     run.add_argument(
         "--skip-extraction",
@@ -403,6 +404,20 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Enable verbose logging",
     )
+
+
+def _resolve_default_scenes_per_run() -> int:
+    """Resolve the scenes-per-run default from persisted app settings."""
+    try:
+        with Session(engine) as session:
+            repository = AppSettingsRepository(session)
+            return repository.default_scenes_per_run()
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        logger.warning(
+            "Failed to read app settings default_scenes_per_run; falling back to 5: %s",
+            exc,
+        )
+        return 5
 
 
 def _filter_scenes_for_ranking(
@@ -1767,6 +1782,16 @@ async def async_main(argv: list[str] | None = None) -> int:
         level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+
+    if args.command == "run":
+        if args.images_for_scenes is None:
+            args.images_for_scenes = _resolve_default_scenes_per_run()
+            logger.info(
+                "Using settings default for --images-for-scenes: %d",
+                args.images_for_scenes,
+            )
+        if args.images_for_scenes <= 0:
+            raise ValueError("--images-for-scenes must be a positive integer")
 
     # Route to appropriate handler
     if args.command == "run":

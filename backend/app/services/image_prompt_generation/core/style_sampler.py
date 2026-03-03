@@ -135,10 +135,12 @@ class StyleSampler:
         recommended_styles: Sequence[str] = RECOMMENDED_STYLES,
         other_styles: Sequence[str] = OTHER_STYLES,
         blocked_terms: Sequence[str] = BLOCKED_STYLE_TERMS,
+        preferred_style: str | None = None,
     ) -> None:
         self._recommended_styles = tuple(recommended_styles)
         self._other_styles = tuple(other_styles)
         self._blocked_terms = tuple(term.lower() for term in blocked_terms)
+        self._preferred_style = preferred_style.strip() if preferred_style else None
 
     def sample(self, variants_count: int) -> list[str]:
         """Sample styles for the given number of variants."""
@@ -161,6 +163,19 @@ class StyleSampler:
 
         deduped = list(dict.fromkeys(sampled))
         random.shuffle(deduped)
+        if self._preferred_style:
+            preferred = self._preferred_style
+            preferred_is_blocked = any(
+                term in preferred.lower() for term in self._blocked_terms
+            )
+            if not preferred_is_blocked:
+                if preferred in deduped:
+                    deduped = [
+                        preferred,
+                        *[style for style in deduped if style != preferred],
+                    ]
+                else:
+                    deduped = [preferred, *deduped]
         return deduped
 
 
