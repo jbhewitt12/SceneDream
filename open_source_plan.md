@@ -3,6 +3,11 @@
 ## Goal
 This project is being prepared for open-source release so it can be used and extended by a broader community. The plan below is a high-level implementation roadmap to make SceneDream public-ready, easier to run, and easier to contribute to.
 
+## Data Preservation Requirement
+- There is existing data in the database today, and this data must be preserved throughout the open-source transition.
+- Schema and data-model changes must be implemented with non-destructive migrations and backfills; do not delete or truncate existing operational data.
+- Every step that changes persistence shape must include data migration verification (before/after checks) to confirm legacy records remain usable.
+
 ## Guiding Principles
 - Keep core pipeline behavior stable while expanding input and workflow flexibility.
 - Make project setup predictable for new contributors.
@@ -119,6 +124,13 @@ Copy this block for each step update:
 - Important implementation details:
 - Differences from plan:
 
+#### Step 14 - Existing Data Migration and Backfill Verification
+- Done: no
+- Date:
+- What was implemented:
+- Important implementation details:
+- Differences from plan:
+
 ## Feature Roadmap (Ordered)
 
 ### 1) Core Domain Model Consolidation
@@ -142,6 +154,7 @@ Generalize input storage from book-specific to document-generic:
 - Rename the default folder from `books/` to `documents/`.
 - Track files in subfolders with relative paths.
 - Add backward compatibility so existing `books/` users are not broken immediately.
+- Add non-destructive migration/backfill logic so existing persisted references continue to resolve under the new `documents` structure.
 
 This aligns product language and behavior with broader open-source use cases.
 
@@ -243,3 +256,12 @@ Adopt the MIT License for the public release:
 - Reference license choice in README and project metadata.
 
 This completes legal readiness with a highly permissive license.
+
+### 14) Existing Data Migration and Backfill Verification
+Apply this to every database/model/data-structure change introduced in the roadmap:
+- Write forward migrations plus backfills so existing rows map to new entities/fields.
+- Preserve existing operational data (no destructive delete/truncate migrations for transition work).
+- Add explicit verification checks (row counts, nullability expectations, FK integrity, spot checks) before marking each migration complete.
+- Keep compatibility fields only as long as needed, then remove them in a later, explicit cleanup migration after reads/writes are fully migrated.
+
+This ensures open-source readiness work does not break or discard current project data.
