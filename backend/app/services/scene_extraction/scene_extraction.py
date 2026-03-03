@@ -765,7 +765,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "preview",
         help="Extract scenes for a limited number of chapters/chunks.",
     )
-    preview.add_argument("--book", required=True, help="Path to the EPUB or MOBI file.")
+    preview.add_argument(
+        "--book",
+        required=True,
+        help="Path to the source document file (EPUB, MOBI, TXT, MD, or DOCX).",
+    )
     preview.add_argument(
         "--chapters", type=int, default=1, help="Maximum chapters to process."
     )

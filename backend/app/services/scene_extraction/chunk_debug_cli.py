@@ -18,7 +18,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--book-path",
         required=True,
-        help="Path to the source book file (EPUB or MOBI).",
+        help="Path to the source document file (EPUB, MOBI, TXT, MD, or DOCX).",
     )
     parser.add_argument(
         "--max-chapters",
