@@ -39,7 +39,12 @@ from .image_prompt import (
     MetadataUpdateRequest,
     MetadataVariant,
 )
-from .pipeline_run import PipelineRunCreate, PipelineRunListResponse, PipelineRunRead
+from .pipeline_run import (
+    PipelineRunCreate,
+    PipelineRunListResponse,
+    PipelineRunRead,
+    PipelineRunStartRequest,
+)
 from .scene_extraction import (
     SceneExtractionDateRange,
     SceneExtractionFilterOptions,
@@ -87,6 +92,7 @@ __all__ = [
     "PipelineRunCreate",
     "PipelineRunListResponse",
     "PipelineRunRead",
+    "PipelineRunStartRequest",
     "GeneratedImageBase",
     "GeneratedImageCreate",
     "GeneratedImageApprovalUpdate",
