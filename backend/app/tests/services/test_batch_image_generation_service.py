@@ -10,7 +10,6 @@ from uuid import uuid4
 import pytest
 from sqlmodel import Session
 
-from app.repositories import GeneratedImageRepository
 from app.repositories.image_generation_batch import ImageGenerationBatchRepository
 from app.services.image_generation.batch_image_generation_service import (
     _QUALITY_MAPPING,

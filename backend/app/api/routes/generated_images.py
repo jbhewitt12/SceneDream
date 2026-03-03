@@ -950,7 +950,9 @@ def get_image_posting_status(
 async def retry_failed_posts(
     *,
     session: SessionDep,
-    service_name: str | None = Query(None, description="Filter by service (e.g. 'flickr')"),
+    service_name: str | None = Query(
+        None, description="Filter by service (e.g. 'flickr')"
+    ),
 ) -> QueueForPostingResponse:
     """
     Requeue all failed social media posts so they will be retried.

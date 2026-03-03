@@ -2,7 +2,12 @@
 
 from .constraints import CriticalConstraints
 from .output_schema import OutputSchemaBuilder
-from .style_sampler import BLOCKED_STYLE_TERMS, OTHER_STYLES, RECOMMENDED_STYLES, StyleSampler
+from .style_sampler import (
+    BLOCKED_STYLE_TERMS,
+    OTHER_STYLES,
+    RECOMMENDED_STYLES,
+    StyleSampler,
+)
 from .tone_guardrails import CULTURE_BOOK_MARKERS, ToneGuardrails
 
 __all__ = [

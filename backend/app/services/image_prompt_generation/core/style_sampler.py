@@ -33,7 +33,7 @@ RECOMMENDED_STYLES: tuple[str, ...] = (
 )
 
 OTHER_STYLES: tuple[str, ...] = (
-     "neon-line drawing",
+    "neon-line drawing",
     "miniature diorama",
     "sci-fi fantasy art",
     "isometric LEGO",

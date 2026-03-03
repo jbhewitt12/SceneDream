@@ -30,7 +30,9 @@ class PromptStrategy(ABC):
         ...
 
     @abstractmethod
-    def get_quality_objectives(self, variants_count: int, aspect_ratio_display: str) -> str:
+    def get_quality_objectives(
+        self, variants_count: int, aspect_ratio_display: str
+    ) -> str:
         """
         Return quality objectives text for the given configuration.
 

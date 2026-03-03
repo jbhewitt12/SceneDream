@@ -652,7 +652,9 @@ class ImageGenerationService:
                     "openai_gpt_image": "gpt-image",
                     "gpt-image": "gpt-image",
                 }
-                target_family = provider_family.get(prompt_target_provider, prompt_target_provider)
+                target_family = provider_family.get(
+                    prompt_target_provider, prompt_target_provider
+                )
                 current_family = provider_family.get(config.provider, config.provider)
 
                 if target_family != current_family:
@@ -698,18 +700,21 @@ class ImageGenerationService:
             file_path = storage_dir / task.file_name
 
             loop = asyncio.get_event_loop()
-            if result.image_data:
+            if result.image_data is not None:
                 # Save from bytes directly
+                image_data_bytes = result.image_data
                 await loop.run_in_executor(
                     None,
-                    lambda: file_path.write_bytes(result.image_data),  # type: ignore[arg-type]
+                    lambda: file_path.write_bytes(image_data_bytes),
                 )
-            elif result.image_url:
+            elif result.image_url is not None:
                 # Save from URL
+                image_url = result.image_url
                 success = await loop.run_in_executor(
                     None,
                     lambda: dalle_image_api.save_image_from_url(
-                        result.image_url, str(file_path)  # type: ignore[arg-type]
+                        image_url,
+                        str(file_path),
                     ),
                 )
                 if not success:

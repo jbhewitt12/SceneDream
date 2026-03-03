@@ -39,6 +39,7 @@ class ImageGenerationProvider(ABC):
         quality: str,
         style: str,
         response_format: str = "b64_json",
+        api_key: str | None = None,
     ) -> GeneratedImageResult:
         """
         Generate an image from a text prompt.
@@ -50,6 +51,7 @@ class ImageGenerationProvider(ABC):
             quality: Image quality (e.g., 'standard', 'hd')
             style: Image style (e.g., 'vivid', 'natural')
             response_format: Response format ('b64_json' or 'url')
+            api_key: Optional API key override for provider calls
 
         Returns:
             GeneratedImageResult with image data or error
