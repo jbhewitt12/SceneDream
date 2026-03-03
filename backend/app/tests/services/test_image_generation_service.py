@@ -20,6 +20,12 @@ from models.scene_extraction import SceneExtraction
 pytestmark = pytest.mark.anyio("asyncio")
 
 
+@pytest.fixture()
+def anyio_backend() -> str:
+    """ImageGenerationService requires the asyncio backend."""
+    return "asyncio"
+
+
 def test_map_aspect_ratio_to_size():
     """Test aspect ratio to size mapping."""
     # GPT Image provider (default)
@@ -47,16 +53,12 @@ def test_derive_style_from_tags():
     assert derive_style_from_tags(None, None) == "vivid"
 
 
-@pytest.mark.anyio("asyncio")
 async def test_generate_for_selection_dry_run(
     db: Session,
     scene_factory: Callable[..., SceneExtraction],
     prompt_factory: Callable[..., ImagePrompt],
     monkeypatch: pytest.MonkeyPatch,
-    anyio_backend_name: str,
 ):
-    if anyio_backend_name != "asyncio":
-        pytest.skip("ImageGenerationService requires the asyncio backend")
     """Test dry-run mode doesn't generate images."""
     scene = scene_factory()
     prompt = prompt_factory(scene)
@@ -84,16 +86,12 @@ async def test_generate_for_selection_dry_run(
     assert len(images) == 0
 
 
-@pytest.mark.anyio("asyncio")
 async def test_generate_for_selection_idempotency(
     db: Session,
     scene_factory: Callable[..., SceneExtraction],
     prompt_factory: Callable[..., ImagePrompt],
     monkeypatch: pytest.MonkeyPatch,
-    anyio_backend_name: str,
 ):
-    if anyio_backend_name != "asyncio":
-        pytest.skip("ImageGenerationService requires the asyncio backend")
     """Test that existing images are not regenerated."""
     scene = scene_factory()
     prompt = prompt_factory(scene)
@@ -137,15 +135,11 @@ async def test_generate_for_selection_idempotency(
     assert result_ids == []
 
 
-@pytest.mark.anyio("asyncio")
 async def test_generate_for_selection_filters_by_book(
     db: Session,
     scene_factory: Callable[..., SceneExtraction],
     prompt_factory: Callable[..., ImagePrompt],
-    anyio_backend_name: str,
 ):
-    if anyio_backend_name != "asyncio":
-        pytest.skip("ImageGenerationService requires the asyncio backend")
     """Test filtering prompts by book slug."""
     book_slug = f"test-book-{uuid4()}"
     scene1 = scene_factory(book_slug=book_slug, chapter_number=1)
@@ -167,16 +161,12 @@ async def test_generate_for_selection_filters_by_book(
     assert result_ids == []
 
 
-@pytest.mark.anyio("asyncio")
 async def test_generate_for_selection_handles_errors(
     db: Session,
     scene_factory: Callable[..., SceneExtraction],
     prompt_factory: Callable[..., ImagePrompt],
     monkeypatch: pytest.MonkeyPatch,
-    anyio_backend_name: str,
 ):
-    if anyio_backend_name != "asyncio":
-        pytest.skip("ImageGenerationService requires the asyncio backend")
     """Test error handling during generation."""
     scene = scene_factory()
     prompt = prompt_factory(scene)
@@ -205,15 +195,11 @@ async def test_generate_for_selection_handles_errors(
     assert "Failed to generate image" in images[0].error
 
 
-@pytest.mark.anyio("asyncio")
 async def test_generate_for_selection_filters_by_chapter_range(
     db: Session,
     scene_factory: Callable[..., SceneExtraction],
     prompt_factory: Callable[..., ImagePrompt],
-    anyio_backend_name: str,
 ):
-    if anyio_backend_name != "asyncio":
-        pytest.skip("ImageGenerationService requires the asyncio backend")
     """Test filtering prompts by chapter range."""
     book_slug = f"test-book-{uuid4()}"
     scene1 = scene_factory(book_slug=book_slug, chapter_number=1)
