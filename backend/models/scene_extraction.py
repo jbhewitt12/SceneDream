@@ -12,6 +12,8 @@ from sqlalchemy.orm import relationship
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
+    from .document import Document
+    from .generated_asset import GeneratedAsset
     from .generated_image import GeneratedImage
     from .image_prompt import ImagePrompt
     from .scene_ranking import SceneRanking
@@ -36,6 +38,12 @@ class SceneExtraction(SQLModel, table=True):
         default_factory=uuid.uuid4,
         primary_key=True,
         nullable=False,
+    )
+    document_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="documents.id",
+        nullable=True,
+        index=True,
     )
     book_slug: str = Field(max_length=255, index=True)
     source_book_path: str = Field(max_length=1024)
@@ -91,12 +99,20 @@ class SceneExtraction(SQLModel, table=True):
     rankings: list["SceneRanking"] = Relationship(
         sa_relationship=relationship("SceneRanking", back_populates="scene_extraction")
     )
+    document: "Document" | None = Relationship(
+        sa_relationship=relationship("Document", back_populates="scenes")
+    )
     image_prompts: list["ImagePrompt"] = Relationship(
         sa_relationship=relationship("ImagePrompt", back_populates="scene_extraction")
     )
     generated_images: list["GeneratedImage"] = Relationship(
         sa_relationship=relationship(
             "GeneratedImage", back_populates="scene_extraction"
+        )
+    )
+    generated_assets: list["GeneratedAsset"] = Relationship(
+        sa_relationship=relationship(
+            "GeneratedAsset", back_populates="scene_extraction"
         )
     )
 

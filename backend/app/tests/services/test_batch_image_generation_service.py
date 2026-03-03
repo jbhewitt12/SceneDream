@@ -24,6 +24,12 @@ from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
 
+@pytest.fixture()
+def anyio_backend() -> str:
+    """Batch polling uses asyncio semantics; run async tests on asyncio backend."""
+    return "asyncio"
+
+
 # -- Tests for _build_jsonl --
 
 

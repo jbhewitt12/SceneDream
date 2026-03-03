@@ -20,7 +20,15 @@ fileConfig(config.config_file_name)
 
 from app.models import SQLModel  # noqa
 from app.core.config import settings  # noqa
+from models.document import Document  # noqa: F401
+from models.generated_asset import GeneratedAsset  # noqa: F401
+from models.generated_image import GeneratedImage  # noqa: F401
+from models.image_generation_batch import ImageGenerationBatch  # noqa: F401
+from models.image_prompt import ImagePrompt  # noqa: F401
+from models.pipeline_run import PipelineRun  # noqa: F401
 from models.scene_extraction import SceneExtraction  # noqa: F401
+from models.scene_ranking import SceneRanking  # noqa: F401
+from models.social_media_post import SocialMediaPost  # noqa: F401
 
 target_metadata = SQLModel.metadata
 

@@ -16,6 +16,12 @@ from app.services.image_generation.batch_scheduler import (
 
 
 @pytest.fixture()
+def anyio_backend() -> str:
+    """Scheduler relies on AsyncIOScheduler and requires an asyncio event loop."""
+    return "asyncio"
+
+
+@pytest.fixture()
 def batch_factory(db: Session):
     """Factory for creating test batch records."""
     created = []

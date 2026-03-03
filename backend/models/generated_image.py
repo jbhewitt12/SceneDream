@@ -12,7 +12,9 @@ from sqlalchemy.orm import relationship
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
+    from .generated_asset import GeneratedAsset
     from .image_prompt import ImagePrompt
+    from .pipeline_run import PipelineRun
     from .scene_extraction import SceneExtraction
     from .social_media_post import SocialMediaPost
 
@@ -51,6 +53,18 @@ class GeneratedImage(SQLModel, table=True):
     image_prompt_id: uuid.UUID = Field(
         foreign_key="image_prompts.id",
         nullable=False,
+        index=True,
+    )
+    pipeline_run_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="pipeline_runs.id",
+        nullable=True,
+        index=True,
+    )
+    generated_asset_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="generated_assets.id",
+        nullable=True,
         index=True,
     )
     book_slug: str = Field(max_length=255, nullable=False, index=True)
@@ -104,6 +118,14 @@ class GeneratedImage(SQLModel, table=True):
     )
     image_prompt: "ImagePrompt" | None = Relationship(
         sa_relationship=relationship("ImagePrompt", back_populates="generated_images")
+    )
+    pipeline_run: "PipelineRun" | None = Relationship(
+        sa_relationship=relationship("PipelineRun", back_populates="generated_images")
+    )
+    generated_asset: "GeneratedAsset" | None = Relationship(
+        sa_relationship=relationship(
+            "GeneratedAsset", back_populates="generated_images"
+        )
     )
     social_media_posts: list["SocialMediaPost"] = Relationship(
         sa_relationship=relationship(
