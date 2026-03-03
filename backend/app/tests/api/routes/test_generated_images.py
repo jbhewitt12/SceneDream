@@ -20,6 +20,7 @@ from app.repositories import (
 )
 from models.generated_image import GeneratedImage
 from models.image_prompt import ImagePrompt
+from models.scene_extraction import SceneExtraction
 
 
 @pytest.fixture()
@@ -384,7 +385,7 @@ def test_crop_endpoint_returns_410_for_deleted_image(
     assert response.json()["detail"] == "Image file has been deleted"
 
 
-def test_list_response_includes_file_deleted_field(
+def test_list_response_excludes_file_deleted_images(
     client: TestClient,
     file_deleted_image: dict[str, object],
 ) -> None:
@@ -396,9 +397,33 @@ def test_list_response_includes_file_deleted_field(
     assert response.status_code == 200
     data = response.json()["data"]
     matching = [d for d in data if d["id"] == str(image.id)]
-    assert len(matching) == 1
-    assert matching[0]["file_deleted"] is True
-    assert matching[0]["file_deleted_at"] is not None
+    assert matching == []
+
+
+def test_scene_list_response_excludes_file_deleted_images(
+    client: TestClient,
+    file_deleted_image: dict[str, object],
+) -> None:
+    scene: SceneExtraction = file_deleted_image["scene"]  # type: ignore[assignment]
+    image: GeneratedImage = file_deleted_image["image"]  # type: ignore[assignment]
+    response = client.get(f"/api/v1/generated-images/scene/{scene.id}")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    matching = [d for d in data if d["id"] == str(image.id)]
+    assert matching == []
+
+
+def test_prompt_list_response_excludes_file_deleted_images(
+    client: TestClient,
+    file_deleted_image: dict[str, object],
+) -> None:
+    prompt: ImagePrompt = file_deleted_image["prompt"]  # type: ignore[assignment]
+    image: GeneratedImage = file_deleted_image["image"]  # type: ignore[assignment]
+    response = client.get(f"/api/v1/generated-images/prompt/{prompt.id}")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    matching = [d for d in data if d["id"] == str(image.id)]
+    assert matching == []
 
 
 def test_detail_response_includes_file_deleted_field(

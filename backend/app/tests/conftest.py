@@ -153,7 +153,7 @@ def scene_factory(db: Session) -> Callable[..., SceneExtraction]:
     prompt_repo = ImagePromptRepository(db)
     ranking_repo = SceneRankingRepository(db)
     for scene in created:
-        for image in image_repo.list_for_scene(scene.id):
+        for image in image_repo.list_for_scene(scene.id, include_file_deleted=True):
             db.delete(image)
         asset_stmt = delete(GeneratedAsset).where(
             GeneratedAsset.scene_extraction_id == scene.id
