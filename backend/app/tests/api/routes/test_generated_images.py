@@ -33,7 +33,7 @@ def remix_test_data(db: Session) -> Generator[dict[str, object], None, None]:
     scene = scene_repo.create(
         data={
             "book_slug": f"test-book-remix-{uuid4()}",
-            "source_book_path": "books/test.epub",
+            "source_book_path": "documents/test.epub",
             "chapter_number": 1,
             "chapter_title": "Test Chapter",
             "chapter_source_name": "chapter1.xhtml",
@@ -288,7 +288,7 @@ def file_deleted_image(db: Session) -> Generator[dict[str, object], None, None]:
     scene = scene_repo.create(
         data={
             "book_slug": f"test-book-deleted-{uuid4()}",
-            "source_book_path": "books/test.epub",
+            "source_book_path": "documents/test.epub",
             "chapter_number": 1,
             "chapter_title": "Test Chapter",
             "chapter_source_name": "chapter1.xhtml",
@@ -390,7 +390,7 @@ def test_list_response_includes_file_deleted_field(
 ) -> None:
     image: GeneratedImage = file_deleted_image["image"]  # type: ignore[assignment]
     response = client.get(
-        f"/api/v1/generated-images",
+        "/api/v1/generated-images",
         params={"book": image.book_slug, "limit": 10},
     )
     assert response.status_code == 200

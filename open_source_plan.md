@@ -48,11 +48,11 @@ Copy this block for each step update:
 - Differences from plan: Added `python-docx` dependency (`backend/pyproject.toml`, `backend/uv.lock`) to improve DOCX parsing robustness per implementation request.
 
 #### Step 3 - Content Directory Generalization (`books` to `documents`)
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-03
+- What was implemented: Switched content path behavior to treat `documents/` as the canonical directory while preserving full backward compatibility for legacy `books/` paths, and added a non-destructive path backfill migration for persisted records.
+- Important implementation details: Extended `BookContentService` path resolution and normalization (`backend/app/services/books/book_content_service.py`) with `documents/` canonicalization plus `books/` fallback; updated scene extraction path defaults and persistence normalization (`backend/app/services/scene_extraction/scene_extraction.py`) so new `source_book_path` values are stored as project-relative `documents/...` paths; updated pipeline/default CLI examples to use `documents/...` (`backend/app/services/image_gen_cli.py`, `scripts/mobi_preview.py`); added Alembic migration `f0c9f8a2b321` to normalize `documents.source_path` and `scene_extractions.source_book_path` to `documents/...`, strip absolute prefixes, and preserve original values in JSON metadata (`backend/app/alembic/versions/f0c9f8a2b321_generalize_content_paths_to_documents.py`); updated compatibility/default-path tests and fixtures (`backend/app/tests/services/books/test_book_content_service.py`, `backend/app/tests/services/books/test_{epub,mobi,backward_compatibility}.py`, `backend/app/tests/services/test_image_prompt_generation_service.py`, `backend/app/tests/conftest.py`, `backend/app/tests/repositories/test_image_prompt_repository.py`, `backend/app/tests/api/routes/test_generated_images.py`); and added explicit backfill verification coverage for path normalization/legacy metadata (`backend/app/tests/repositories/test_core_domain_repositories.py`).
+- Differences from plan: Filesystem directories were not renamed on disk in this step; runtime now defaults to `documents/` and transparently falls back to `books/` so existing installs continue to work during transition.
 
 #### Step 4 - Settings System and User Defaults
 - Done: no

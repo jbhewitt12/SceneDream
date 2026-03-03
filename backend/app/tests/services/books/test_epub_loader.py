@@ -6,12 +6,12 @@ import pytest
 
 from app.services.books.epub_loader import EpubBookLoader
 
+DOCUMENTS_DIR = Path(__file__).resolve().parents[5] / "documents"
+LEGACY_BOOKS_DIR = Path(__file__).resolve().parents[5] / "books"
+CONTENT_DIR = DOCUMENTS_DIR if DOCUMENTS_DIR.exists() else LEGACY_BOOKS_DIR
+
 EXCESSION_EPUB = (
-    Path(__file__).resolve().parents[5]
-    / "books"
-    / "Iain Banks"
-    / "Excession"
-    / "Excession - Iain M. Banks.epub"
+    CONTENT_DIR / "Iain Banks" / "Excession" / "Excession - Iain M. Banks.epub"
 )
 
 

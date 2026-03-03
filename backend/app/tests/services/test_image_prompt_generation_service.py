@@ -18,12 +18,12 @@ from app.services.langchain import gemini_api
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
+DOCUMENTS_DIR = Path(__file__).resolve().parents[4] / "documents"
+LEGACY_BOOKS_DIR = Path(__file__).resolve().parents[4] / "books"
+CONTENT_DIR = DOCUMENTS_DIR if DOCUMENTS_DIR.exists() else LEGACY_BOOKS_DIR
+
 EXCESSION_EPUB = (
-    Path(__file__).resolve().parents[4]
-    / "books"
-    / "Iain Banks"
-    / "Excession"
-    / "Excession - Iain M. Banks.epub"
+    CONTENT_DIR / "Iain Banks" / "Excession" / "Excession - Iain M. Banks.epub"
 )
 
 

@@ -15,6 +15,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = PROJECT_ROOT / "backend"
+DOCUMENTS_DIR = PROJECT_ROOT / "documents"
+LEGACY_BOOKS_DIR = PROJECT_ROOT / "books"
+CONTENT_DIR = DOCUMENTS_DIR if DOCUMENTS_DIR.exists() else LEGACY_BOOKS_DIR
 
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -28,8 +31,7 @@ from app.services.scene_extraction.scene_extraction import (  # noqa: E402
 
 
 DEFAULT_BOOK = (
-    PROJECT_ROOT
-    / "books"
+    CONTENT_DIR
     / "James Clavell"
     / "Shogun"
     / "Shogun - James Clavell.mobi"

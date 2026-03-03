@@ -144,7 +144,7 @@ def scene_factory(db: Session) -> Callable[..., SceneExtraction]:
         counter = len(created) + 1
         data: dict[str, object] = {
             "book_slug": f"test-book-{uuid4()}",
-            "source_book_path": "books/test.epub",
+            "source_book_path": "documents/test.epub",
             "chapter_number": 1,
             "chapter_title": "Test Chapter",
             "chapter_source_name": "chapter1.xhtml",
