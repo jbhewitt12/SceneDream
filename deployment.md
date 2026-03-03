@@ -15,7 +15,6 @@ Set these in your deployment environment or GitHub Actions secrets:
 - `ENVIRONMENT` (`staging` or `production`)
 - `DOMAIN`
 - `STACK_NAME`
-- `SECRET_KEY`
 - `POSTGRES_PASSWORD`
 - `SMTP_HOST` (optional)
 - `SMTP_USER` (optional)
