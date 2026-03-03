@@ -53,6 +53,7 @@ import asyncio
 import json
 import logging
 import random
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -90,6 +91,8 @@ from models.scene_extraction import SceneExtraction
 
 logger = logging.getLogger(__name__)
 
+StageCallback = Callable[[str], Awaitable[None] | None]
+
 
 class PipelineStats:
     """Track statistics across the pipeline."""
@@ -111,6 +114,20 @@ class PipelineStats:
             "images_generated": self.images_generated,
             "errors": self.errors,
         }
+
+
+async def _emit_stage_update(
+    stage_callback: StageCallback | None,
+    *,
+    stage: str,
+) -> None:
+    """Emit a stage-transition notification when a callback is provided."""
+
+    if stage_callback is None:
+        return
+    result = stage_callback(stage)
+    if result is not None:
+        await result
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -478,9 +495,22 @@ def _filter_scenes_for_ranking(
     return selected
 
 
-async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
+async def _run_full_pipeline(
+    args: argparse.Namespace,
+    *,
+    stage_callback: StageCallback | None = None,
+) -> PipelineStats:
     """Run the complete pipeline."""
     stats = PipelineStats()
+
+    if args.images_for_scenes is None:
+        args.images_for_scenes = _resolve_default_scenes_per_run()
+        logger.info(
+            "Using settings default for --images-for-scenes: %d",
+            args.images_for_scenes,
+        )
+    if args.images_for_scenes <= 0:
+        raise ValueError("--images-for-scenes must be a positive integer")
 
     # Validate book_path is provided if extraction is needed
     if not args.skip_extraction and not args.book_path:
@@ -629,6 +659,7 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
 
     # Step 1: Extract scenes (if not skipped)
     if not skip_extraction:
+        await _emit_stage_update(stage_callback, stage="extracting")
         logger.info("=" * 60)
         logger.info("STEP 1: EXTRACTING SCENES")
         logger.info("=" * 60)
@@ -694,6 +725,7 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
 
     # Step 2: Rank scenes (if not skipped)
     if not skip_ranking:
+        await _emit_stage_update(stage_callback, stage="ranking")
         logger.info("\n" + "=" * 60)
         logger.info("STEP 2: RANKING SCENES")
         logger.info("=" * 60)
@@ -801,6 +833,7 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
 
     # Step 3: Generate prompts (if not skipped)
     if not skip_prompts:
+        await _emit_stage_update(stage_callback, stage="generating_prompts")
         logger.info("\n" + "=" * 60)
         logger.info("STEP 3: GENERATING PROMPTS")
         logger.info("=" * 60)
@@ -962,6 +995,7 @@ async def _run_full_pipeline(args: argparse.Namespace) -> PipelineStats:
         logger.info("Skipping prompt generation (already completed)")
 
     # Step 4: Generate images
+    await _emit_stage_update(stage_callback, stage="generating_images")
     logger.info("\n" + "=" * 60)
     logger.info("STEP 4: GENERATING IMAGES")
     logger.info("=" * 60)

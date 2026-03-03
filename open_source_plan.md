@@ -62,11 +62,11 @@ Copy this block for each step update:
 - Differences from plan: Added `GET /api/v1/settings/art-styles` as a convenience endpoint and connected defaults to existing runtime behavior immediately (style sampling priority + CLI default resolution) so settings changes have direct operational impact before pipeline orchestration endpoints are introduced.
 
 #### Step 5 - Pipeline Orchestration and Job Model
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-03
+- What was implemented: Added async pipeline-run orchestration endpoints that create/poll `PipelineRun` records and execute the existing end-to-end pipeline in a background task with persisted stage/status transitions.
+- Important implementation details: Added `POST /api/v1/pipeline-runs` and `GET /api/v1/pipeline-runs/{run_id}` (`backend/app/api/routes/pipeline_runs.py`) and wired the router (`backend/app/api/main.py`, `backend/app/api/routes/__init__.py`); added launch request schema with runtime override fields (`backend/app/schemas/pipeline_run.py`, `backend/app/schemas/__init__.py`); implemented background task spawning/error handling consistent with existing async route patterns; resolved launch context from `document_id` or `book_slug` with optional `book_path` fallback to canonical `documents.source_path`; persisted effective overrides in `pipeline_runs.config_overrides`; updated CLI orchestration to support optional stage callbacks and API-driven defaults by extending `_run_full_pipeline(..., stage_callback=...)` and adding `_emit_stage_update` hooks for `extracting`, `ranking`, `generating_prompts`, and `generating_images` (`backend/app/services/image_gen_cli.py`); and added route tests for scheduling, error handling, document default resolution, validation, and polling (`backend/app/tests/api/routes/test_pipeline_runs.py`).
+- Differences from plan: Kept a lightweight two-endpoint surface (`start` + `poll`) as planned, and explicitly marked `current_stage` as `failed`/`completed` terminal states to simplify polling semantics for the initial release.
 
 #### Step 6 - Document Dashboard and Status Tracking
 - Done: no
