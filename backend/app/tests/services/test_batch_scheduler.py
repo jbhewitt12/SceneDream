@@ -86,9 +86,7 @@ def test_check_pending_batches_processes_completed(db: Session, batch_factory):
     assert batch.status in ("completed", "processed")
 
 
-def test_check_pending_batches_ignores_still_in_progress(
-    db: Session, batch_factory
-):
+def test_check_pending_batches_ignores_still_in_progress(db: Session, batch_factory):
     """Test that still-in-progress batches are left alone."""
     _batch = batch_factory(status="in_progress")
 

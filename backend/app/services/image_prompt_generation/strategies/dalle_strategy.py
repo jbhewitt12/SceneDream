@@ -5,7 +5,9 @@ from __future__ import annotations
 from .base import PromptStrategy
 from .registry import PromptStrategyRegistry
 
-DALLE3_CHEATSHEET_PATH = "backend/app/services/image_prompt_generation/cheatsheets/dalle3_cheatsheet.md"
+DALLE3_CHEATSHEET_PATH = (
+    "backend/app/services/image_prompt_generation/cheatsheets/dalle3_cheatsheet.md"
+)
 
 
 class DallePromptStrategy(PromptStrategy):
@@ -33,7 +35,9 @@ class DallePromptStrategy(PromptStrategy):
     def get_cheatsheet_path(self) -> str | None:
         return DALLE3_CHEATSHEET_PATH
 
-    def get_quality_objectives(self, variants_count: int, aspect_ratio_display: str) -> str:
+    def get_quality_objectives(
+        self, variants_count: int, aspect_ratio_display: str
+    ) -> str:
         return (
             "- Write each prompt like expert art direction, using decisive verbs and tangible nouns over filler language, and keep the text between 28 and 42 words.\n"
             "- Embed the chosen medium, art movement, and rendering techniques directly into the prompt_text and style_tags, and explain why they fit inside attributes.style_intent.\n"

@@ -10,6 +10,7 @@ import os
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID
 
 from openai import OpenAI
@@ -231,7 +232,8 @@ class BatchImageGenerationService:
         # Create batch
         openai_batch = self._client.batches.create(
             input_file_id=input_file.id,
-            endpoint="/v1/images/generations",
+            # OpenAI Python type stubs do not yet include image batch endpoints.
+            endpoint=cast(Any, "/v1/images/generations"),
             completion_window="24h",
         )
 
@@ -308,8 +310,9 @@ class BatchImageGenerationService:
 
             if new_status in ("failed", "expired", "cancelled"):
                 errors = []
-                if hasattr(openai_batch, "errors") and openai_batch.errors:
-                    for err in openai_batch.errors.data:
+                batch_errors = getattr(openai_batch, "errors", None)
+                if batch_errors and batch_errors.data:
+                    for err in batch_errors.data:
                         errors.append(f"{err.code}: {err.message}")
                 update_kwargs["error"] = "; ".join(errors) if errors else new_status
                 update_kwargs["completed_at"] = datetime.now(timezone.utc)
@@ -379,11 +382,12 @@ class BatchImageGenerationService:
                 error_body = response.get("body", {}).get("error", {})
                 error_msg = error_body.get("message", f"HTTP {status_code}")
                 logger.error("Batch request %s failed: %s", custom_id, error_msg)
+                variant_index = int(str(mapping["variant_index"]))
                 results.append(
                     GenerationResult(
                         task=GenerationTask(
                             prompt=None,  # type: ignore[arg-type]
-                            variant_index=int(mapping["variant_index"]),
+                            variant_index=variant_index,
                             size=batch.size,
                             quality=batch.quality,
                             style=batch.style,
@@ -451,11 +455,12 @@ class BatchImageGenerationService:
                     data=image_data,
                     commit=True,
                 )
+                variant_index = int(str(mapping["variant_index"]))
                 results.append(
                     GenerationResult(
                         task=GenerationTask(
                             prompt=None,  # type: ignore[arg-type]
-                            variant_index=int(mapping["variant_index"]),
+                            variant_index=variant_index,
                             size=batch.size,
                             quality=batch.quality,
                             style=batch.style,
@@ -477,11 +482,12 @@ class BatchImageGenerationService:
                 )
             except Exception as exc:
                 logger.error("Failed to save image for %s: %s", custom_id, exc)
+                variant_index = int(str(mapping["variant_index"]))
                 results.append(
                     GenerationResult(
                         task=GenerationTask(
                             prompt=None,  # type: ignore[arg-type]
-                            variant_index=int(mapping["variant_index"]),
+                            variant_index=variant_index,
                             size=batch.size,
                             quality=batch.quality,
                             style=batch.style,

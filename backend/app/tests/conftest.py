@@ -17,9 +17,9 @@ from app.repositories import (
 )
 from app.tests.utils.user import authentication_token_from_email
 from app.tests.utils.utils import get_superuser_token_headers
-from models.generated_image import GeneratedImage
-from models.generated_asset import GeneratedAsset
 from models.document import Document
+from models.generated_asset import GeneratedAsset
+from models.generated_image import GeneratedImage
 from models.image_prompt import ImagePrompt
 from models.pipeline_run import PipelineRun
 from models.scene_extraction import SceneExtraction
@@ -169,7 +169,7 @@ def scene_factory(db: Session) -> Callable[..., SceneExtraction]:
         created.append(scene)
         return scene
 
-    yield _create  # type: ignore[misc]
+    yield _create
 
     # Cleanup in FK-safe order: images -> prompts -> rankings -> scenes
     image_repo = GeneratedImageRepository(db)
@@ -236,4 +236,4 @@ def prompt_factory(db: Session) -> Callable[..., ImagePrompt]:
         created.append(prompt)
         return prompt
 
-    yield _create  # type: ignore[misc]
+    yield _create

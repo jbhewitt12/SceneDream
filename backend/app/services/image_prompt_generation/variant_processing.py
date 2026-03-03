@@ -128,7 +128,11 @@ class VariantProcessor:
     ) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []
         # Use target_provider from config if not explicitly provided
-        provider = target_provider if target_provider is not None else getattr(config, "target_provider", None)
+        provider = (
+            target_provider
+            if target_provider is not None
+            else getattr(config, "target_provider", None)
+        )
         for index, variant in enumerate(variants):
             try:
                 variant_index = variant_indices[index]

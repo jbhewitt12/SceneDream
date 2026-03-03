@@ -5,7 +5,9 @@ from __future__ import annotations
 from .base import PromptStrategy
 from .registry import PromptStrategyRegistry
 
-GPT_IMAGE_CHEATSHEET_PATH = "backend/app/services/image_prompt_generation/cheatsheets/gpt_image_cheatsheet.md"
+GPT_IMAGE_CHEATSHEET_PATH = (
+    "backend/app/services/image_prompt_generation/cheatsheets/gpt_image_cheatsheet.md"
+)
 
 
 class GptImagePromptStrategy(PromptStrategy):
@@ -39,7 +41,9 @@ class GptImagePromptStrategy(PromptStrategy):
     def get_cheatsheet_path(self) -> str | None:
         return GPT_IMAGE_CHEATSHEET_PATH
 
-    def get_quality_objectives(self, variants_count: int, aspect_ratio_display: str) -> str:
+    def get_quality_objectives(
+        self, variants_count: int, aspect_ratio_display: str
+    ) -> str:
         return (
             "- Aim for 80-150 words per prompt; GPT Image 1.5 handles rich detail exceptionally well.\n"
             "- Embed the chosen medium, art movement, and rendering techniques directly into prompt_text and style_tags, and explain why they fit in attributes.style_intent.\n"

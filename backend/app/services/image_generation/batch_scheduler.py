@@ -53,49 +53,34 @@ def check_pending_batches(session: Session, client: OpenAI) -> None:
                 update_kwargs["failed_requests"] = counts.failed
 
             if new_status == "completed":
-                update_kwargs["openai_output_file_id"] = (
-                    openai_batch.output_file_id
-                )
-                update_kwargs["openai_error_file_id"] = (
-                    openai_batch.error_file_id
-                )
+                update_kwargs["openai_output_file_id"] = openai_batch.output_file_id
+                update_kwargs["openai_error_file_id"] = openai_batch.error_file_id
                 update_kwargs["completed_at"] = datetime.now(timezone.utc)
-                batch_repo.update_status(
-                    batch.id, "completed", **update_kwargs
-                )
+                batch_repo.update_status(batch.id, "completed", **update_kwargs)
                 session.commit()
 
                 # Refresh batch after commit
                 session.refresh(batch)
 
                 # Process results
-                service = BatchImageGenerationService(
-                    session, api_key=client.api_key
-                )
+                service = BatchImageGenerationService(session, api_key=client.api_key)
                 results = service.process_completed_batch(batch)
                 logger.info(
                     "Processed batch %s: %d images, %d errors",
                     batch.openai_batch_id,
-                    sum(
-                        1
-                        for r in results
-                        if r.generated_image_id is not None
-                    ),
+                    sum(1 for r in results if r.generated_image_id is not None),
                     sum(1 for r in results if r.error),
                 )
 
             elif new_status in ("failed", "expired", "cancelled"):
                 errors = []
-                if hasattr(openai_batch, "errors") and openai_batch.errors:
-                    for err in openai_batch.errors.data:
+                batch_errors = getattr(openai_batch, "errors", None)
+                if batch_errors and batch_errors.data:
+                    for err in batch_errors.data:
                         errors.append(f"{err.code}: {err.message}")
-                update_kwargs["error"] = (
-                    "; ".join(errors) if errors else new_status
-                )
+                update_kwargs["error"] = "; ".join(errors) if errors else new_status
                 update_kwargs["completed_at"] = datetime.now(timezone.utc)
-                batch_repo.update_status(
-                    batch.id, new_status, **update_kwargs
-                )
+                batch_repo.update_status(batch.id, new_status, **update_kwargs)
                 session.commit()
                 logger.warning(
                     "Batch %s ended with status: %s",
@@ -104,9 +89,7 @@ def check_pending_batches(session: Session, client: OpenAI) -> None:
                 )
 
             elif new_status != batch.status:
-                batch_repo.update_status(
-                    batch.id, new_status, **update_kwargs
-                )
+                batch_repo.update_status(batch.id, new_status, **update_kwargs)
                 session.commit()
                 logger.info(
                     "Batch %s status: %s -> %s",
@@ -116,9 +99,7 @@ def check_pending_batches(session: Session, client: OpenAI) -> None:
                 )
 
         except Exception:
-            logger.exception(
-                "Error checking batch %s", batch.openai_batch_id
-            )
+            logger.exception("Error checking batch %s", batch.openai_batch_id)
 
 
 class BatchImageScheduler:

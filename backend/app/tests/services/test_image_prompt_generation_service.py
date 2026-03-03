@@ -1,6 +1,5 @@
 import asyncio
 import random
-from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -15,7 +14,7 @@ from app.services.image_prompt_generation import (
     ImagePromptGenerationServiceError,
     ImagePromptPreview,
 )
-from app.services.langchain import gemini_api, openai_api
+from app.services.langchain import gemini_api
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
@@ -400,9 +399,7 @@ def test_generate_for_scene_overwrites_when_allowed(
     repository.delete_for_scene(scene.id, commit=True)
 
 
-def test_sample_styles_respects_formula(
-    monkeypatch: pytest.MonkeyPatch, db: Session
-) -> None:
+def test_sample_styles_respects_formula(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.services.image_prompt_generation.core.style_sampler import StyleSampler
 
     # Create a custom StyleSampler with test styles
@@ -419,7 +416,7 @@ def test_sample_styles_respects_formula(
 
 
 def test_sample_styles_filters_blocked_terms(
-    monkeypatch: pytest.MonkeyPatch, db: Session
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.services.image_prompt_generation.core.style_sampler import StyleSampler
 
@@ -452,7 +449,14 @@ def test_render_prompt_template_includes_suggested_styles(
 
     # Create a custom StyleSampler and PromptBuilder with test styles
     test_sampler = StyleSampler(
-        recommended_styles=("Style A", "Style B", "Style C", "Style D", "Style E", "Style F"),
+        recommended_styles=(
+            "Style A",
+            "Style B",
+            "Style C",
+            "Style D",
+            "Style E",
+            "Style F",
+        ),
         other_styles=("Other A", "Other B", "Other C"),
     )
     service._prompt_builder = PromptBuilder(style_sampler=test_sampler)

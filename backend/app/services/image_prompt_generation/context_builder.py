@@ -93,8 +93,12 @@ class SceneContextBuilder:
             "chapter_number": scene.chapter_number,
             "chapter_title": chapter_context.title,
             "paragraph_span": [base_start, base_end],
-            "context_before_span": [before_start, before_end] if before_end >= before_start else None,
-            "context_after_span": [after_start, after_end] if after_end >= after_start else None,
+            "context_before_span": [before_start, before_end]
+            if before_end >= before_start
+            else None,
+            "context_after_span": [after_start, after_end]
+            if after_end >= after_start
+            else None,
             "paragraphs_before": before,
             "paragraphs_after": after,
         }

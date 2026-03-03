@@ -72,7 +72,9 @@ class ImagePromptGenerationService:
     def _get_variant_processor(self, target_provider: str) -> VariantProcessor:
         """Get a VariantProcessor configured with the provider's aspect ratios."""
         strategy = PromptStrategyRegistry.get(target_provider)
-        return VariantProcessor(allowed_aspect_ratios=strategy.get_supported_aspect_ratios())
+        return VariantProcessor(
+            allowed_aspect_ratios=strategy.get_supported_aspect_ratios()
+        )
 
     async def generate_for_scene(
         self,
@@ -469,7 +471,8 @@ class ImagePromptGenerationService:
                     "model_vendor": config.model_vendor,
                     "model_name": config.model_name,
                     "prompt_version": prompt_record.prompt_version,
-                    "target_provider": prompt_record.target_provider or config.target_provider,
+                    "target_provider": prompt_record.target_provider
+                    or config.target_provider,
                     "variant_index": variant_index,
                     "title": variant.title,
                     "prompt_text": variant.prompt_text,
@@ -565,7 +568,8 @@ class ImagePromptGenerationService:
             "model_vendor": prompt_record.model_vendor,
             "model_name": prompt_record.model_name,
             "prompt_version": prompt_record.prompt_version,
-            "target_provider": prompt_record.target_provider or self._config.target_provider,
+            "target_provider": prompt_record.target_provider
+            or self._config.target_provider,
             "variant_index": variant_index,
             "title": None,
             "flavour_text": None,
@@ -594,7 +598,9 @@ class ImagePromptGenerationService:
         }
 
         if dry_run:
-            target_provider = prompt_record.target_provider or self._config.target_provider
+            target_provider = (
+                prompt_record.target_provider or self._config.target_provider
+            )
             variant_processor = self._get_variant_processor(target_provider)
             preview_prompts = variant_processor.instantiate_prompts_from_records(
                 [record]
@@ -843,7 +849,8 @@ class ImagePromptGenerationService:
                 if use_gemini:
                     response = await gemini_api.json_output(
                         prompt=prompt,
-                        system_instruction=system_instruction or self._system_instruction,
+                        system_instruction=system_instruction
+                        or self._system_instruction,
                         model=config.model_name,
                         temperature=config.temperature,
                         max_tokens=config.max_output_tokens,
@@ -851,7 +858,8 @@ class ImagePromptGenerationService:
                 else:
                     response = await openai_api.json_output(
                         prompt=prompt,
-                        system_instruction=system_instruction or self._system_instruction,
+                        system_instruction=system_instruction
+                        or self._system_instruction,
                         model=config.model_name,
                         temperature=config.temperature,
                         max_tokens=config.max_output_tokens,

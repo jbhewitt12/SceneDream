@@ -11,7 +11,7 @@ from models.scene_extraction import SceneExtraction
 
 from .core import CriticalConstraints, OutputSchemaBuilder, StyleSampler, ToneGuardrails
 from .models import ImagePromptGenerationConfig, ImagePromptGenerationServiceError
-from .strategies import PromptStrategy, PromptStrategyRegistry
+from .strategies import PromptStrategyRegistry
 
 logger = logging.getLogger(__name__)
 
