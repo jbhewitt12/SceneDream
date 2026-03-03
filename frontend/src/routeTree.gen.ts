@@ -13,11 +13,11 @@
 import { Route as rootRoute } from './routes/__root'
 import { Route as LayoutImport } from './routes/_layout'
 import { Route as LayoutIndexImport } from './routes/_layout/index'
+import { Route as LayoutSettingsImport } from './routes/_layout/settings'
 import { Route as LayoutSceneRankingsImport } from './routes/_layout/scene-rankings'
 import { Route as LayoutPromptGalleryImport } from './routes/_layout/prompt-gallery'
 import { Route as LayoutGeneratedImagesImport } from './routes/_layout/generated-images'
 import { Route as LayoutExtractedScenesImport } from './routes/_layout/extracted-scenes'
-import { Route as LayoutSettingsImport } from './routes/_layout/settings'
 import { Route as LayoutScenePromptsSceneIdImport } from './routes/_layout/scene-prompts.$sceneId'
 
 // Create/Update Routes
@@ -29,6 +29,11 @@ const LayoutRoute = LayoutImport.update({
 
 const LayoutIndexRoute = LayoutIndexImport.update({
   path: '/',
+  getParentRoute: () => LayoutRoute,
+} as any)
+
+const LayoutSettingsRoute = LayoutSettingsImport.update({
+  path: '/settings',
   getParentRoute: () => LayoutRoute,
 } as any)
 
@@ -49,11 +54,6 @@ const LayoutGeneratedImagesRoute = LayoutGeneratedImagesImport.update({
 
 const LayoutExtractedScenesRoute = LayoutExtractedScenesImport.update({
   path: '/extracted-scenes',
-  getParentRoute: () => LayoutRoute,
-} as any)
-
-const LayoutSettingsRoute = LayoutSettingsImport.update({
-  path: '/settings',
   getParentRoute: () => LayoutRoute,
 } as any)
 
