@@ -18,7 +18,10 @@ from app.repositories import (
 from app.tests.utils.user import authentication_token_from_email
 from app.tests.utils.utils import get_superuser_token_headers
 from models.generated_image import GeneratedImage
+from models.generated_asset import GeneratedAsset
+from models.document import Document
 from models.image_prompt import ImagePrompt
+from models.pipeline_run import PipelineRun
 from models.scene_extraction import SceneExtraction
 from models.scene_ranking import SceneRanking
 
@@ -56,6 +59,12 @@ def db() -> Generator[Session, None, None]:
                 )
                 session.execute(images_stmt)
 
+                # Delete canonical generated assets linked to scene
+                assets_stmt = delete(GeneratedAsset).where(
+                    GeneratedAsset.scene_extraction_id == scene.id
+                )
+                session.execute(assets_stmt)
+
                 # Delete image prompts
                 prompts_stmt = delete(ImagePrompt).where(
                     ImagePrompt.scene_extraction_id == scene.id
@@ -70,6 +79,29 @@ def db() -> Generator[Session, None, None]:
 
                 # Delete the scene itself
                 session.delete(scene)
+
+        # Cleanup pipeline/document test data
+        test_documents = session.exec(
+            select(Document).where(
+                Document.slug.startswith("test-book")
+                | Document.slug.startswith("gallery-book")
+            )
+        ).all()
+        for document in test_documents:
+            session.execute(
+                delete(GeneratedAsset).where(GeneratedAsset.document_id == document.id)
+            )
+            session.execute(
+                delete(PipelineRun).where(PipelineRun.document_id == document.id)
+            )
+            session.delete(document)
+
+        session.execute(
+            delete(PipelineRun).where(
+                PipelineRun.book_slug.startswith("test-book")
+                | PipelineRun.book_slug.startswith("gallery-book")
+            )
+        )
 
         # Clean up original test data
         statement = delete(Item)
@@ -146,6 +178,10 @@ def scene_factory(db: Session) -> Callable[..., SceneExtraction]:
     for scene in created:
         for image in image_repo.list_for_scene(scene.id):
             db.delete(image)
+        asset_stmt = delete(GeneratedAsset).where(
+            GeneratedAsset.scene_extraction_id == scene.id
+        )
+        db.execute(asset_stmt)
         prompt_repo.delete_for_scene(scene.id, commit=False)
         for ranking in ranking_repo.list_for_scene(scene.id):
             db.delete(ranking)

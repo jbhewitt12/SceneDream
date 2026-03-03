@@ -1,5 +1,11 @@
 """Pydantic schemas for API responses."""
 
+from .document import DocumentCreate, DocumentListResponse, DocumentRead
+from .generated_asset import (
+    GeneratedAssetCreate,
+    GeneratedAssetListResponse,
+    GeneratedAssetRead,
+)
 from .generated_image import (
     GeneratedImageApprovalUpdate,
     GeneratedImageBase,
@@ -26,6 +32,7 @@ from .image_prompt import (
     MetadataUpdateRequest,
     MetadataVariant,
 )
+from .pipeline_run import PipelineRunCreate, PipelineRunListResponse, PipelineRunRead
 from .scene_extraction import (
     SceneExtractionDateRange,
     SceneExtractionFilterOptions,
@@ -44,6 +51,12 @@ from .social_media_post import (
 )
 
 __all__ = [
+    "DocumentCreate",
+    "DocumentListResponse",
+    "DocumentRead",
+    "GeneratedAssetCreate",
+    "GeneratedAssetListResponse",
+    "GeneratedAssetRead",
     "SceneExtractionDateRange",
     "SceneExtractionFilterOptions",
     "SceneExtractionListResponse",
@@ -58,6 +71,9 @@ __all__ = [
     "MetadataGenerationResponse",
     "MetadataUpdateRequest",
     "MetadataVariant",
+    "PipelineRunCreate",
+    "PipelineRunListResponse",
+    "PipelineRunRead",
     "GeneratedImageBase",
     "GeneratedImageCreate",
     "GeneratedImageApprovalUpdate",

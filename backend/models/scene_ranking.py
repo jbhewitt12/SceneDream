@@ -13,6 +13,7 @@ from sqlalchemy.orm import relationship
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
+    from .pipeline_run import PipelineRun
     from .scene_extraction import SceneExtraction
 
 
@@ -42,6 +43,12 @@ class SceneRanking(SQLModel, table=True):
     scene_extraction_id: uuid.UUID = Field(
         foreign_key="scene_extractions.id",
         nullable=False,
+        index=True,
+    )
+    pipeline_run_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="pipeline_runs.id",
+        nullable=True,
         index=True,
     )
     model_vendor: str = Field(max_length=128)
@@ -108,4 +115,7 @@ class SceneRanking(SQLModel, table=True):
     )
     scene_extraction: "SceneExtraction" | None = Relationship(
         sa_relationship=relationship("SceneExtraction", back_populates="rankings")
+    )
+    pipeline_run: "PipelineRun" | None = Relationship(
+        sa_relationship=relationship("PipelineRun", back_populates="rankings")
     )

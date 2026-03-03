@@ -29,11 +29,11 @@ Copy this block for each step update:
 ### Step Updates
 
 #### Step 1 - Core Domain Model Consolidation
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-03
+- What was implemented: Added canonical `Document`, `PipelineRun`, and `GeneratedAsset` domain models with backward-compatible links to existing scene/ranking/prompt/image records.
+- Important implementation details: Added new SQLModel entities and relationships (`backend/models/document.py`, `backend/models/pipeline_run.py`, `backend/models/generated_asset.py`); added optional linkage fields to existing models (`document_id`, `pipeline_run_id`, `generated_asset_id`); added Alembic migration `c3f4b6d8a921` to create new tables, add linkage columns/indexes/FKs, and backfill `documents` from existing `scene_extractions.book_slug`; added repositories and schemas for the three canonical entities (`backend/app/repositories/{document,pipeline_run,generated_asset}.py`, `backend/app/schemas/{document,pipeline_run,generated_asset}.py`); added frontend domain type scaffolding in `frontend/src/types/domain.ts`; added repository/backfill behavior tests in `backend/app/tests/repositories/test_core_domain_repositories.py`; and extended test cleanup in `backend/app/tests/conftest.py` for new table data.
+- Differences from plan: Follow-up test stabilization was required for async test backend selection (`anyio_backend="asyncio"`) in batch polling/scheduler tests; after this adjustment, full backend test suite passed.
 
 #### Step 2 - Document Ingestion Abstraction
 - Done: no
