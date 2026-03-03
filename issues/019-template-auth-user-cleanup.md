@@ -258,7 +258,7 @@ cd frontend && npm run build
 
 ## 3-Session Execution Status
 - [x] Macro-Phase 1: Backend cleanup
-- [ ] Macro-Phase 2: Frontend/client/tests cleanup
+- [x] Macro-Phase 2: Frontend/client/tests cleanup
 - [ ] Macro-Phase 3: CI/docs + optional template-table retirement
 
 ## Completion Notes
@@ -280,3 +280,39 @@ cd frontend && npm run build
   - `cd backend && uv run bash scripts/lint.sh` (failed: pre-existing mypy issues, including legacy test imports of removed `app.models`)
 - Deviations from plan:
   - Backend phase 1-3 code cleanup already existed before this session; this session re-verified and updated execution tracking.
+
+### Macro-Phase 2: Frontend/client/tests cleanup
+- Date completed: 2026-03-03
+- Files changed:
+  - `frontend/src/routes/_layout/items.tsx` (deleted)
+  - `frontend/src/components/Items/AddItem.tsx` (deleted)
+  - `frontend/src/components/Items/EditItem.tsx` (deleted)
+  - `frontend/src/components/Items/DeleteItem.tsx` (deleted)
+  - `frontend/src/components/Common/ItemActionsMenu.tsx` (deleted)
+  - `frontend/src/routeTree.gen.ts` (regenerated; items route removed)
+  - `frontend/src/client/schemas.gen.ts` (deleted stale generated artifact)
+  - `frontend/tests/auth.setup.ts` (deleted)
+  - `frontend/tests/config.ts` (deleted)
+  - `frontend/tests/login.spec.ts` (deleted)
+  - `frontend/tests/sign-up.spec.ts` (deleted)
+  - `frontend/tests/reset-password.spec.ts` (deleted)
+  - `frontend/tests/user-settings.spec.ts` (deleted)
+  - `frontend/tests/utils/mailcatcher.ts` (deleted)
+  - `frontend/tests/utils/privateApi.ts` (deleted)
+  - `frontend/tests/utils/random.ts` (deleted)
+  - `frontend/tests/utils/user.ts` (deleted)
+  - `frontend/playwright.config.ts` (removed auth setup dependency/storage state)
+  - `backend/app/tests/conftest.py` (removed auth/superuser fixture and template model references)
+  - `backend/app/tests/utils/item.py` (deleted)
+  - `backend/app/tests/utils/user.py` (deleted)
+  - `backend/app/tests/utils/utils.py` (deleted)
+- Validation run:
+  - `./scripts/generate-client.sh` (failed: system `python` missing `fastapi`)
+  - Equivalent regeneration run manually with `uv run` backend OpenAPI export + frontend `npm run generate-client` (succeeded)
+  - `cd frontend && npx vite build` (succeeded; route tree regenerated)
+  - `cd frontend && npm run lint` (succeeded; auto-fixed 1 file)
+  - `cd frontend && npm run build` (failed due pre-existing TypeScript/Chakra typing issues unrelated to items/auth cleanup)
+  - `cd backend && uv run pytest` (succeeded: 113 passed, 7 deselected)
+  - `cd backend && uv run bash scripts/lint.sh` (failed: pre-existing mypy issues in non-auth files)
+- Deviations from plan:
+  - `npm run build` did not pass due unrelated pre-existing frontend type errors; no additional fixes made outside this macro-phase scope.
