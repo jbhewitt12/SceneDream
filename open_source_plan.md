@@ -55,11 +55,11 @@ Copy this block for each step update:
 - Differences from plan: Filesystem directories were not renamed on disk in this step; runtime now defaults to `documents/` and transparently falls back to `books/` so existing installs continue to work during transition.
 
 #### Step 4 - Settings System and User Defaults
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-03
+- What was implemented: Added persistent settings and art-style catalog support with seeded defaults, async settings APIs, and a new frontend settings page for managing global defaults.
+- Important implementation details: Added new SQLModel entities for `ArtStyle` and singleton `AppSettings` (`backend/models/art_style.py`, `backend/models/app_settings.py`) with repository + schema layers (`backend/app/repositories/art_style.py`, `backend/app/repositories/app_settings.py`, `backend/app/schemas/art_style.py`, `backend/app/schemas/app_settings.py`); added Alembic migration `b7a3c1d9e5f2` to create `art_styles`/`app_settings`, seed style catalog entries, seed global defaults (`default_scenes_per_run=5`), and run seed verification checks; added async settings routes (`GET/PATCH /api/v1/settings`, `GET /api/v1/settings/art-styles`) in `backend/app/api/routes/settings.py` and registered router wiring; updated prompt-style sampling to read DB-backed styles with fallback behavior and default-style prioritization via `StyleSampler(preferred_style=...)` (`backend/app/services/image_prompt_generation/image_prompt_generation_service.py`, `backend/app/services/image_prompt_generation/core/style_sampler.py`); updated pipeline CLI `run` defaults to read scenes-per-run from persisted app settings when `--images-for-scenes` is omitted (`backend/app/services/image_gen_cli.py`); and added backend test coverage for new repositories, routes, and style-sampling behavior (`backend/app/tests/repositories/test_settings_repositories.py`, `backend/app/tests/api/routes/test_settings.py`, `backend/app/tests/services/test_image_prompt_generation_service.py`).
+- Differences from plan: Added `GET /api/v1/settings/art-styles` as a convenience endpoint and connected defaults to existing runtime behavior immediately (style sampling priority + CLI default resolution) so settings changes have direct operational impact before pipeline orchestration endpoints are introduced.
 
 #### Step 5 - Pipeline Orchestration and Job Model
 - Done: no

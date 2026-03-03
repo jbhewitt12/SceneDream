@@ -40,6 +40,11 @@ function Navbar() {
             Generated Images
           </Button>
         </Link>
+        <Link to="/settings">
+          <Button size="sm" variant="ghost" className="main-link">
+            Settings
+          </Button>
+        </Link>
       </HStack>
     </Flex>
   )
