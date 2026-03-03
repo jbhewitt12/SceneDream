@@ -110,6 +110,14 @@ class GeneratedImage(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
+    file_deleted: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="false"),
+    )
+    file_deleted_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
 
     scene_extraction: "SceneExtraction" | None = Relationship(
         sa_relationship=relationship(

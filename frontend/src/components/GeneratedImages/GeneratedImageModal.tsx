@@ -368,16 +368,32 @@ const GeneratedImageModal = ({
               justifyContent="center"
               alignItems="center"
             >
-              {currentImage && (
-                <Image
-                  src={fullPath}
-                  alt={`Generated image for chapter ${currentImage.image.chapter_number}`}
-                  objectFit="contain"
-                  maxH="70vh"
-                  maxW="full"
-                  loading="eager"
-                />
-              )}
+              {currentImage &&
+                (currentImage.image.file_deleted ? (
+                  <Box
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    w="full"
+                    h="50vh"
+                    bg="gray.200"
+                    _dark={{ bg: "gray.700" }}
+                    borderRadius="md"
+                  >
+                    <Text fontSize="lg" color="fg.muted">
+                      File deleted
+                    </Text>
+                  </Box>
+                ) : (
+                  <Image
+                    src={fullPath}
+                    alt={`Generated image for chapter ${currentImage.image.chapter_number}`}
+                    objectFit="contain"
+                    maxH="70vh"
+                    maxW="full"
+                    loading="eager"
+                  />
+                ))}
             </Box>
 
             {/* Right arrow */}
@@ -415,6 +431,7 @@ const GeneratedImageModal = ({
                       variant="ghost"
                       size="sm"
                       onClick={() => setIsCropModalOpen(true)}
+                      disabled={currentImage.image.file_deleted}
                     >
                       <FiCrop />
                     </IconButton>

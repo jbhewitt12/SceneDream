@@ -29,6 +29,8 @@ export type GeneratedImageRead = {
   updated_at: string
   user_approved: boolean | null
   approval_updated_at: string | null
+  file_deleted: boolean
+  file_deleted_at: string | null
   has_been_posted?: boolean
   is_queued?: boolean
 }

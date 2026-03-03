@@ -57,6 +57,8 @@ class GeneratedImageRead(GeneratedImageBase):
     updated_at: datetime
     user_approved: bool | None = None
     approval_updated_at: datetime | None = None
+    file_deleted: bool = False
+    file_deleted_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

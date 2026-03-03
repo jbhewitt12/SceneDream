@@ -476,6 +476,9 @@ def stream_generated_image_file(
     if record is None:
         raise HTTPException(status_code=404, detail="Generated image not found")
 
+    if record.file_deleted:
+        raise HTTPException(status_code=410, detail="Image file has been deleted")
+
     file_path = _resolve_image_file(record.storage_path, record.file_name)
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Generated image file not found")
@@ -944,6 +947,9 @@ async def crop_image(
     image = repository.get(image_id)
     if image is None:
         raise HTTPException(status_code=404, detail="Generated image not found")
+
+    if image.file_deleted:
+        raise HTTPException(status_code=410, detail="Image file has been deleted")
 
     file_path = _resolve_image_file(image.storage_path, image.file_name)
     if not file_path.exists() or not file_path.is_file():
