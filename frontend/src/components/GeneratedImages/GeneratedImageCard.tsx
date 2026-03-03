@@ -95,9 +95,9 @@ const GeneratedImageCard = ({
         ) : (
           <Image
             src={fullPath}
-            alt={`Generated image for chapter ${image.chapter_number}, variant ${
-              image.variant_index + 1
-            }`}
+            alt={`Generated image for chapter ${
+              image.chapter_number
+            }, variant ${image.variant_index + 1}`}
             objectFit="cover"
             w="full"
             h="full"
