@@ -6,13 +6,11 @@ import pytest
 
 from app.services.books.mobi_loader import MobiBookLoader
 
-SHOGUN_MOBI = (
-    Path(__file__).resolve().parents[5]
-    / "books"
-    / "James Clavell"
-    / "Shogun"
-    / "Shogun - James Clavell.mobi"
-)
+DOCUMENTS_DIR = Path(__file__).resolve().parents[5] / "documents"
+LEGACY_BOOKS_DIR = Path(__file__).resolve().parents[5] / "books"
+CONTENT_DIR = DOCUMENTS_DIR if DOCUMENTS_DIR.exists() else LEGACY_BOOKS_DIR
+
+SHOGUN_MOBI = CONTENT_DIR / "James Clavell" / "Shogun" / "Shogun - James Clavell.mobi"
 
 
 @pytest.mark.skipif(not SHOGUN_MOBI.exists(), reason="Test MOBI not available")

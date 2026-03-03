@@ -31,9 +31,11 @@ logger.addHandler(logging.NullHandler())
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-BOOKS_DIR = PROJECT_ROOT / "books"
+DOCUMENTS_DIR = PROJECT_ROOT / "documents"
+LEGACY_BOOKS_DIR = PROJECT_ROOT / "books"
+DEFAULT_CONTENT_DIR = DOCUMENTS_DIR if DOCUMENTS_DIR.exists() else LEGACY_BOOKS_DIR
 EXCESSION_EPUB_PATH = (
-    BOOKS_DIR / "Iain Banks" / "Excession" / "Excession - Iain M. Banks.epub"
+    DEFAULT_CONTENT_DIR / "Iain Banks" / "Excession" / "Excession - Iain M. Banks.epub"
 )
 ENABLE_REFINEMENT = True
 REFINEMENT_BATCH_SIZE = 5
@@ -524,7 +526,7 @@ class SceneExtractor:
     ) -> None:
         if not raw_scenes:
             return
-        normalized_book_path = str(book_path)
+        normalized_book_path = self._book_service.normalize_source_path(book_path)
         with Session(engine) as session:
             repository = SceneExtractionRepository(session)
             try:
@@ -724,20 +726,7 @@ class SceneExtractor:
         return slug or "book"
 
     def _resolve_book_path(self, book_path: str | os.PathLike[str] | Path) -> Path:
-        candidate = Path(book_path)
-        if candidate.is_absolute() and candidate.exists():
-            return candidate
-
-        cwd_candidate = (Path.cwd() / candidate).resolve()
-        if cwd_candidate.exists():
-            return cwd_candidate
-
-        repo_candidate = (PROJECT_ROOT / candidate).resolve()
-        if repo_candidate.exists():
-            return repo_candidate
-
-        # Fall back to the absolute variant so downstream callers raise a useful error.
-        return cwd_candidate
+        return self._book_service.resolve_book_path(book_path)
 
     def _slugify(self, text: str) -> str:
         normalized = (

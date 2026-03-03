@@ -18,7 +18,7 @@ def test_document_repository_upsert_and_filters(db: Session) -> None:
         data={
             "slug": slug,
             "display_name": "Test Document",
-            "source_path": f"books/{slug}.epub",
+            "source_path": f"documents/{slug}.epub",
             "source_type": "epub",
             "ingestion_state": "pending",
             "source_metadata": {"seeded": True},
@@ -52,7 +52,7 @@ def test_pipeline_run_repository_status_transitions(db: Session) -> None:
     document = document_repo.create(
         data={
             "slug": slug,
-            "source_path": f"books/{slug}.epub",
+            "source_path": f"documents/{slug}.epub",
             "source_type": "epub",
             "ingestion_state": "ingested",
             "source_metadata": {},
@@ -132,6 +132,109 @@ def test_document_backfill_sql_links_existing_scenes(
     db.refresh(scene)
 
     assert scene.document_id == document.id
+
+    db.delete(document)
+    db.commit()
+
+
+def test_content_path_backfill_sql_normalizes_legacy_books_paths(
+    db: Session, scene_factory
+) -> None:
+    repository = DocumentRepository(db)
+    slug = f"test-book-{uuid4()}"
+    legacy_path = "/tmp/library/books/Author Name/Novel.epub"
+    scene = scene_factory(book_slug=slug, source_book_path=legacy_path, props={})
+    document = repository.create(
+        data={
+            "slug": slug,
+            "source_path": legacy_path,
+            "source_type": "epub",
+            "ingestion_state": "ingested",
+            "source_metadata": {},
+        },
+        commit=True,
+    )
+
+    db.execute(
+        text(
+            """
+            WITH normalized AS (
+                SELECT
+                    id,
+                    source_path AS old_path,
+                    CASE
+                        WHEN source_path IS NULL OR source_path = '' THEN source_path
+                        WHEN regexp_replace(source_path, '^\\./+', '') LIKE 'documents/%' THEN regexp_replace(source_path, '^\\./+', '')
+                        WHEN regexp_replace(source_path, '^\\./+', '') LIKE 'books/%' THEN 'documents/' || substring(regexp_replace(source_path, '^\\./+', '') FROM 7)
+                        WHEN regexp_replace(source_path, '^\\./+', '') ~ '.*/documents/.*' THEN regexp_replace(regexp_replace(source_path, '^\\./+', ''), '^.*/documents/', 'documents/')
+                        WHEN regexp_replace(source_path, '^\\./+', '') ~ '.*/books/.*' THEN 'documents/' || substring(regexp_replace(regexp_replace(source_path, '^\\./+', ''), '^.*/books/', 'books/') FROM 7)
+                        ELSE regexp_replace(source_path, '^\\./+', '')
+                    END AS new_path
+                FROM documents
+            )
+            UPDATE documents AS d
+            SET
+                source_path = n.new_path,
+                source_metadata = CASE
+                    WHEN n.old_path <> n.new_path THEN jsonb_set(
+                        COALESCE(d.source_metadata, '{}'::jsonb),
+                        '{legacy_source_path}',
+                        to_jsonb(n.old_path),
+                        true
+                    )
+                    ELSE d.source_metadata
+                END
+            FROM normalized AS n
+            WHERE d.id = n.id
+              AND n.new_path IS NOT NULL
+              AND n.old_path <> n.new_path
+            """
+        )
+    )
+    db.execute(
+        text(
+            """
+            WITH normalized AS (
+                SELECT
+                    id,
+                    source_book_path AS old_path,
+                    CASE
+                        WHEN source_book_path IS NULL OR source_book_path = '' THEN source_book_path
+                        WHEN regexp_replace(source_book_path, '^\\./+', '') LIKE 'documents/%' THEN regexp_replace(source_book_path, '^\\./+', '')
+                        WHEN regexp_replace(source_book_path, '^\\./+', '') LIKE 'books/%' THEN 'documents/' || substring(regexp_replace(source_book_path, '^\\./+', '') FROM 7)
+                        WHEN regexp_replace(source_book_path, '^\\./+', '') ~ '.*/documents/.*' THEN regexp_replace(regexp_replace(source_book_path, '^\\./+', ''), '^.*/documents/', 'documents/')
+                        WHEN regexp_replace(source_book_path, '^\\./+', '') ~ '.*/books/.*' THEN 'documents/' || substring(regexp_replace(regexp_replace(source_book_path, '^\\./+', ''), '^.*/books/', 'books/') FROM 7)
+                        ELSE regexp_replace(source_book_path, '^\\./+', '')
+                    END AS new_path
+                FROM scene_extractions
+            )
+            UPDATE scene_extractions AS se
+            SET
+                source_book_path = n.new_path,
+                props = CASE
+                    WHEN n.old_path <> n.new_path THEN jsonb_set(
+                        COALESCE(se.props, '{}'::jsonb),
+                        '{legacy_source_book_path}',
+                        to_jsonb(n.old_path),
+                        true
+                    )
+                    ELSE se.props
+                END
+            FROM normalized AS n
+            WHERE se.id = n.id
+              AND n.new_path IS NOT NULL
+              AND n.old_path <> n.new_path
+            """
+        )
+    )
+    db.commit()
+    db.refresh(scene)
+    db.refresh(document)
+
+    assert document.source_path == "documents/Author Name/Novel.epub"
+    assert document.source_metadata["legacy_source_path"] == legacy_path
+    assert scene.source_book_path == "documents/Author Name/Novel.epub"
+    assert scene.props["legacy_source_book_path"] == legacy_path
 
     db.delete(document)
     db.commit()

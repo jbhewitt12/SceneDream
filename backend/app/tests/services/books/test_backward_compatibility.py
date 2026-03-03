@@ -6,13 +6,11 @@ import pytest
 
 from app.services.books import BookContentService
 
-EXCESSION = (
-    Path(__file__).resolve().parents[5]
-    / "books"
-    / "Iain Banks"
-    / "Excession"
-    / "Excession - Iain M. Banks.epub"
-)
+DOCUMENTS_DIR = Path(__file__).resolve().parents[5] / "documents"
+LEGACY_BOOKS_DIR = Path(__file__).resolve().parents[5] / "books"
+CONTENT_DIR = DOCUMENTS_DIR if DOCUMENTS_DIR.exists() else LEGACY_BOOKS_DIR
+
+EXCESSION = CONTENT_DIR / "Iain Banks" / "Excession" / "Excession - Iain M. Banks.epub"
 
 
 @pytest.mark.skipif(not EXCESSION.exists(), reason="Test EPUB not available")

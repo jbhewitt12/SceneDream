@@ -46,7 +46,14 @@ class BookContentService:
         `scene_extractions` records remain valid. Chapters are numbered from 1 and the
         paragraph list for each chapter maps directly to the 1-indexed paragraph spans
         used throughout downstream services.
+
+    Content path behavior:
+        - `documents/` is the canonical content directory for new paths.
+        - `books/` remains a legacy fallback so existing persisted paths still resolve.
     """
+
+    DOCUMENTS_DIRNAME = "documents"
+    LEGACY_BOOKS_DIRNAME = "books"
 
     def __init__(self, *, project_root: Path | None = None) -> None:
         self._epub_loader = EpubBookLoader()
@@ -111,12 +118,104 @@ class BookContentService:
         """Clear any cached book content."""
         self._cache.clear()
 
+    def resolve_book_path(self, path: str | Path) -> Path:
+        """Resolve a supplied source path with `documents/` + legacy fallback rules."""
+        return self._resolve_path(path)
+
+    def normalize_source_path(self, path: str | Path) -> str:
+        """
+        Normalize a source path for persistence.
+
+        - Project-local paths are persisted relative to the repository root.
+        - `books/...` is canonicalized to `documents/...` for new writes.
+        - Non-project absolute paths are preserved as absolute.
+        """
+        candidate = Path(path).expanduser()
+        resolved = candidate.resolve() if candidate.is_absolute() else candidate
+        relative_path: Path | None
+        try:
+            relative_path = resolved.relative_to(self._project_root)
+        except ValueError:
+            relative_path = None
+
+        if relative_path is None and not candidate.is_absolute():
+            relative_path = candidate
+
+        if relative_path is None:
+            return str(resolved)
+
+        canonical_relative = self._canonicalize_relative_path(relative_path)
+        return canonical_relative.as_posix()
+
     def _resolve_path(self, path: str | Path) -> Path:
-        """Resolve relative paths against the configured project root."""
-        p = Path(path)
+        """Resolve paths against CWD/project root with documents/books compatibility."""
+        p = Path(path).expanduser()
+        candidates: list[Path] = []
+
         if p.is_absolute():
-            return p
-        return (self._project_root / p).resolve()
+            candidates.append(p.resolve())
+            try:
+                relative_to_root = p.resolve().relative_to(self._project_root)
+            except ValueError:
+                relative_to_root = None
+            if relative_to_root is not None:
+                for relative_candidate in self._relative_path_candidates(
+                    relative_to_root
+                ):
+                    candidate = (self._project_root / relative_candidate).resolve()
+                    if candidate not in candidates:
+                        candidates.append(candidate)
+        else:
+            cwd_candidate = (Path.cwd() / p).resolve()
+            candidates.append(cwd_candidate)
+            for relative_candidate in self._relative_path_candidates(p):
+                candidate = (self._project_root / relative_candidate).resolve()
+                if candidate not in candidates:
+                    candidates.append(candidate)
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+
+        return candidates[0]
+
+    def _relative_path_candidates(self, relative_path: Path) -> list[Path]:
+        normalized = self._normalize_relative_path(relative_path)
+        if not normalized.parts:
+            return [normalized]
+
+        candidates: list[Path] = [normalized]
+        head, tail = normalized.parts[0], normalized.parts[1:]
+        tail_path = Path(*tail) if tail else Path()
+        if head == self.DOCUMENTS_DIRNAME:
+            candidates.append(Path(self.LEGACY_BOOKS_DIRNAME) / tail_path)
+        elif head == self.LEGACY_BOOKS_DIRNAME:
+            candidates.append(Path(self.DOCUMENTS_DIRNAME) / tail_path)
+        else:
+            candidates.append(Path(self.DOCUMENTS_DIRNAME) / normalized)
+            candidates.append(Path(self.LEGACY_BOOKS_DIRNAME) / normalized)
+
+        deduped: list[Path] = []
+        for candidate in candidates:
+            if candidate not in deduped:
+                deduped.append(candidate)
+        return deduped
+
+    def _canonicalize_relative_path(self, relative_path: Path) -> Path:
+        normalized = self._normalize_relative_path(relative_path)
+        if not normalized.parts:
+            return normalized
+
+        head = normalized.parts[0]
+        if head == self.LEGACY_BOOKS_DIRNAME:
+            remainder = normalized.parts[1:]
+            return Path(self.DOCUMENTS_DIRNAME, *remainder)
+        return normalized
+
+    @staticmethod
+    def _normalize_relative_path(path: Path) -> Path:
+        parts = [part for part in path.parts if part not in {"", "."}]
+        return Path(*parts) if parts else Path()
 
     @staticmethod
     def _compute_checksum(path: Path) -> str:

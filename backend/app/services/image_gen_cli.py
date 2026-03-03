@@ -10,10 +10,10 @@ Book paths may reference .epub, .mobi/.azw, .txt, .md, or .docx files.
 
 Usage examples:
     # Run full pipeline with automatic variant counts from scene complexity analysis
-    uv run python -m app.services.image_gen_cli run --book-slug shogun-james-clavell --book-path "books/James Clavell/Shogun/Shogun - James Clavell.mobi" --images-for-scenes 5
+    uv run python -m app.services.image_gen_cli run --book-slug shogun-james-clavell --book-path "documents/James Clavell/Shogun/Shogun - James Clavell.mobi" --images-for-scenes 5
 
     # Run full pipeline for top 10 scenes only (prompts and images)
-    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --prompts-for-scenes 10 --images-for-scenes 10
+    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "documents/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --prompts-for-scenes 10 --images-for-scenes 10
 
     # Generate prompts using scene complexity recommendations (default behavior)
     uv run python -m app.services.image_gen_cli prompts --book-slug look-to-windward-iain-m-banks --top-scenes 10
@@ -22,7 +22,7 @@ Usage examples:
     uv run python -m app.services.image_gen_cli prompts --book-slug look-to-windward-iain-m-banks --top-scenes 10 --prompts-per-scene 5 --ignore-ranking-recommendations
 
     # Extract and refine only
-    uv run python -m app.services.image_gen_cli extract --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub"
+    uv run python -m app.services.image_gen_cli extract --book-slug look-to-windward-iain-m-banks --book-path "documents/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub"
 
     # Rank existing scenes (no book-path needed, works from database)
     uv run python -m app.services.image_gen_cli rank --book-slug look-to-windward-iain-m-banks
@@ -40,7 +40,7 @@ Usage examples:
     uv run python -m app.services.image_gen_cli backfill --top-scenes 5
 
     # Dry run to preview what would happen
-    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "books/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --images-for-scenes 3 --dry-run
+    uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "documents/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --images-for-scenes 3 --dry-run
 
     # Skip extraction and run remaining steps (useful if scenes already extracted)
     uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --skip-extraction --images-for-scenes 5

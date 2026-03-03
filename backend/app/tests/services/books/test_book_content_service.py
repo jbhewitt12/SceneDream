@@ -6,12 +6,12 @@ import pytest
 
 from app.services.books import BookContentService, BookContentServiceError
 
+DOCUMENTS_DIR = Path(__file__).resolve().parents[5] / "documents"
+LEGACY_BOOKS_DIR = Path(__file__).resolve().parents[5] / "books"
+CONTENT_DIR = DOCUMENTS_DIR if DOCUMENTS_DIR.exists() else LEGACY_BOOKS_DIR
+
 EXCESSION_EPUB = (
-    Path(__file__).resolve().parents[5]
-    / "books"
-    / "Iain Banks"
-    / "Excession"
-    / "Excession - Iain M. Banks.epub"
+    CONTENT_DIR / "Iain Banks" / "Excession" / "Excession - Iain M. Banks.epub"
 )
 EXAMPLE_DOCS_DIR = Path(__file__).resolve().parents[5] / "example_docs"
 EXAMPLE_TXT = EXAMPLE_DOCS_DIR / "H_G_Wells-The_Star.txt"
@@ -47,12 +47,17 @@ def test_load_book_no_cache() -> None:
 @pytest.mark.skipif(not EXCESSION_EPUB.exists(), reason="Test EPUB not available")
 def test_load_book_relative_path() -> None:
     service = BookContentService()
-    relative_path = "books/Iain Banks/Excession/Excession - Iain M. Banks.epub"
+    relative_root = "documents" if DOCUMENTS_DIR.exists() else "books"
+    relative_path = (
+        f"{relative_root}/Iain Banks/Excession/Excession - Iain M. Banks.epub"
+    )
     content = service.load_book(relative_path)
     assert content.chapters
 
 
-@pytest.mark.skipif(not EXAMPLE_TXT.exists(), reason="Example TXT document not available")
+@pytest.mark.skipif(
+    not EXAMPLE_TXT.exists(), reason="Example TXT document not available"
+)
 def test_load_book_example_txt() -> None:
     service = BookContentService()
     content = service.load_book(EXAMPLE_TXT)
@@ -62,7 +67,9 @@ def test_load_book_example_txt() -> None:
     assert content.metadata.source_metadata["paragraph_count"] > 0
 
 
-@pytest.mark.skipif(not EXAMPLE_MD.exists(), reason="Example Markdown document not available")
+@pytest.mark.skipif(
+    not EXAMPLE_MD.exists(), reason="Example Markdown document not available"
+)
 def test_load_book_example_markdown() -> None:
     service = BookContentService()
     content = service.load_book(EXAMPLE_MD)
@@ -72,7 +79,9 @@ def test_load_book_example_markdown() -> None:
     assert content.metadata.source_metadata["chapter_count"] >= 1
 
 
-@pytest.mark.skipif(not EXAMPLE_DOCX.exists(), reason="Example DOCX document not available")
+@pytest.mark.skipif(
+    not EXAMPLE_DOCX.exists(), reason="Example DOCX document not available"
+)
 def test_load_book_example_docx() -> None:
     service = BookContentService()
     content = service.load_book(EXAMPLE_DOCX)
@@ -94,3 +103,43 @@ def test_load_book_unsupported_format(tmp_path: Path) -> None:
     dummy.write_text("dummy", encoding="utf-8")
     with pytest.raises(BookContentServiceError, match="Unsupported format"):
         service.load_book(dummy)
+
+
+def test_resolve_book_path_documents_falls_back_to_legacy_books(tmp_path: Path) -> None:
+    service = BookContentService(project_root=tmp_path)
+    legacy_path = tmp_path / "books" / "author" / "book.txt"
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_path.write_text("Chapter 1\n\nLegacy paragraph.", encoding="utf-8")
+
+    resolved = service.resolve_book_path("documents/author/book.txt")
+    assert resolved == legacy_path.resolve()
+
+
+def test_load_book_legacy_books_path_resolves_documents(tmp_path: Path) -> None:
+    service = BookContentService(project_root=tmp_path)
+    documents_path = tmp_path / "documents" / "author" / "book.txt"
+    documents_path.parent.mkdir(parents=True, exist_ok=True)
+    documents_path.write_text("Chapter 1\n\nPrimary paragraph.", encoding="utf-8")
+
+    content = service.load_book("books/author/book.txt")
+    assert content.metadata.file_path == documents_path.resolve()
+
+
+def test_normalize_source_path_rewrites_books_to_documents(tmp_path: Path) -> None:
+    service = BookContentService(project_root=tmp_path)
+    file_path = tmp_path / "books" / "author" / "book.epub"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text("stub", encoding="utf-8")
+
+    normalized = service.normalize_source_path(file_path.resolve())
+    assert normalized == "documents/author/book.epub"
+
+
+def test_normalize_source_path_keeps_external_absolute_paths(tmp_path: Path) -> None:
+    service = BookContentService(project_root=tmp_path / "repo")
+    external_path = tmp_path / "outside" / "book.epub"
+    external_path.parent.mkdir(parents=True, exist_ok=True)
+    external_path.write_text("stub", encoding="utf-8")
+
+    normalized = service.normalize_source_path(external_path.resolve())
+    assert normalized == str(external_path.resolve())

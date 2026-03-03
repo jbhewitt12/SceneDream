@@ -15,7 +15,7 @@ def scene(db: Session) -> object:
     scene = repository.create(
         data={
             "book_slug": book_slug,
-            "source_book_path": "books/test.epub",
+            "source_book_path": "documents/test.epub",
             "chapter_number": 1,
             "chapter_title": "Chapter 1",
             "chapter_source_name": "Test",
@@ -148,7 +148,7 @@ def test_list_for_book_filters(db: Session) -> None:
     scene_one = scene_repo.create(
         data={
             "book_slug": book_slug,
-            "source_book_path": "books/test.epub",
+            "source_book_path": "documents/test.epub",
             "chapter_number": 1,
             "chapter_title": "Chapter 1",
             "chapter_source_name": "Test",
@@ -175,7 +175,7 @@ def test_list_for_book_filters(db: Session) -> None:
     scene_two = scene_repo.create(
         data={
             "book_slug": book_slug,
-            "source_book_path": "books/test.epub",
+            "source_book_path": "documents/test.epub",
             "chapter_number": 2,
             "chapter_title": "Chapter 2",
             "chapter_source_name": "Test",
