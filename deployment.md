@@ -1,6 +1,6 @@
 # SceneDream Deployment
 
-This document describes deploying SceneDream with Docker Compose. It assumes a reverse proxy (for example Traefik) is already set up for TLS and routing.
+This document describes deploying SceneDream with Docker Compose. It assumes an ingress/routing layer is already set up for TLS and domain routing.
 
 ## Prerequisites
 

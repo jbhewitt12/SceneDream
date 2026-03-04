@@ -41,7 +41,6 @@ docker compose watch
 4. Open the app:
 - Dashboard: http://localhost:5173
 - API docs: http://localhost:8000/docs
-- Adminer: http://localhost:8080
 
 ## Quickstart (Run Backend/Frontend Directly)
 
