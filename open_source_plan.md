@@ -90,11 +90,11 @@ Copy this block for each step update:
 - Differences from plan: none
 
 #### Step 9 - Observability and Diagnostics
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-04
+- What was implemented: Added pipeline-run diagnostics instrumentation that records structured stage events, per-stage durations, and normalized failure codes/messages in persisted run summaries, with structured run/stage logs for easier production triage.
+- Important implementation details: Extended pipeline background execution diagnostics in `backend/app/api/routes/pipeline_runs.py` by adding `_RunDiagnosticsTracker` to capture `usage_summary.diagnostics.stage_events`, `usage_summary.diagnostics.stage_durations_ms`, and `usage_summary.diagnostics.error` (code/message/stage) for terminal failed runs; added `_classify_pipeline_error_code(...)` to normalize failure categories (`missing_source`, `invalid_request`, `stage_error`, `pipeline_exception`); extended `usage_summary.errors` to include `code` while preserving existing shape (`count`/`messages`); added `_log_pipeline_event(...)` JSON-structured log emissions for `run_started`, `stage_started`, `stage_completed`, `run_completed`, and `run_failed`; and added/updated route tests in `backend/app/tests/api/routes/test_pipeline_runs.py` to validate persisted diagnostics fields, stage timing capture, and failure-code classification. Verified with `cd backend && uv run pytest` (143 passed, 7 deselected).
+- Differences from plan: No schema migration was required because diagnostics and error codes were added to the existing non-destructive `pipeline_runs.usage_summary` JSONB payload.
 
 #### Step 10 - Contributor and Community Standards
 - Done: no

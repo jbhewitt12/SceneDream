@@ -496,9 +496,86 @@ def test_execute_pipeline_run_records_usage_summary_on_success(
     assert usage_summary["status"] == "completed"
     assert usage_summary["outputs"]["prompts_generated"] == 6
     assert usage_summary["outputs"]["images_generated"] == 2
+    assert usage_summary["errors"]["code"] is None
     assert usage_summary["effective"]["config_overrides"] == {
         "resolved_images_for_scenes": 2
     }
+    assert "diagnostics" in usage_summary
+    assert usage_summary["diagnostics"]["stage_durations_ms"] == {}
+    assert len(usage_summary["diagnostics"]["stage_events"]) >= 2
+
+
+def test_execute_pipeline_run_records_stage_durations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    updates: list[dict[str, object]] = []
+
+    async def _fake_run_full_pipeline(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        stage_callback = _kwargs.get("stage_callback")
+        assert callable(stage_callback)
+        await stage_callback("extracting")
+        await stage_callback("ranking")
+        stats = MagicMock()
+        stats.errors = []
+        stats.to_dict.return_value = {
+            "scenes_extracted": 1,
+            "scenes_refined": 0,
+            "scenes_ranked": 1,
+            "prompts_generated": 0,
+            "images_generated": 0,
+            "errors": [],
+        }
+        return stats
+
+    def _capture_update(**kwargs: object) -> None:
+        updates.append(kwargs)
+
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_run_full_pipeline",
+        _fake_run_full_pipeline,
+    )
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_update_status",
+        _capture_update,
+    )
+
+    asyncio.run(
+        pipeline_runs_routes._execute_pipeline_run(
+            run_id=uuid4(),
+            args=argparse.Namespace(
+                book_slug="diagnostics-success",
+                book_path="documents/diagnostics-success.epub",
+                images_for_scenes=1,
+                prompts_for_scenes=None,
+                prompts_per_scene=None,
+                skip_extraction=False,
+                skip_ranking=False,
+                skip_prompts=False,
+                prompt_art_style=None,
+                quality="standard",
+                style="vivid",
+                aspect_ratio="1:1",
+                mode="sync",
+            ),
+            config_overrides={"resolved_images_for_scenes": 1},
+        )
+    )
+
+    usage_summary = updates[-1]["usage_summary"]
+    assert isinstance(usage_summary, dict)
+    diagnostics = usage_summary["diagnostics"]
+    assert isinstance(diagnostics, dict)
+    assert diagnostics["observed_stage"] == "ranking"
+    assert "extracting" in diagnostics["stage_durations_ms"]
+    assert "ranking" in diagnostics["stage_durations_ms"]
+    assert diagnostics["stage_durations_ms"]["extracting"] >= 0
+    assert diagnostics["stage_durations_ms"]["ranking"] >= 0
+    event_types = [event["type"] for event in diagnostics["stage_events"]]
+    assert "stage_started" in event_types
+    assert "stage_completed" in event_types
+    assert "run_completed" in event_types
 
 
 def test_execute_pipeline_run_records_usage_summary_on_failure(
@@ -550,4 +627,60 @@ def test_execute_pipeline_run_records_usage_summary_on_failure(
     assert isinstance(usage_summary, dict)
     assert usage_summary["status"] == "failed"
     assert usage_summary["errors"]["count"] >= 1
+    assert usage_summary["errors"]["code"] == "pipeline_exception"
     assert usage_summary["outputs"]["images_generated"] == 0
+    diagnostics = usage_summary["diagnostics"]
+    assert diagnostics["error"]["code"] == "pipeline_exception"
+    assert diagnostics["error"]["stage"] == "pending"
+    assert diagnostics["error"]["message"] == "boom"
+
+
+def test_execute_pipeline_run_classifies_missing_source_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    updates: list[dict[str, object]] = []
+
+    async def _fake_run_full_pipeline(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        raise ValueError("--book-path is required for scene extraction")
+
+    def _capture_update(**kwargs: object) -> None:
+        updates.append(kwargs)
+
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_run_full_pipeline",
+        _fake_run_full_pipeline,
+    )
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_update_status",
+        _capture_update,
+    )
+
+    asyncio.run(
+        pipeline_runs_routes._execute_pipeline_run(
+            run_id=uuid4(),
+            args=argparse.Namespace(
+                book_slug="diagnostics-missing-source",
+                book_path=None,
+                images_for_scenes=1,
+                prompts_for_scenes=None,
+                prompts_per_scene=None,
+                skip_extraction=False,
+                skip_ranking=False,
+                skip_prompts=False,
+                prompt_art_style=None,
+                quality="standard",
+                style=None,
+                aspect_ratio=None,
+                mode="sync",
+            ),
+            config_overrides={"resolved_images_for_scenes": 1},
+        )
+    )
+
+    usage_summary = updates[-1]["usage_summary"]
+    assert isinstance(usage_summary, dict)
+    assert usage_summary["errors"]["code"] == "missing_source"
+    diagnostics = usage_summary["diagnostics"]
+    assert diagnostics["error"]["code"] == "missing_source"

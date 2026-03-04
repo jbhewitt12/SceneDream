@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from datetime import datetime, timezone
+import json
 import logging
 from collections.abc import Coroutine
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -33,6 +34,172 @@ from app.services.image_prompt_generation.models import ImagePromptGenerationCon
 router = APIRouter(prefix="/pipeline-runs", tags=["pipeline-runs"])
 
 logger = logging.getLogger(__name__)
+
+
+class _RunDiagnosticsTracker:
+    """Collects per-run stage timing and event diagnostics."""
+
+    def __init__(
+        self,
+        *,
+        run_id: UUID,
+        started_at: datetime,
+    ) -> None:
+        self.run_id = str(run_id)
+        self.started_at = started_at
+        self.current_stage: str | None = None
+        self.current_stage_started_at: datetime | None = None
+        self.stage_durations_ms: dict[str, int] = {}
+        self.stage_events: list[dict[str, Any]] = []
+        self._append_event(event_type="run_started", at=started_at, stage="pending")
+
+    def _append_event(
+        self,
+        *,
+        event_type: str,
+        at: datetime,
+        stage: str | None = None,
+        **details: Any,
+    ) -> None:
+        event: dict[str, Any] = {
+            "type": event_type,
+            "at": at.isoformat(),
+        }
+        if stage is not None:
+            event["stage"] = stage
+        event.update(details)
+        self.stage_events.append(event)
+
+    @staticmethod
+    def _duration_ms(*, started_at: datetime, ended_at: datetime) -> int:
+        return max(0, int((ended_at - started_at).total_seconds() * 1000))
+
+    def start_stage(self, *, stage: str, at: datetime) -> tuple[str | None, int | None]:
+        """Record a new active stage and close the previous stage, if any."""
+
+        if self.current_stage == stage:
+            return None, None
+
+        completed_stage: str | None = None
+        completed_duration_ms: int | None = None
+        if self.current_stage and self.current_stage_started_at:
+            completed_stage = self.current_stage
+            completed_duration_ms = self._duration_ms(
+                started_at=self.current_stage_started_at,
+                ended_at=at,
+            )
+            existing_duration = self.stage_durations_ms.get(completed_stage, 0)
+            self.stage_durations_ms[completed_stage] = (
+                existing_duration + completed_duration_ms
+            )
+            self._append_event(
+                event_type="stage_completed",
+                at=at,
+                stage=completed_stage,
+                duration_ms=completed_duration_ms,
+            )
+
+        self.current_stage = stage
+        self.current_stage_started_at = at
+        self._append_event(event_type="stage_started", at=at, stage=stage)
+        return completed_stage, completed_duration_ms
+
+    def finalize(
+        self,
+        *,
+        status_value: str,
+        completed_at: datetime,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        """Close active stage and return persisted diagnostics payload."""
+
+        final_stage = self.current_stage
+        if self.current_stage and self.current_stage_started_at:
+            final_duration_ms = self._duration_ms(
+                started_at=self.current_stage_started_at,
+                ended_at=completed_at,
+            )
+            existing_duration = self.stage_durations_ms.get(self.current_stage, 0)
+            self.stage_durations_ms[self.current_stage] = (
+                existing_duration + final_duration_ms
+            )
+            self._append_event(
+                event_type="stage_completed",
+                at=completed_at,
+                stage=self.current_stage,
+                duration_ms=final_duration_ms,
+            )
+
+        terminal_type = "run_completed" if status_value == "completed" else "run_failed"
+        self._append_event(
+            event_type=terminal_type,
+            at=completed_at,
+            stage=final_stage,
+            status=status_value,
+        )
+
+        diagnostics: dict[str, Any] = {
+            "observed_stage": final_stage,
+            "stage_durations_ms": dict(self.stage_durations_ms),
+            "stage_events": list(self.stage_events),
+        }
+        if status_value == "failed":
+            diagnostics["error"] = {
+                "code": error_code or "pipeline_exception",
+                "message": (error_message or "")[:2000],
+                "stage": final_stage or "pending",
+            }
+        return diagnostics
+
+
+def _log_pipeline_event(
+    *,
+    event: str,
+    level: int = logging.INFO,
+    **fields: Any,
+) -> None:
+    """Emit structured pipeline-run logs as JSON payloads."""
+
+    payload = {"event": event, **fields}
+    logger.log(
+        level,
+        "pipeline_run_event %s",
+        json.dumps(payload, default=str, sort_keys=True),
+    )
+
+
+def _classify_pipeline_error_code(
+    *,
+    exc: Exception | None = None,
+    error_message: str | None = None,
+    observed_stage: str | None = None,
+) -> str:
+    """Classify errors into stable, machine-readable failure codes."""
+
+    message = (error_message or "").lower()
+    if not message and exc is not None:
+        message = str(exc).lower()
+
+    has_book_path_hint = "book_path" in message or "book-path" in message
+    if has_book_path_hint and ("required" in message or "does not exist" in message):
+        return "missing_source"
+
+    if isinstance(exc, ValueError):
+        return "invalid_request"
+
+    if observed_stage in {
+        "extracting",
+        "ranking",
+        "generating_prompts",
+        "generating_images",
+    }:
+        return "stage_error"
+
+    if exc is not None:
+        return "pipeline_exception"
+
+    return "pipeline_exception"
 
 
 def _spawn_background_task(
@@ -127,6 +294,8 @@ def _build_usage_summary(
     completed_at: datetime,
     config_overrides: dict[str, Any] | None,
     error_message: str | None = None,
+    error_code: str | None = None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     prompt_defaults = ImagePromptGenerationConfig()
     image_defaults = ImageGenerationConfig(
@@ -196,7 +365,9 @@ def _build_usage_summary(
         "errors": {
             "count": len(error_messages),
             "messages": error_messages,
+            "code": error_code,
         },
+        "diagnostics": diagnostics or {},
     }
 
 
@@ -223,14 +394,36 @@ async def _execute_pipeline_run(
     """Execute the end-to-end pipeline in a background task."""
 
     execution_started_at = datetime.now(timezone.utc)
+    observed_book_slug = getattr(args, "book_slug", None)
+    diagnostics = _RunDiagnosticsTracker(run_id=run_id, started_at=execution_started_at)
 
-    logger.info(
-        "Pipeline run task started: run_id=%s, book_slug=%s",
-        run_id,
-        getattr(args, "book_slug", None),
+    _log_pipeline_event(
+        event="run_started",
+        run_id=str(run_id),
+        book_slug=observed_book_slug,
+        status="pending",
     )
 
     async def _stage_callback(stage: str) -> None:
+        stage_started_at = datetime.now(timezone.utc)
+        completed_stage, completed_duration_ms = diagnostics.start_stage(
+            stage=stage,
+            at=stage_started_at,
+        )
+        if completed_stage is not None:
+            _log_pipeline_event(
+                event="stage_completed",
+                run_id=str(run_id),
+                book_slug=observed_book_slug,
+                stage=completed_stage,
+                duration_ms=completed_duration_ms,
+            )
+        _log_pipeline_event(
+            event="stage_started",
+            run_id=str(run_id),
+            book_slug=observed_book_slug,
+            stage=stage,
+        )
         _update_status(
             run_id=run_id,
             status_value=stage,
@@ -243,6 +436,17 @@ async def _execute_pipeline_run(
     except Exception as exc:
         failure_message = _format_failure_message(exc)
         completed_at = datetime.now(timezone.utc)
+        error_code = _classify_pipeline_error_code(
+            exc=exc,
+            error_message=failure_message,
+            observed_stage=diagnostics.current_stage,
+        )
+        diagnostics_payload = diagnostics.finalize(
+            status_value="failed",
+            completed_at=completed_at,
+            error_code=error_code,
+            error_message=failure_message,
+        )
         usage_summary = _build_usage_summary(
             args=args,
             stats=None,
@@ -251,8 +455,18 @@ async def _execute_pipeline_run(
             completed_at=completed_at,
             config_overrides=config_overrides,
             error_message=failure_message,
+            error_code=error_code,
+            diagnostics=diagnostics_payload,
         )
-        logger.exception("Pipeline run failed with exception: run_id=%s", run_id)
+        _log_pipeline_event(
+            event="run_failed",
+            level=logging.ERROR,
+            run_id=str(run_id),
+            book_slug=observed_book_slug,
+            stage=diagnostics_payload.get("observed_stage") or "pending",
+            error_code=error_code,
+            error_message=failure_message,
+        )
         _update_status(
             run_id=run_id,
             status_value="failed",
@@ -266,6 +480,16 @@ async def _execute_pipeline_run(
     if stats.errors:
         combined_error = " | ".join(stats.errors)
         completed_at = datetime.now(timezone.utc)
+        error_code = _classify_pipeline_error_code(
+            error_message=combined_error,
+            observed_stage=diagnostics.current_stage,
+        )
+        diagnostics_payload = diagnostics.finalize(
+            status_value="failed",
+            completed_at=completed_at,
+            error_code=error_code,
+            error_message=combined_error[:2000],
+        )
         usage_summary = _build_usage_summary(
             args=args,
             stats=stats,
@@ -274,6 +498,8 @@ async def _execute_pipeline_run(
             completed_at=completed_at,
             config_overrides=config_overrides,
             error_message=combined_error[:2000],
+            error_code=error_code,
+            diagnostics=diagnostics_payload,
         )
         _update_status(
             run_id=run_id,
@@ -283,14 +509,23 @@ async def _execute_pipeline_run(
             usage_summary=usage_summary,
             completed=True,
         )
-        logger.error(
-            "Pipeline run completed with errors: run_id=%s, error_count=%d",
-            run_id,
-            len(stats.errors),
+        _log_pipeline_event(
+            event="run_failed",
+            level=logging.ERROR,
+            run_id=str(run_id),
+            book_slug=observed_book_slug,
+            stage=diagnostics_payload.get("observed_stage") or "pending",
+            error_code=error_code,
+            error_count=len(stats.errors),
+            error_message=combined_error[:2000],
         )
         return
 
     completed_at = datetime.now(timezone.utc)
+    diagnostics_payload = diagnostics.finalize(
+        status_value="completed",
+        completed_at=completed_at,
+    )
     usage_summary = _build_usage_summary(
         args=args,
         stats=stats,
@@ -298,6 +533,7 @@ async def _execute_pipeline_run(
         started_at=execution_started_at,
         completed_at=completed_at,
         config_overrides=config_overrides,
+        diagnostics=diagnostics_payload,
     )
     _update_status(
         run_id=run_id,
@@ -307,7 +543,13 @@ async def _execute_pipeline_run(
         usage_summary=usage_summary,
         completed=True,
     )
-    logger.info("Pipeline run task completed: run_id=%s", run_id)
+    _log_pipeline_event(
+        event="run_completed",
+        run_id=str(run_id),
+        book_slug=observed_book_slug,
+        stage=diagnostics_payload.get("observed_stage"),
+        duration_ms=usage_summary.get("timing", {}).get("duration_ms"),
+    )
 
 
 @router.post(
