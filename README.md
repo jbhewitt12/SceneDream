@@ -96,6 +96,10 @@ uv run python -m app.services.scene_ranking.main rank --help
 uv run python -m app.services.image_generation.main --help
 ```
 
+## License
+
+SceneDream is licensed under the [MIT License](LICENSE).
+
 ## Additional Documentation
 
 - Backend details: `backend/README.md`
