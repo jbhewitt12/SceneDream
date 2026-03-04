@@ -4,13 +4,22 @@ on:
   push:
     branches:
       - master
+    paths:
+      - "backend/**"
+      - ".github/workflows/lint-backend.yml"
   pull_request:
-    types:
-      - opened
-      - synchronize
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "backend/**"
+      - ".github/workflows/lint-backend.yml"
+
+concurrency:
+  group: lint-backend-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-backend:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

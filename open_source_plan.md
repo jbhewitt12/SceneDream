@@ -111,11 +111,11 @@ Copy this block for each step update:
 - Differences from plan: Expanded scope slightly to include explicit backend/frontend README alignment so command references remain consistent across all onboarding entry points.
 
 #### Step 12 - CI Quality Gates for Public Contributions
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-04
+- What was implemented: Added lightweight CI quality gates for public contributions by path-scoping backend checks, adding a frontend lint/build workflow, and documenting the baseline required checks for merge protection.
+- Important implementation details: Updated backend lint/test workflows to run on broader PR lifecycle events while skipping draft PRs and using path filters/concurrency cancellation to reduce unnecessary runs (`.github/workflows/lint-backend.yml`, `.github/workflows/test-backend.yml`); added new frontend CI workflow that installs dependencies via `npm ci` and runs non-mutating lint plus build checks (`.github/workflows/frontend-ci.yml`); added a dedicated non-mutating frontend lint command for CI (`frontend/package.json` script `lint:ci`); and documented the lightweight baseline check policy and check names in contributor docs (`CONTRIBUTING.md`).
+- Differences from plan: Intentionally kept gates minimal and non-restrictive by using path-scoped triggers and draft-PR skipping rather than adding additional heavy/full-repo checks.
 
 #### Step 13 - Open-Source License Finalization
 - Done: no
