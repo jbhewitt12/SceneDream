@@ -28,6 +28,7 @@ class PipelineRunStartRequest(BaseModel):
     document_id: UUID | None = None
     book_slug: str | None = None
     book_path: str | None = None
+    art_style_id: UUID | None = None
     prompts_per_scene: int | None = Field(default=None, ge=1)
     ignore_ranking_recommendations: bool = False
     prompts_for_scenes: int | None = Field(default=None, ge=1)

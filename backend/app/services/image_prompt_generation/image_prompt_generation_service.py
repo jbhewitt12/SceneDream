@@ -76,6 +76,10 @@ class ImagePromptGenerationService:
 
     def _build_style_sampler(self) -> StyleSampler:
         """Build a style sampler using DB catalog values with safe fallbacks."""
+        preferred_style = (
+            self._config.preferred_style or self._resolve_default_art_style_name()
+        )
+
         try:
             recommended, other = self._art_style_repo.list_for_sampling()
         except Exception as exc:  # pragma: no cover - defensive fallback
@@ -83,17 +87,17 @@ class ImagePromptGenerationService:
                 "Falling back to static style catalog; failed to load DB styles: %s",
                 exc,
             )
-            return StyleSampler()
+            return StyleSampler(preferred_style=preferred_style)
 
         if not recommended and not other:
-            return StyleSampler(preferred_style=self._resolve_default_art_style_name())
+            return StyleSampler(preferred_style=preferred_style)
 
         resolved_recommended = tuple(recommended) if recommended else RECOMMENDED_STYLES
         resolved_other = tuple(other) if other else OTHER_STYLES
         return StyleSampler(
             recommended_styles=resolved_recommended,
             other_styles=resolved_other,
-            preferred_style=self._resolve_default_art_style_name(),
+            preferred_style=preferred_style,
         )
 
     def _resolve_default_art_style_name(self) -> str | None:

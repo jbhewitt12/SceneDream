@@ -76,11 +76,11 @@ Copy this block for each step update:
 - Differences from plan: The API includes canonical `documents/` filesystem scan plus persisted document rows so previously ingested records still appear even when source files are currently missing on disk (`file_exists=false`), improving operational visibility during migration/open-source transition.
 
 #### Step 7 - One-Click Pipeline Launch with Runtime Overrides
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-04
+- What was implemented: Added one-click pipeline launch controls to the Documents dashboard with per-run scenes override and optional prompt art-style override, plus live polling of run status until completion/failure.
+- Important implementation details: Added frontend pipeline-runs client methods for start/poll (`frontend/src/api/pipelineRuns.ts`) and integrated launch UI/state in the dashboard (`frontend/src/routes/_layout/documents.tsx`) including per-document scenes input, art-style selector sourced from settings, launch button, and active-run status polling via `GET /api/v1/pipeline-runs/{id}`; extended launch request schema with optional `art_style_id` (`backend/app/schemas/pipeline_run.py`); updated launch route preflight to resolve/validate active art styles, persist resolved prompt-style overrides, and support resume when source files are missing but extraction data already exists (`backend/app/api/routes/pipeline_runs.py`); threaded runtime prompt art-style override through orchestration (`prompt_art_style`) and prompt-generation config (`preferred_style`) so per-run overrides take precedence over global defaults (`backend/app/services/image_gen_cli.py`, `backend/app/services/image_prompt_generation/models.py`, `backend/app/services/image_prompt_generation/image_prompt_generation_service.py`); and added backend tests covering style-override validation, missing-source resume/fail-fast behavior, and runtime style precedence (`backend/app/tests/api/routes/test_pipeline_runs.py`, `backend/app/tests/services/test_image_prompt_generation_service.py`).
+- Differences from plan: Resume handling was explicitly hardened at API launch preflight (auto-skip extraction only when prior extracted scenes exist; otherwise fail early with a clear error) to prevent background runs from failing later due to missing source files.
 
 #### Step 8 - Cost and Safety Guardrails
 - Done: no

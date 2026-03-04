@@ -20,6 +20,7 @@ class ImagePromptGenerationConfig:
     model_vendor: str = "google"
     model_name: str = "gemini-3-pro-preview"
     prompt_version: str = "image-prompts-v3"
+    preferred_style: str | None = None
     variants_count: int = 4
     use_ranking_recommendation: bool = True
     temperature: float = 0.4
@@ -45,6 +46,7 @@ class ImagePromptGenerationConfig:
             "model_vendor": self.model_vendor,
             "model_name": self.model_name,
             "prompt_version": self.prompt_version,
+            "preferred_style": self.preferred_style,
             "variants_count": self.variants_count,
             "use_ranking_recommendation": self.use_ranking_recommendation,
             "temperature": self.temperature,
