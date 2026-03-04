@@ -83,11 +83,11 @@ Copy this block for each step update:
 - Differences from plan: Resume handling was explicitly hardened at API launch preflight (auto-skip extraction only when prior extracted scenes exist; otherwise fail early with a clear error) to prevent background runs from failing later due to missing source files.
 
 #### Step 8 - Cost and Safety Guardrails
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-04
+- What was implemented: Added persisted per-run usage summaries so each pipeline run records key runtime inputs, output counts, timing, and error details for clear cost/operation visibility.
+- Important implementation details: Added `pipeline_runs.usage_summary` JSONB field with non-destructive migration + verification checks (`backend/models/pipeline_run.py`, `backend/app/alembic/versions/a9b8e7c4d112_add_pipeline_run_usage_summary.py`); updated pipeline run schemas and repository status updates to carry usage payloads (`backend/app/schemas/pipeline_run.py`, `backend/app/repositories/pipeline_run.py`); added usage summary construction/persistence in pipeline execution terminal states (success + failure) and passed resolved config overrides through background execution (`backend/app/api/routes/pipeline_runs.py`); surfaced usage summary on document dashboard latest-run payloads (`backend/app/schemas/document.py`, `backend/app/services/document_dashboard_service.py`); updated frontend API types and dashboard UI to display last-run usage metrics (`frontend/src/api/{pipelineRuns,documents}.ts`, `frontend/src/routes/_layout/documents.tsx`); and added backend coverage for usage summary API/service behavior (`backend/app/tests/api/routes/test_pipeline_runs.py`, `backend/app/tests/api/routes/test_documents.py`, `backend/app/tests/services/test_document_dashboard_service.py`).
+- Differences from plan: none
 
 #### Step 9 - Observability and Diagnostics
 - Done: no
@@ -210,10 +210,10 @@ From the dashboard, allow users to run end-to-end processing per file:
 This balances ease of use (defaults) with experimentation (overrides).
 
 ### 8) Cost and Safety Guardrails
-Add basic limits and protections for open-source users:
-- Configurable max scenes per run.
-- Basic request/rate throttling for heavy endpoints.
-- Clear reporting of model/image usage by run.
+Add clear usage reporting for open-source users:
+- Persist model/image usage details by run.
+- Include runtime input/output counts and timing in run summaries.
+- Surface usage summaries in polling/dashboard views.
 
 This reduces accidental overuse and improves trust in operation.
 

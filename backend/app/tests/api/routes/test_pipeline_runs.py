@@ -424,6 +424,7 @@ def test_get_pipeline_run_returns_record(
     payload = response.json()
     assert payload["id"] == str(run.id)
     assert payload["book_slug"] == slug
+    assert payload["usage_summary"] == {}
 
     db.delete(run)
     db.commit()
@@ -433,3 +434,120 @@ def test_get_pipeline_run_not_found(client: TestClient) -> None:
     response = client.get(f"/api/v1/pipeline-runs/{uuid4()}")
     assert response.status_code == 404
     assert response.json()["detail"] == "Pipeline run not found"
+
+
+def test_execute_pipeline_run_records_usage_summary_on_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    updates: list[dict[str, object]] = []
+
+    async def _fake_run_full_pipeline(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        stats = MagicMock()
+        stats.errors = []
+        stats.to_dict.return_value = {
+            "scenes_extracted": 3,
+            "scenes_refined": 2,
+            "scenes_ranked": 3,
+            "prompts_generated": 6,
+            "images_generated": 2,
+            "errors": [],
+        }
+        return stats
+
+    def _capture_update(**kwargs: object) -> None:
+        updates.append(kwargs)
+
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_run_full_pipeline",
+        _fake_run_full_pipeline,
+    )
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_update_status",
+        _capture_update,
+    )
+
+    asyncio.run(
+        pipeline_runs_routes._execute_pipeline_run(
+            run_id=uuid4(),
+            args=argparse.Namespace(
+                book_slug="usage-summary-success",
+                book_path="documents/usage-summary-success.epub",
+                images_for_scenes=2,
+                prompts_for_scenes=None,
+                prompts_per_scene=None,
+                skip_extraction=False,
+                skip_ranking=False,
+                skip_prompts=False,
+                prompt_art_style="Watercolor",
+                quality="standard",
+                style="vivid",
+                aspect_ratio="1:1",
+                mode="sync",
+            ),
+            config_overrides={"resolved_images_for_scenes": 2},
+        )
+    )
+
+    assert updates[-1]["status_value"] == "completed"
+    usage_summary = updates[-1]["usage_summary"]
+    assert isinstance(usage_summary, dict)
+    assert usage_summary["status"] == "completed"
+    assert usage_summary["outputs"]["prompts_generated"] == 6
+    assert usage_summary["outputs"]["images_generated"] == 2
+    assert usage_summary["effective"]["config_overrides"] == {
+        "resolved_images_for_scenes": 2
+    }
+
+
+def test_execute_pipeline_run_records_usage_summary_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    updates: list[dict[str, object]] = []
+
+    async def _fake_run_full_pipeline(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        raise RuntimeError("boom")
+
+    def _capture_update(**kwargs: object) -> None:
+        updates.append(kwargs)
+
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_run_full_pipeline",
+        _fake_run_full_pipeline,
+    )
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_update_status",
+        _capture_update,
+    )
+
+    asyncio.run(
+        pipeline_runs_routes._execute_pipeline_run(
+            run_id=uuid4(),
+            args=argparse.Namespace(
+                book_slug="usage-summary-failure",
+                book_path="documents/usage-summary-failure.epub",
+                images_for_scenes=1,
+                prompts_for_scenes=None,
+                prompts_per_scene=None,
+                skip_extraction=False,
+                skip_ranking=False,
+                skip_prompts=False,
+                prompt_art_style=None,
+                quality="standard",
+                style="vivid",
+                aspect_ratio="1:1",
+                mode="sync",
+            ),
+            config_overrides={"resolved_images_for_scenes": 1},
+        )
+    )
+
+    assert updates[-1]["status_value"] == "failed"
+    usage_summary = updates[-1]["usage_summary"]
+    assert isinstance(usage_summary, dict)
+    assert usage_summary["status"] == "failed"
+    assert usage_summary["errors"]["count"] >= 1
+    assert usage_summary["outputs"]["images_generated"] == 0

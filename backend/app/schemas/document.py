@@ -70,6 +70,7 @@ class DocumentDashboardRunSummary(BaseModel):
     status: str
     current_stage: str | None
     error_message: str | None
+    usage_summary: dict[str, Any] = Field(default_factory=dict)
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime

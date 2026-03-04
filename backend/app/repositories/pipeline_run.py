@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from sqlmodel import Session, select
@@ -98,6 +99,7 @@ class PipelineRunRepository:
         status: str,
         current_stage: str | None = None,
         error_message: str | None = None,
+        usage_summary: dict[str, Any] | None = None,
         completed: bool = False,
         commit: bool = False,
         refresh: bool = True,
@@ -108,6 +110,8 @@ class PipelineRunRepository:
         run.status = status
         run.current_stage = current_stage
         run.error_message = error_message
+        if usage_summary is not None:
+            run.usage_summary = usage_summary
         if run.started_at is None:
             run.started_at = datetime.now(timezone.utc)
         if completed:
