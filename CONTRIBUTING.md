@@ -57,7 +57,7 @@ cd backend && uv run pytest
 Frontend:
 
 ```bash
-cd frontend && npm run lint
+cd frontend && npm run lint:ci
 cd frontend && npm run build
 ```
 
@@ -66,6 +66,20 @@ If your change affects API contracts, regenerate the client:
 ```bash
 ./scripts/generate-client.sh
 ```
+
+## CI Gates (Lightweight Baseline)
+
+Pull requests use a small set of CI checks intended to catch regressions without slowing iteration:
+- **Lint Backend** (`.github/workflows/lint-backend.yml`) for backend-only changes.
+- **Test Backend** (`.github/workflows/test-backend.yml`) for backend-only changes.
+- **Frontend CI** (`.github/workflows/frontend-ci.yml`) for frontend/OpenAPI changes.
+
+These workflows are path-scoped and skip draft pull requests to reduce unnecessary noise.
+
+For branch protection/rulesets, keep required checks limited to this baseline:
+- `Lint Backend`
+- `Test Backend`
+- `Frontend CI`
 
 ## Testing Expectations
 
