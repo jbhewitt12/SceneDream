@@ -125,11 +125,11 @@ Copy this block for each step update:
 - Differences from plan: none
 
 #### Step 14 - Existing Data Migration and Backfill Verification
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-04
+- What was implemented: Performed a live, non-destructive migration integrity verification against the current database and executed a targeted backfill to reconcile orphaned legacy scene rows into the canonical `documents` linkage model.
+- Important implementation details: Ran SQL verification checks for transition invariants (`scene_extractions.document_id` linkage, `documents`/`scene_extractions` path normalization away from legacy `books/` prefixes, singleton `app_settings` + active default `art_style` integrity, and non-null `pipeline_runs.usage_summary` backfill state); identified one data gap where 23 scene rows under slug `hg-wells-the-star-example` had no corresponding `documents` row; inserted one canonical `documents` record for the missing slug (preserving original source path/type metadata) and backfilled `scene_extractions.document_id` for all matching rows; re-ran the verification suite and confirmed all checks passed (`scene_rows_without_document_id=0`, `scene_document_slug_mismatch=0`, legacy `books/` prefix counts `=0`, `global_settings_rows=1`, `global_settings_missing_default_style=0`, `pipeline_runs_null_usage_summary=0`).
+- Differences from plan: Implemented verification/backfill as a one-time live data reconciliation run (no new persistent migration script added), so repository migration history remains intact for reproducible setup and future schema provenance.
 
 ## Feature Roadmap (Ordered)
 
