@@ -1,6 +1,7 @@
 """API route modules."""
 
 from . import (
+    documents,
     generated_images,
     image_prompts,
     pipeline_runs,
@@ -11,6 +12,7 @@ from . import (
 )
 
 __all__ = [
+    "documents",
     "generated_images",
     "image_prompts",
     "pipeline_runs",
