@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose an enhancement to SceneDream.
+title: "[Feature]: "
+labels: ["feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Please describe the problem first, then the proposed solution.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What workflow pain point are you trying to solve?
+      placeholder: A clear description of the current limitation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you want.
+      placeholder: What should SceneDream do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional alternatives or workarounds you've tried.
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Expected impact
+      options:
+        - Small quality-of-life improvement
+        - Medium workflow improvement
+        - Large capability unlock
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Backend
+        - Frontend
+        - Pipeline Orchestration
+        - Ingestion
+        - Scene Extraction / Ranking
+        - Prompt / Image Generation
+        - Docs / Tooling
+        - Other
