@@ -918,6 +918,11 @@ async def _run_full_pipeline(
                     config_kwargs["use_ranking_recommendation"] = True
                     logger.info("Using ranking recommendations (fallback: 4 variants)")
 
+                prompt_art_style = getattr(args, "prompt_art_style", None)
+                if prompt_art_style:
+                    config_kwargs["preferred_style"] = prompt_art_style
+                    logger.info("Using prompt art style override: %s", prompt_art_style)
+
                 prompt_config = ImagePromptGenerationConfig(**config_kwargs)
                 prompt_service = ImagePromptGenerationService(
                     session, config=prompt_config

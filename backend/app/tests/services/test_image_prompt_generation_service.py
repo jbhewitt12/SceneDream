@@ -491,6 +491,44 @@ def test_service_uses_art_style_repository_catalog(
     assert "DB Style C" in sampled_styles
 
 
+def test_service_prefers_runtime_art_style_override_over_default_setting(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene_factory()
+
+    monkeypatch.setattr(
+        "app.repositories.art_style.ArtStyleRepository.list_for_sampling",
+        lambda self: (["DB Style A", "DB Style B"], ["DB Style C"]),
+    )
+    monkeypatch.setattr(
+        "app.repositories.app_settings.AppSettingsRepository.get_or_create_global",
+        lambda self, commit=False, refresh=True: SimpleNamespace(
+            default_art_style_id=uuid4()
+        ),
+    )
+    monkeypatch.setattr(
+        "app.repositories.art_style.ArtStyleRepository.get",
+        lambda self, _id: SimpleNamespace(
+            display_name="Default DB Style",
+            is_active=True,
+        ),
+    )
+    monkeypatch.setattr(random, "sample", lambda seq, k: list(seq)[:k])
+    monkeypatch.setattr(random, "shuffle", lambda seq: None)
+
+    service = ImagePromptGenerationService(
+        db,
+        config=ImagePromptGenerationConfig(preferred_style="Runtime Override Style"),
+    )
+    _patch_context(service, monkeypatch)
+
+    sampled_styles = service._sample_styles(variants_count=2)
+
+    assert sampled_styles[0] == "Runtime Override Style"
+    assert "DB Style A" in sampled_styles
+    assert "DB Style C" in sampled_styles
+
+
 def test_render_prompt_template_includes_suggested_styles(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
