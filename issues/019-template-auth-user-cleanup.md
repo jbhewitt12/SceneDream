@@ -297,7 +297,6 @@ cd frontend && npm run build
   - `frontend/tests/sign-up.spec.ts` (deleted)
   - `frontend/tests/reset-password.spec.ts` (deleted)
   - `frontend/tests/user-settings.spec.ts` (deleted)
-  - `frontend/tests/utils/mailcatcher.ts` (deleted)
   - `frontend/tests/utils/privateApi.ts` (deleted)
   - `frontend/tests/utils/random.ts` (deleted)
   - `frontend/tests/utils/user.ts` (deleted)
