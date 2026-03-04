@@ -20,6 +20,11 @@ function Navbar() {
         <Logo size="sm" />
       </Flex>
       <HStack gap={1} alignItems="center">
+        <Link to="/documents">
+          <Button size="sm" variant="ghost" className="main-link">
+            Documents
+          </Button>
+        </Link>
         <Link to="/extracted-scenes">
           <Button size="sm" variant="ghost" className="main-link">
             Extracted Scenes

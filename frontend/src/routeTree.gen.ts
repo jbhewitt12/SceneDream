@@ -18,6 +18,7 @@ import { Route as LayoutSceneRankingsImport } from './routes/_layout/scene-ranki
 import { Route as LayoutPromptGalleryImport } from './routes/_layout/prompt-gallery'
 import { Route as LayoutGeneratedImagesImport } from './routes/_layout/generated-images'
 import { Route as LayoutExtractedScenesImport } from './routes/_layout/extracted-scenes'
+import { Route as LayoutDocumentsImport } from './routes/_layout/documents'
 import { Route as LayoutScenePromptsSceneIdImport } from './routes/_layout/scene-prompts.$sceneId'
 
 // Create/Update Routes
@@ -57,6 +58,11 @@ const LayoutExtractedScenesRoute = LayoutExtractedScenesImport.update({
   getParentRoute: () => LayoutRoute,
 } as any)
 
+const LayoutDocumentsRoute = LayoutDocumentsImport.update({
+  path: '/documents',
+  getParentRoute: () => LayoutRoute,
+} as any)
+
 const LayoutScenePromptsSceneIdRoute = LayoutScenePromptsSceneIdImport.update({
   path: '/scene-prompts/$sceneId',
   getParentRoute: () => LayoutRoute,
@@ -69,6 +75,10 @@ declare module '@tanstack/react-router' {
     '/_layout': {
       preLoaderRoute: typeof LayoutImport
       parentRoute: typeof rootRoute
+    }
+    '/_layout/documents': {
+      preLoaderRoute: typeof LayoutDocumentsImport
+      parentRoute: typeof LayoutImport
     }
     '/_layout/extracted-scenes': {
       preLoaderRoute: typeof LayoutExtractedScenesImport
@@ -105,6 +115,7 @@ declare module '@tanstack/react-router' {
 
 export const routeTree = rootRoute.addChildren([
   LayoutRoute.addChildren([
+    LayoutDocumentsRoute,
     LayoutExtractedScenesRoute,
     LayoutGeneratedImagesRoute,
     LayoutPromptGalleryRoute,

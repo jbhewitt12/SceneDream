@@ -7,7 +7,16 @@ from .app_settings import (
 )
 from .art_style import ArtStyleListResponse, ArtStyleRead
 from .common import Message
-from .document import DocumentCreate, DocumentListResponse, DocumentRead
+from .document import (
+    DocumentCreate,
+    DocumentDashboardCounts,
+    DocumentDashboardEntry,
+    DocumentDashboardResponse,
+    DocumentDashboardRunSummary,
+    DocumentDashboardStages,
+    DocumentListResponse,
+    DocumentRead,
+)
 from .generated_asset import (
     GeneratedAssetCreate,
     GeneratedAssetListResponse,
@@ -70,6 +79,11 @@ __all__ = [
     "ArtStyleRead",
     "Message",
     "DocumentCreate",
+    "DocumentDashboardCounts",
+    "DocumentDashboardEntry",
+    "DocumentDashboardResponse",
+    "DocumentDashboardRunSummary",
+    "DocumentDashboardStages",
     "DocumentListResponse",
     "DocumentRead",
     "GeneratedAssetCreate",

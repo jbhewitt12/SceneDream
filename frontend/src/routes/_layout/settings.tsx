@@ -72,7 +72,8 @@ function SettingsPage() {
       showSuccessToast("Settings updated.")
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "Failed to save settings."
+      const message =
+        error instanceof Error ? error.message : "Failed to save settings."
       showErrorToast(message)
     },
   })
@@ -87,8 +88,10 @@ function SettingsPage() {
 
   const isDirty =
     settingsQuery.data !== undefined &&
-    (scenesPerRun !== String(settingsQuery.data.settings.default_scenes_per_run) ||
-      defaultArtStyleId !== (settingsQuery.data.settings.default_art_style_id ?? ""))
+    (scenesPerRun !==
+      String(settingsQuery.data.settings.default_scenes_per_run) ||
+      defaultArtStyleId !==
+        (settingsQuery.data.settings.default_art_style_id ?? ""))
 
   return (
     <Container maxW="4xl" py={6}>
@@ -125,7 +128,12 @@ function SettingsPage() {
           >
             <Stack gap={4}>
               <Box>
-                <Text textTransform="uppercase" fontSize="xs" color="fg.subtle" mb={1}>
+                <Text
+                  textTransform="uppercase"
+                  fontSize="xs"
+                  color="fg.subtle"
+                  mb={1}
+                >
                   Default scenes per run
                 </Text>
                 <Input
@@ -138,13 +146,20 @@ function SettingsPage() {
               </Box>
 
               <Box>
-                <Text textTransform="uppercase" fontSize="xs" color="fg.subtle" mb={1}>
+                <Text
+                  textTransform="uppercase"
+                  fontSize="xs"
+                  color="fg.subtle"
+                  mb={1}
+                >
                   Default art style
                 </Text>
                 <NativeSelectRoot w="full">
                   <NativeSelectField
                     value={defaultArtStyleId}
-                    onChange={(event) => setDefaultArtStyleId(event.target.value)}
+                    onChange={(event) =>
+                      setDefaultArtStyleId(event.target.value)
+                    }
                   >
                     <option value="">No default</option>
                     {settingsQuery.data.art_styles.map((style) => (
@@ -158,11 +173,16 @@ function SettingsPage() {
               </Box>
 
               <Text fontSize="sm" color="fg.muted">
-                Last updated: {formatDateTime(settingsQuery.data.settings.updated_at)}
+                Last updated:{" "}
+                {formatDateTime(settingsQuery.data.settings.updated_at)}
               </Text>
 
               <Flex justify="flex-end" gap={2}>
-                <Button variant="ghost" onClick={handleReset} disabled={!isDirty}>
+                <Button
+                  variant="ghost"
+                  onClick={handleReset}
+                  disabled={!isDirty}
+                >
                   Reset
                 </Button>
                 <Button

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.routes import (
+    documents,
     generated_images,
     image_prompts,
     pipeline_runs,
@@ -12,6 +13,7 @@ from app.api.routes import (
 
 api_router = APIRouter()
 api_router.include_router(utils.router)
+api_router.include_router(documents.router)
 api_router.include_router(image_prompts.router)
 api_router.include_router(scene_extractions.router)
 api_router.include_router(scene_rankings.router)

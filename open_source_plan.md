@@ -69,11 +69,11 @@ Copy this block for each step update:
 - Differences from plan: Kept a lightweight two-endpoint surface (`start` + `poll`) as planned, and explicitly marked `current_stage` as `failed`/`completed` terminal states to simplify polling semantics for the initial release.
 
 #### Step 6 - Document Dashboard and Status Tracking
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-04
+- What was implemented: Added a document-centric dashboard API and frontend page that lists source files, computes per-stage pipeline status/counts, and surfaces latest run outcomes (including failure details) per document.
+- Important implementation details: Added dashboard schemas (`DocumentDashboard*`) and response wiring (`backend/app/schemas/document.py`, `backend/app/schemas/__init__.py`); implemented merged filesystem+database aggregation with legacy slug fallback and stage-count rollups across `scene_extractions`, `scene_rankings`, `image_prompts`, and `generated_images` plus latest-run resolution from `pipeline_runs` (`backend/app/services/document_dashboard_service.py`); added async non-blocking route `GET /api/v1/documents/dashboard` using threadpool execution and router registration (`backend/app/api/routes/documents.py`, `backend/app/api/main.py`, `backend/app/api/routes/__init__.py`); added backend coverage for service + route behavior (`backend/app/tests/services/test_document_dashboard_service.py`, `backend/app/tests/api/routes/test_documents.py`); added frontend dashboard client + route and navigation entry (`frontend/src/api/documents.ts`, `frontend/src/routes/_layout/documents.tsx`, `frontend/src/components/Common/Navbar.tsx`, `frontend/src/routes/_layout/index.tsx`, `frontend/src/routeTree.gen.ts`); verified via `cd backend && uv run pytest` (full suite pass), `cd frontend && npm run lint`, and manual browser validation with agent-browser on `http://localhost:5173/documents` (dashboard render, search filter, and cross-route navigation).
+- Differences from plan: The API includes canonical `documents/` filesystem scan plus persisted document rows so previously ingested records still appear even when source files are currently missing on disk (`file_exists=false`), improving operational visibility during migration/open-source transition.
 
 #### Step 7 - One-Click Pipeline Launch with Runtime Overrides
 - Done: no
