@@ -104,11 +104,11 @@ Copy this block for each step update:
 - Differences from plan: Expanded scope slightly to update the discussion template and remove an obsolete upstream-only issue template so all contributor-facing entry points align with the new standards.
 
 #### Step 11 - Public Developer Experience
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-04
+- What was implemented: Expanded developer onboarding documentation with a full quickstart path, architecture/workflow context, and a clear environment template for local setup.
+- Important implementation details: Rewrote root README onboarding (`README.md`) to include Docker-first quickstart, direct local backend/frontend startup, first workflow steps, and updated `documents/` terminology; added root `.env.example` with required core/database/compose variables plus optional provider/integration settings grouped by feature; aligned backend/frontend docs with the new setup flow and command expectations (`backend/README.md`, `frontend/README.md`); and validated referenced startup paths/commands via `docker compose config` and file existence checks for key scripts/entrypoints.
+- Differences from plan: Expanded scope slightly to include explicit backend/frontend README alignment so command references remain consistent across all onboarding entry points.
 
 #### Step 12 - CI Quality Gates for Public Contributions
 - Done: no
