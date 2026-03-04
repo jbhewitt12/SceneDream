@@ -97,11 +97,11 @@ Copy this block for each step update:
 - Differences from plan: No schema migration was required because diagnostics and error codes were added to the existing non-destructive `pipeline_runs.usage_summary` JSONB payload.
 
 #### Step 10 - Contributor and Community Standards
-- Done: no
-- Date:
-- What was implemented:
-- Important implementation details:
-- Differences from plan:
+- Done: yes
+- Date: 2026-03-04
+- What was implemented: Added core open-source governance documentation and contribution templates for contributors, maintainers, and security reporting workflows.
+- Important implementation details: Added contributor workflow guide (`CONTRIBUTING.md`) with setup, test/lint, and PR expectations; added Contributor Covenant code of conduct with project maintainer enforcement contact (`CODE_OF_CONDUCT.md`); replaced template-era security policy with SceneDream-specific private disclosure/reporting process (`SECURITY.md`); replaced legacy issue intake with structured bug + feature templates and updated issue contact links to this repository (`.github/ISSUE_TEMPLATE/{bug_report,feature_request,config}.yml`); removed obsolete privileged template tied to upstream FastAPI template workflow (`.github/ISSUE_TEMPLATE/privileged.yml`); added a pull request template with required validation checklist (`.github/pull_request_template.md`); and simplified/retargeted discussion question intake copy for SceneDream contributors (`.github/DISCUSSION_TEMPLATE/questions.yml`).
+- Differences from plan: Expanded scope slightly to update the discussion template and remove an obsolete upstream-only issue template so all contributor-facing entry points align with the new standards.
 
 #### Step 11 - Public Developer Experience
 - Done: no

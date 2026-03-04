@@ -1,29 +1,41 @@
 # Security Policy
 
-Security is very important for this project and its community. 🔒
+## Supported Versions
 
-Learn more about it below. 👇
+Security fixes are applied to the latest release and the `main` branch.
 
-## Versions
-
-The latest version or release is supported.
-
-You are encouraged to write tests for your application and update your versions frequently after ensuring that your tests are passing. This way you will benefit from the latest features, bug fixes, and **security fixes**.
+| Version | Supported |
+| --- | --- |
+| Latest release | Yes |
+| `main` | Yes |
+| Older releases | No |
 
 ## Reporting a Vulnerability
 
-If you think you found a vulnerability, and even if you are not sure about it, please report it right away by sending an email to: security@tiangolo.com. Please try to be as explicit as possible, describing all the steps and example code to reproduce the security issue.
+Do not open a public issue for suspected vulnerabilities.
 
-I (the author, [@tiangolo](https://twitter.com/tiangolo)) will review it thoroughly and get back to you.
+Use one of these private reporting paths:
 
-## Public Discussions
+1. Preferred: GitHub private vulnerability reporting in this repository's Security tab (`Report a vulnerability`).
+2. Fallback: contact the maintainer directly via GitHub at [@jbhewitt12](https://github.com/jbhewitt12) and request a private disclosure channel.
 
-Please restrain from publicly discussing a potential security vulnerability. 🙊
+Please include:
 
-It's better to discuss privately and try to find a solution first, to limit the potential impact as much as possible.
+- affected component(s) and impact
+- reproduction steps or proof of concept
+- suggested mitigation, if available
 
----
+## Disclosure Process
 
-Thanks for your help!
+- We will acknowledge receipt as soon as possible.
+- We will investigate, triage severity, and work on a fix.
+- After a fix is available, we will coordinate responsible disclosure details.
 
-The community and I thank you for that. 🙇
+## Scope Notes
+
+This project orchestrates local pipelines and integrates external AI services. Reports are especially useful for:
+
+- secret handling and credential leaks
+- unsafe file/path handling
+- unauthorized data exposure
+- dependency or supply-chain risks in shipped code
