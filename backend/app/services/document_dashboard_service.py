@@ -325,6 +325,7 @@ class DocumentDashboardService:
             status=selected.status,
             current_stage=selected.current_stage,
             error_message=selected.error_message,
+            usage_summary=selected.usage_summary or {},
             started_at=selected.started_at,
             completed_at=selected.completed_at,
             created_at=selected.created_at,

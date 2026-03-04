@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from datetime import datetime, timezone
 import logging
 from collections.abc import Coroutine
 from typing import Any
@@ -26,6 +27,8 @@ from app.services.image_gen_cli import (
     _resolve_default_scenes_per_run,
     _run_full_pipeline,
 )
+from app.services.image_generation.image_generation_service import ImageGenerationConfig
+from app.services.image_prompt_generation.models import ImagePromptGenerationConfig
 
 router = APIRouter(prefix="/pipeline-runs", tags=["pipeline-runs"])
 
@@ -89,6 +92,7 @@ def _update_status(
     status_value: str,
     current_stage: str | None,
     error_message: str | None = None,
+    usage_summary: dict[str, Any] | None = None,
     completed: bool = False,
 ) -> None:
     with Session(engine) as background_session:
@@ -98,6 +102,7 @@ def _update_status(
             status=status_value,
             current_stage=current_stage,
             error_message=error_message,
+            usage_summary=usage_summary,
             completed=completed,
             commit=True,
             refresh=False,
@@ -111,6 +116,88 @@ def _update_status(
 def _format_failure_message(exc: Exception) -> str:
     message = str(exc).strip() or exc.__class__.__name__
     return message[:2000]
+
+
+def _build_usage_summary(
+    *,
+    args: argparse.Namespace,
+    stats: Any | None,
+    status_value: str,
+    started_at: datetime,
+    completed_at: datetime,
+    config_overrides: dict[str, Any] | None,
+    error_message: str | None = None,
+) -> dict[str, Any]:
+    prompt_defaults = ImagePromptGenerationConfig()
+    image_defaults = ImageGenerationConfig(
+        quality=getattr(args, "quality", "standard"),
+        preferred_style=getattr(args, "style", None),
+        aspect_ratio=getattr(args, "aspect_ratio", None),
+    )
+
+    stats_dict = stats.to_dict() if stats is not None else {}
+    raw_errors = stats_dict.get("errors", [])
+    error_messages = (
+        [str(message)[:200] for message in raw_errors[:5]]
+        if isinstance(raw_errors, list)
+        else []
+    )
+    if error_message:
+        error_messages = [error_message[:200], *error_messages]
+
+    duration_ms = max(0, int((completed_at - started_at).total_seconds() * 1000))
+
+    return {
+        "status": status_value,
+        "timing": {
+            "started_at": started_at.isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "duration_ms": duration_ms,
+        },
+        "requested": {
+            "book_slug": getattr(args, "book_slug", None),
+            "book_path": getattr(args, "book_path", None),
+            "images_for_scenes": getattr(args, "images_for_scenes", None),
+            "prompts_for_scenes": getattr(args, "prompts_for_scenes", None),
+            "prompts_per_scene": getattr(args, "prompts_per_scene", None),
+            "skip_extraction": getattr(args, "skip_extraction", None),
+            "skip_ranking": getattr(args, "skip_ranking", None),
+            "skip_prompts": getattr(args, "skip_prompts", None),
+            "quality": getattr(args, "quality", None),
+            "style": getattr(args, "style", None),
+            "aspect_ratio": getattr(args, "aspect_ratio", None),
+            "mode": getattr(args, "mode", None),
+        },
+        "effective": {
+            "config_overrides": config_overrides or {},
+            "prompt_generation": {
+                "model_vendor": prompt_defaults.model_vendor,
+                "model_name": prompt_defaults.model_name,
+                "prompt_version": prompt_defaults.prompt_version,
+                "target_provider": prompt_defaults.target_provider,
+                "preferred_style": getattr(args, "prompt_art_style", None),
+            },
+            "image_generation": {
+                "provider": image_defaults.provider,
+                "model": image_defaults.model,
+                "quality": image_defaults.quality,
+                "style": image_defaults.preferred_style,
+                "aspect_ratio": image_defaults.aspect_ratio,
+                "mode": getattr(args, "mode", "sync"),
+            },
+        },
+        "outputs": {
+            "scenes_extracted": int(stats_dict.get("scenes_extracted", 0) or 0),
+            "scenes_refined": int(stats_dict.get("scenes_refined", 0) or 0),
+            "scenes_ranked": int(stats_dict.get("scenes_ranked", 0) or 0),
+            "prompts_generated": int(stats_dict.get("prompts_generated", 0) or 0),
+            "images_generated": int(stats_dict.get("images_generated", 0) or 0),
+        },
+        "errors": {
+            "count": len(error_messages),
+            "messages": error_messages,
+        },
+    }
 
 
 def _source_path_exists(
@@ -131,8 +218,11 @@ async def _execute_pipeline_run(
     *,
     run_id: UUID,
     args: argparse.Namespace,
+    config_overrides: dict[str, Any] | None = None,
 ) -> None:
     """Execute the end-to-end pipeline in a background task."""
+
+    execution_started_at = datetime.now(timezone.utc)
 
     logger.info(
         "Pipeline run task started: run_id=%s, book_slug=%s",
@@ -151,23 +241,46 @@ async def _execute_pipeline_run(
     try:
         stats = await _run_full_pipeline(args, stage_callback=_stage_callback)
     except Exception as exc:
+        failure_message = _format_failure_message(exc)
+        completed_at = datetime.now(timezone.utc)
+        usage_summary = _build_usage_summary(
+            args=args,
+            stats=None,
+            status_value="failed",
+            started_at=execution_started_at,
+            completed_at=completed_at,
+            config_overrides=config_overrides,
+            error_message=failure_message,
+        )
         logger.exception("Pipeline run failed with exception: run_id=%s", run_id)
         _update_status(
             run_id=run_id,
             status_value="failed",
             current_stage="failed",
-            error_message=_format_failure_message(exc),
+            error_message=failure_message,
+            usage_summary=usage_summary,
             completed=True,
         )
         return
 
     if stats.errors:
         combined_error = " | ".join(stats.errors)
+        completed_at = datetime.now(timezone.utc)
+        usage_summary = _build_usage_summary(
+            args=args,
+            stats=stats,
+            status_value="failed",
+            started_at=execution_started_at,
+            completed_at=completed_at,
+            config_overrides=config_overrides,
+            error_message=combined_error[:2000],
+        )
         _update_status(
             run_id=run_id,
             status_value="failed",
             current_stage="failed",
             error_message=combined_error[:2000],
+            usage_summary=usage_summary,
             completed=True,
         )
         logger.error(
@@ -177,11 +290,21 @@ async def _execute_pipeline_run(
         )
         return
 
+    completed_at = datetime.now(timezone.utc)
+    usage_summary = _build_usage_summary(
+        args=args,
+        stats=stats,
+        status_value="completed",
+        started_at=execution_started_at,
+        completed_at=completed_at,
+        config_overrides=config_overrides,
+    )
     _update_status(
         run_id=run_id,
         status_value="completed",
         current_stage="completed",
         error_message=None,
+        usage_summary=usage_summary,
         completed=True,
     )
     logger.info("Pipeline run task completed: run_id=%s", run_id)
@@ -298,7 +421,11 @@ async def start_pipeline_run(
         refresh=True,
     )
 
-    coro = _execute_pipeline_run(run_id=run.id, args=args)
+    coro = _execute_pipeline_run(
+        run_id=run.id,
+        args=args,
+        config_overrides=config_overrides,
+    )
     try:
         _spawn_background_task(
             coro,

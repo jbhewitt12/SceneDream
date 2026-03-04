@@ -112,6 +112,7 @@ def test_document_dashboard_service_reports_stage_counts_for_document(
     assert match.stages.images_generated is True
     assert match.last_run is not None
     assert match.last_run.status == "completed"
+    assert match.last_run.usage_summary == {}
 
 
 def test_document_dashboard_service_uses_legacy_slug_fallback(
@@ -160,3 +161,4 @@ def test_document_dashboard_service_uses_legacy_slug_fallback(
     assert match.last_run is not None
     assert match.last_run.id == run.id
     assert match.last_run.error_message == "Legacy pipeline error"
+    assert match.last_run.usage_summary == {}

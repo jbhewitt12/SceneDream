@@ -29,6 +29,7 @@ export type PipelineRun = {
   current_stage: string | null
   error_message: string | null
   config_overrides: Record<string, unknown>
+  usage_summary: Record<string, unknown>
   started_at: string | null
   completed_at: string | null
   created_at: string

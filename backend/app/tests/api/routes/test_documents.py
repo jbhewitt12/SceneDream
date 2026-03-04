@@ -72,6 +72,7 @@ def test_get_documents_dashboard_returns_pipeline_status(
         assert target["last_run"] is not None
         assert target["last_run"]["id"] == str(run.id)
         assert target["last_run"]["error_message"] == "Route-level failure"
+        assert target["last_run"]["usage_summary"] == {}
     finally:
         if source_file.exists():
             source_file.unlink()

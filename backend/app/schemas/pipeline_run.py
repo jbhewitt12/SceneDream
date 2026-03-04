@@ -18,6 +18,7 @@ class PipelineRunCreate(BaseModel):
     current_stage: str | None = None
     error_message: str | None = None
     config_overrides: dict[str, Any] = Field(default_factory=dict)
+    usage_summary: dict[str, Any] = Field(default_factory=dict)
     started_at: datetime | None = None
     completed_at: datetime | None = None
 
@@ -55,6 +56,7 @@ class PipelineRunRead(BaseModel):
     current_stage: str | None
     error_message: str | None
     config_overrides: dict[str, Any] = Field(default_factory=dict)
+    usage_summary: dict[str, Any] = Field(default_factory=dict)
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime

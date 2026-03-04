@@ -48,6 +48,51 @@ const formatDateTime = (value: string | null | undefined) => {
   }).format(parsed)
 }
 
+const toNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null
+
+const formatUsageSummary = (
+  usageSummary: Record<string, unknown> | undefined,
+) => {
+  if (!usageSummary) {
+    return null
+  }
+
+  const outputs =
+    typeof usageSummary.outputs === "object" && usageSummary.outputs !== null
+      ? (usageSummary.outputs as Record<string, unknown>)
+      : {}
+  const timing =
+    typeof usageSummary.timing === "object" && usageSummary.timing !== null
+      ? (usageSummary.timing as Record<string, unknown>)
+      : {}
+  const errors =
+    typeof usageSummary.errors === "object" && usageSummary.errors !== null
+      ? (usageSummary.errors as Record<string, unknown>)
+      : {}
+
+  const promptsGenerated = toNumber(outputs.prompts_generated)
+  const imagesGenerated = toNumber(outputs.images_generated)
+  const durationMs = toNumber(timing.duration_ms)
+  const errorCount = toNumber(errors.count)
+
+  const parts: string[] = []
+  if (promptsGenerated !== null) {
+    parts.push(`prompts ${promptsGenerated}`)
+  }
+  if (imagesGenerated !== null) {
+    parts.push(`images ${imagesGenerated}`)
+  }
+  if (durationMs !== null) {
+    parts.push(`duration ${(durationMs / 1000).toFixed(1)}s`)
+  }
+  if (errorCount !== null) {
+    parts.push(`errors ${errorCount}`)
+  }
+
+  return parts.length ? parts.join(" • ") : null
+}
+
 const statusColor = (status: string | null | undefined) => {
   if (!status) {
     return "gray"
@@ -391,6 +436,7 @@ type RunSummaryLike = {
   status: string
   current_stage: string | null
   error_message: string | null
+  usage_summary: Record<string, unknown>
   completed_at: string | null
 }
 
@@ -417,6 +463,9 @@ function DocumentCard({
 }) {
   const runSummary: RunSummaryLike | null =
     activeRun ?? (entry.last_run ? { ...entry.last_run } : null)
+  const usageText = runSummary
+    ? formatUsageSummary(runSummary.usage_summary)
+    : null
   const hasActiveRun =
     activeRun !== undefined && !isTerminalRunStatus(activeRun.status)
   const canLaunch = entry.file_exists || entry.stages.extracted
@@ -586,6 +635,11 @@ function DocumentCard({
                 <Text fontSize="sm" color="fg.muted">
                   Completed: {formatDateTime(runSummary.completed_at)}
                 </Text>
+                {usageText ? (
+                  <Text fontSize="sm" color="fg.muted">
+                    Usage: {usageText}
+                  </Text>
+                ) : null}
                 {runSummary.error_message ? (
                   <Text fontSize="sm" color="red.300">
                     {runSummary.error_message}
