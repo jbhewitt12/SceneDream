@@ -17,7 +17,7 @@ This project is built with the FastAPI Template.
 - `backend/app` bundles the FastAPI app: `api/routes` exposes REST resources for scenes, rankings, prompts, and generated images; `services/*` holds the pipeline stages plus EPUB tooling; `repositories/` centralize SQLModel persistence; `schemas/` defines DTOs; tests for both API and services live in `backend/app/tests`.
 - `backend/models` defines SQLModel tables (`SceneExtraction`, `SceneRanking`, `ImagePrompt`, `GeneratedImage`) consumed by Alembic migrations in `backend/app/alembic`.
 - `frontend/src` houses the React + Chakra UI client: `routes/_layout/*` renders dashboards for each pipeline stage, `api/` & `client/` contain the generated OpenAPI SDK, while `components/`, `hooks/`, and `theme/` provide shared UI primitives.
-- `books/` stores EPUB inputs and chapter artifacts consumed by the extraction services; `img/` accumulates generated assets (notably `img/generated/<book>/...`).
+- `documents/` stores source inputs for ingestion (legacy `books/` paths still resolve for backward compatibility); `img/` accumulates generated assets (notably `img/generated/<book>/...`).
 - `scripts/` contains automation like `generate-client.sh` and deployment helpers.
 
 ## Concurrency Rule
