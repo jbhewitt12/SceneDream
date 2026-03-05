@@ -22,8 +22,6 @@ Set these in your deployment environment or GitHub Actions secrets:
 - `EMAILS_FROM_EMAIL` (optional)
 - `SENTRY_DSN` (optional)
 
-SceneDream does not require `FIRST_SUPERUSER` or `FIRST_SUPERUSER_PASSWORD`.
-
 ## Deploy with Docker Compose
 
 ```bash
