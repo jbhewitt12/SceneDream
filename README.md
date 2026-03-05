@@ -1,6 +1,6 @@
 # SceneDream
 
-SceneDream is a local-first pipeline for turning long-form source documents into generated scene artwork. It ingests source text, extracts cinematic scenes, ranks them, generates DALL-E-ready prompts, and renders images.
+SceneDream is a local-first pipeline for turning text based stories into generated scene artwork. It ingests source text, extracts cinematic scenes, ranks them, creates image generation prompts, and renders images.
 
 ## Pipeline Overview
 
