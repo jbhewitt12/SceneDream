@@ -12,6 +12,7 @@ from app.repositories import (
     SceneRankingRepository,
 )
 from app.services.document_dashboard_service import DocumentDashboardService
+from app.services.document_dashboard_service import _default_project_root_from_path
 
 
 def test_document_dashboard_service_reports_stage_counts_for_document(
@@ -162,3 +163,17 @@ def test_document_dashboard_service_uses_legacy_slug_fallback(
     assert match.last_run.id == run.id
     assert match.last_run.error_message == "Legacy pipeline error"
     assert match.last_run.usage_summary == {}
+
+
+def test_default_project_root_detects_local_layout() -> None:
+    source_file = Path(
+        "/Users/test/SceneDream/backend/app/services/document_dashboard_service.py"
+    )
+    assert _default_project_root_from_path(source_file) == Path(
+        "/Users/test/SceneDream"
+    )
+
+
+def test_default_project_root_detects_container_layout() -> None:
+    source_file = Path("/app/app/services/document_dashboard_service.py")
+    assert _default_project_root_from_path(source_file) == Path("/app")

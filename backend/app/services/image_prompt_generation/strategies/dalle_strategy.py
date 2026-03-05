@@ -6,7 +6,7 @@ from .base import PromptStrategy
 from .registry import PromptStrategyRegistry
 
 DALLE3_CHEATSHEET_PATH = (
-    "backend/app/services/image_prompt_generation/cheatsheets/dalle3_cheatsheet.md"
+    "app/services/image_prompt_generation/cheatsheets/dalle3_cheatsheet.md"
 )
 
 

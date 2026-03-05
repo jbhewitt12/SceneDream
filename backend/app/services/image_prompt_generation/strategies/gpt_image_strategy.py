@@ -6,7 +6,7 @@ from .base import PromptStrategy
 from .registry import PromptStrategyRegistry
 
 GPT_IMAGE_CHEATSHEET_PATH = (
-    "backend/app/services/image_prompt_generation/cheatsheets/gpt_image_cheatsheet.md"
+    "app/services/image_prompt_generation/cheatsheets/gpt_image_cheatsheet.md"
 )
 
 

@@ -16,6 +16,23 @@ class BookContentServiceError(RuntimeError):
     """Raised when book content cannot be loaded."""
 
 
+def _default_project_root_from_path(source_file: Path) -> Path:
+    """Resolve the repository root across local and containerized layouts."""
+    try:
+        candidate = source_file.resolve().parents[4]
+    except IndexError:
+        return source_file.resolve().parent
+
+    # In container images files live at /app/app/services/books/..., where
+    # parents[4] resolves to / and /app is the intended project root.
+    if candidate == Path("/"):
+        try:
+            return source_file.resolve().parents[3]
+        except IndexError:
+            return source_file.resolve().parent
+    return candidate
+
+
 @dataclass(slots=True)
 class _CacheEntry:
     checksum: str
@@ -62,7 +79,9 @@ class BookContentService:
         self._markdown_loader = MarkdownBookLoader()
         self._docx_loader = DocxBookLoader()
         self._cache: dict[str, _CacheEntry] = {}
-        self._project_root = project_root or Path(__file__).resolve().parents[4]
+        self._project_root = project_root or _default_project_root_from_path(
+            Path(__file__)
+        )
 
     def load_book(self, path: str | Path, *, cache: bool = True) -> BookContent:
         """

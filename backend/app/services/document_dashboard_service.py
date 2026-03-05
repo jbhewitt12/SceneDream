@@ -37,6 +37,22 @@ SUPPORTED_SOURCE_EXTENSIONS = {
 }
 
 
+def _default_project_root_from_path(source_file: Path) -> Path:
+    """Resolve the repository root across local and containerized layouts."""
+    try:
+        candidate = source_file.resolve().parents[3]
+    except IndexError:
+        return source_file.resolve().parent
+
+    # In container images files live at /app/app/..., where parents[3] is /.
+    if candidate == Path("/"):
+        try:
+            return source_file.resolve().parents[2]
+        except IndexError:
+            return source_file.resolve().parent
+    return candidate
+
+
 @dataclass(slots=True)
 class _EntryBuilder:
     document_id: UUID | None
@@ -54,7 +70,9 @@ class DocumentDashboardService:
 
     def __init__(self, session: Session, *, project_root: Path | None = None) -> None:
         self._session = session
-        self._project_root = project_root or Path(__file__).resolve().parents[3]
+        self._project_root = project_root or _default_project_root_from_path(
+            Path(__file__)
+        )
         self._book_service = BookContentService(project_root=self._project_root)
 
     def list_entries(self) -> list[DocumentDashboardEntry]:

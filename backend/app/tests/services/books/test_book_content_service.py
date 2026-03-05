@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.services.books import BookContentService, BookContentServiceError
+from app.services.books.book_content_service import _default_project_root_from_path
 
 DOCUMENTS_DIR = Path(__file__).resolve().parents[5] / "documents"
 LEGACY_BOOKS_DIR = Path(__file__).resolve().parents[5] / "books"
@@ -143,3 +144,17 @@ def test_normalize_source_path_keeps_external_absolute_paths(tmp_path: Path) -> 
 
     normalized = service.normalize_source_path(external_path.resolve())
     assert normalized == str(external_path.resolve())
+
+
+def test_default_project_root_detects_local_layout() -> None:
+    source_file = Path(
+        "/Users/test/SceneDream/backend/app/services/books/book_content_service.py"
+    )
+    assert _default_project_root_from_path(source_file) == Path(
+        "/Users/test/SceneDream"
+    )
+
+
+def test_default_project_root_detects_container_layout() -> None:
+    source_file = Path("/app/app/services/books/book_content_service.py")
+    assert _default_project_root_from_path(source_file) == Path("/app")
