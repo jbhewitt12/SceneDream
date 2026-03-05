@@ -13,6 +13,19 @@ SceneDream is a local-first pipeline for:
 
 Contributions across backend, frontend, docs, and tooling are welcome.
 
+## Coding Standards
+
+- Keep boundaries clean: API routes handle validation/HTTP, services hold business logic, repositories handle persistence only.
+- New FastAPI endpoints must be `async` and non-blocking; move CPU-heavy work to background tasks or executors.
+- Keep external side effects (LLM/image/file I/O) behind service adapters with retries, timeouts, and clear error handling.
+- Preserve API and schema stability: prefer additive changes and keep backend/frontend contracts aligned.
+- Add tests for every behavior change:
+  - services -> `backend/app/tests/services/`
+  - routes -> `backend/app/tests/api/routes/`
+  - repositories -> `backend/app/tests/repositories/`
+- Unit tests must mock external APIs with `monkeypatch`; do not call live LLM or image providers.
+- Definition of done: code + tests + lint/type checks pass, and behavior changes are documented in the PR.
+
 ## Before You Start
 
 1. Search existing issues and discussions to avoid duplicate work.
