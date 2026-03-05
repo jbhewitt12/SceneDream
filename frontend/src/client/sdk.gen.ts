@@ -3,7 +3,23 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { GeneratedImagesListProvidersResponse, GeneratedImagesListGeneratedImagesData, GeneratedImagesListGeneratedImagesResponse, GeneratedImagesGetGeneratedImageData, GeneratedImagesGetGeneratedImageResponse, GeneratedImagesUpdateImageApprovalData, GeneratedImagesUpdateImageApprovalResponse, GeneratedImagesStreamGeneratedImageFileData, GeneratedImagesStreamGeneratedImageFileResponse, GeneratedImagesListGeneratedImagesForSceneData, GeneratedImagesListGeneratedImagesForSceneResponse, GeneratedImagesListGeneratedImagesForPromptData, GeneratedImagesListGeneratedImagesForPromptResponse, GeneratedImagesRemixGeneratedImageData, GeneratedImagesRemixGeneratedImageResponse, GeneratedImagesCustomRemixGeneratedImageData, GeneratedImagesCustomRemixGeneratedImageResponse, GeneratedImagesTriggerImageGenerationData, GeneratedImagesTriggerImageGenerationResponse, GeneratedImagesQueueImageForPostingData, GeneratedImagesQueueImageForPostingResponse, GeneratedImagesGetImagePostingStatusData, GeneratedImagesGetImagePostingStatusResponse, GeneratedImagesRetryFailedPostsData, GeneratedImagesRetryFailedPostsResponse, GeneratedImagesCropImageData, GeneratedImagesCropImageResponse, ImagePromptsListPromptsForSceneData, ImagePromptsListPromptsForSceneResponse, ImagePromptsListPromptsData, ImagePromptsListPromptsResponse, ImagePromptsListPromptsForBookData, ImagePromptsListPromptsForBookResponse, ImagePromptsGetImagePromptData, ImagePromptsGetImagePromptResponse, ImagePromptsGenerateMetadataVariantsData, ImagePromptsGenerateMetadataVariantsResponse, ImagePromptsUpdatePromptMetadataData, ImagePromptsUpdatePromptMetadataResponse, SceneExtractionsListSceneExtractionsData, SceneExtractionsListSceneExtractionsResponse, SceneExtractionsGetFilterOptionsResponse, SceneExtractionsGetSceneExtractionData, SceneExtractionsGetSceneExtractionResponse, SceneRankingsListTopSceneRankingsData, SceneRankingsListTopSceneRankingsResponse, SceneRankingsListSceneRankingHistoryData, SceneRankingsListSceneRankingHistoryResponse, SceneRankingsGetSceneRankingData, SceneRankingsGetSceneRankingResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { DocumentsGetDocumentsDashboardResponse, GeneratedImagesListProvidersResponse, GeneratedImagesListGeneratedImagesData, GeneratedImagesListGeneratedImagesResponse, GeneratedImagesGetGeneratedImageData, GeneratedImagesGetGeneratedImageResponse, GeneratedImagesUpdateImageApprovalData, GeneratedImagesUpdateImageApprovalResponse, GeneratedImagesStreamGeneratedImageFileData, GeneratedImagesStreamGeneratedImageFileResponse, GeneratedImagesListGeneratedImagesForSceneData, GeneratedImagesListGeneratedImagesForSceneResponse, GeneratedImagesListGeneratedImagesForPromptData, GeneratedImagesListGeneratedImagesForPromptResponse, GeneratedImagesRemixGeneratedImageData, GeneratedImagesRemixGeneratedImageResponse, GeneratedImagesCustomRemixGeneratedImageData, GeneratedImagesCustomRemixGeneratedImageResponse, GeneratedImagesTriggerImageGenerationData, GeneratedImagesTriggerImageGenerationResponse, GeneratedImagesQueueImageForPostingData, GeneratedImagesQueueImageForPostingResponse, GeneratedImagesGetImagePostingStatusData, GeneratedImagesGetImagePostingStatusResponse, GeneratedImagesRetryFailedPostsData, GeneratedImagesRetryFailedPostsResponse, GeneratedImagesCropImageData, GeneratedImagesCropImageResponse, ImagePromptsListPromptsForSceneData, ImagePromptsListPromptsForSceneResponse, ImagePromptsListPromptsData, ImagePromptsListPromptsResponse, ImagePromptsListPromptsForBookData, ImagePromptsListPromptsForBookResponse, ImagePromptsGetImagePromptData, ImagePromptsGetImagePromptResponse, ImagePromptsGenerateMetadataVariantsData, ImagePromptsGenerateMetadataVariantsResponse, ImagePromptsUpdatePromptMetadataData, ImagePromptsUpdatePromptMetadataResponse, PipelineRunsStartPipelineRunData, PipelineRunsStartPipelineRunResponse, PipelineRunsGetPipelineRunData, PipelineRunsGetPipelineRunResponse, SceneExtractionsListSceneExtractionsData, SceneExtractionsListSceneExtractionsResponse, SceneExtractionsGetFilterOptionsResponse, SceneExtractionsGetSceneExtractionData, SceneExtractionsGetSceneExtractionResponse, SceneRankingsListTopSceneRankingsData, SceneRankingsListTopSceneRankingsResponse, SceneRankingsListSceneRankingHistoryData, SceneRankingsListSceneRankingHistoryResponse, SceneRankingsGetSceneRankingData, SceneRankingsGetSceneRankingResponse, SettingsGetSettingsResponse, SettingsUpdateSettingsData, SettingsUpdateSettingsResponse, SettingsListArtStylesResponse, UtilsHealthCheckResponse } from './types.gen';
+
+export class DocumentsService {
+    /**
+     * Get Documents Dashboard
+     * Return dashboard status rows for source documents.
+     * @returns DocumentDashboardResponse Successful Response
+     * @throws ApiError
+     */
+    public static getDocumentsDashboard(): CancelablePromise<DocumentsGetDocumentsDashboardResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/documents/dashboard'
+        });
+    }
+    
+}
 
 export class GeneratedImagesService {
     /**
@@ -566,6 +582,50 @@ export class ImagePromptsService {
     
 }
 
+export class PipelineRunsService {
+    /**
+     * Start Pipeline Run
+     * Create a pipeline run and execute it in the background.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns PipelineRunRead Successful Response
+     * @throws ApiError
+     */
+    public static startPipelineRun(data: PipelineRunsStartPipelineRunData): CancelablePromise<PipelineRunsStartPipelineRunResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/pipeline-runs',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Get Pipeline Run
+     * Return the current state of a pipeline run.
+     * @param data The data for the request.
+     * @param data.runId
+     * @returns PipelineRunRead Successful Response
+     * @throws ApiError
+     */
+    public static getPipelineRun(data: PipelineRunsGetPipelineRunData): CancelablePromise<PipelineRunsGetPipelineRunResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/pipeline-runs/{run_id}',
+            path: {
+                run_id: data.runId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+}
+
 export class SceneExtractionsService {
     /**
      * List Scene Extractions
@@ -730,28 +790,56 @@ export class SceneRankingsService {
     
 }
 
-export class UtilsService {
+export class SettingsService {
     /**
-     * Test Email
-     * Test emails.
-     * @param data The data for the request.
-     * @param data.emailTo
-     * @returns Message Successful Response
+     * Get Settings
+     * Return global defaults and active art-style catalog entries.
+     * @returns AppSettingsBundleResponse Successful Response
      * @throws ApiError
      */
-    public static testEmail(data: UtilsTestEmailData): CancelablePromise<UtilsTestEmailResponse> {
+    public static getSettings(): CancelablePromise<SettingsGetSettingsResponse> {
         return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/v1/utils/test-email/',
-            query: {
-                email_to: data.emailTo
-            },
+            method: 'GET',
+            url: '/api/v1/settings'
+        });
+    }
+    
+    /**
+     * Update Settings
+     * Update global defaults for scenes-per-run and default art style.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns AppSettingsBundleResponse Successful Response
+     * @throws ApiError
+     */
+    public static updateSettings(data: SettingsUpdateSettingsData): CancelablePromise<SettingsUpdateSettingsResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/settings',
+            body: data.requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: 'Validation Error'
             }
         });
     }
     
+    /**
+     * List Art Styles
+     * List active art styles available to users.
+     * @returns ArtStyleListResponse Successful Response
+     * @throws ApiError
+     */
+    public static listArtStyles(): CancelablePromise<SettingsListArtStylesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/settings/art-styles'
+        });
+    }
+    
+}
+
+export class UtilsService {
     /**
      * Health Check
      * @returns boolean Successful Response
