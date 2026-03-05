@@ -32,8 +32,6 @@ services:
       - ./backend/htmlcov:/app/htmlcov
       - ~/.flickr:/root/.flickr
       - ~/.flickr_token:/root/.flickr_token:ro
-    environment:
-      EMAILS_FROM_EMAIL: "noreply@example.com"
 
   frontend:
     restart: "no"

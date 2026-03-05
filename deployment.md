@@ -16,10 +16,6 @@ Set these in your deployment environment or GitHub Actions secrets:
 - `DOMAIN`
 - `STACK_NAME`
 - `POSTGRES_PASSWORD`
-- `SMTP_HOST` (optional)
-- `SMTP_USER` (optional)
-- `SMTP_PASSWORD` (optional)
-- `EMAILS_FROM_EMAIL` (optional)
 - `SENTRY_DSN` (optional)
 
 ## Deploy with Docker Compose
