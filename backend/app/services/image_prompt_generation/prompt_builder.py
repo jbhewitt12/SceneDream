@@ -15,7 +15,7 @@ from .strategies import PromptStrategyRegistry
 
 logger = logging.getLogger(__name__)
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+_BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 
 class PromptBuilder:
@@ -221,14 +221,23 @@ class PromptBuilder:
         """Load and cache cheatsheet text."""
         if path_str in self._cheatsheet_cache:
             return self._cheatsheet_cache[path_str]
+
         path = Path(path_str)
-        if not path.is_absolute():
-            path = _PROJECT_ROOT / path
-        if not path.exists():
+        candidates: list[Path]
+        if path.is_absolute():
+            candidates = [path]
+        else:
+            candidates = [_BACKEND_ROOT / path]
+            # Backward compatibility for legacy paths that started with "backend/".
+            if path.parts and path.parts[0] == "backend":
+                candidates.append(_BACKEND_ROOT / Path(*path.parts[1:]))
+
+        resolved = next((candidate for candidate in candidates if candidate.exists()), None)
+        if resolved is None:
             raise ImagePromptGenerationServiceError(
                 f"Cheat sheet file not found: {path_str}"
             )
-        text = path.read_text(encoding="utf-8")
+        text = resolved.read_text(encoding="utf-8")
         self._cheatsheet_cache[path_str] = text.strip()
         return self._cheatsheet_cache[path_str]
 

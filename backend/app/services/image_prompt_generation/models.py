@@ -8,7 +8,9 @@ from uuid import UUID
 
 from app.services.langchain.model_routing import LLMProvider
 
-DEFAULT_CHEATSHEET_PATH = "backend/app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md"
+DEFAULT_CHEATSHEET_PATH = (
+    "app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md"
+)
 
 
 class ImagePromptGenerationServiceError(RuntimeError):

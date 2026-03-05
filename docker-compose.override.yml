@@ -29,6 +29,7 @@ services:
           action: rebuild
     # TODO: remove once coverage is done locally
     volumes:
+      - ./documents:/app/documents
       - ./backend/htmlcov:/app/htmlcov
       - ~/.flickr:/root/.flickr
       - ~/.flickr_token:/root/.flickr_token:ro
