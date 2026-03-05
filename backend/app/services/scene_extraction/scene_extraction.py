@@ -19,7 +19,14 @@ from sqlmodel import Session
 from app.core.db import engine
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.services.books import BookContentService, BookContentServiceError
-from app.services.langchain import gemini_api
+from app.services.langchain import gemini_api, openai_api
+from app.services.langchain.model_routing import (
+    LLMProvider,
+    LLMRoutingConfig,
+    ResolvedLLMModel,
+    infer_provider_from_model_name,
+    resolve_llm_model,
+)
 from app.services.scene_extraction.scene_refinement import (
     RefinedScene,
     SceneRefinementError,
@@ -56,11 +63,17 @@ SCENE_EXTRACTION_SCHEMA_TEXT = """{
 
 @dataclass
 class SceneExtractionConfig:
+    extraction_model_vendor: LLMProvider = "google"
     gemini_model: str = "gemini-2.5-flash-lite"
+    extraction_backup_model_vendor: LLMProvider = "openai"
+    extraction_backup_model: str = "gpt-5-mini"
     gemini_temperature: float = 0.0
     max_chunk_chars: int = 12000
     chunk_overlap_paragraphs: int = 2
+    refinement_model_vendor: LLMProvider = "google"
     refinement_model: str = "gemini-2.5-flash-lite"
+    refinement_backup_model_vendor: LLMProvider = "openai"
+    refinement_backup_model: str = "gpt-5-mini"
     refinement_temperature: float = 0.1
     refinement_max_tokens: int | None = None
     book_slug: str | None = None
@@ -125,7 +138,32 @@ class SceneExtractor:
         self.config = config or SceneExtractionConfig()
         load_dotenv()
         self._refiner: SceneRefiner | None = None
+        self._extraction_model_choice: ResolvedLLMModel | None = None
         self._book_service = BookContentService()
+
+    def _resolve_extraction_model(self) -> ResolvedLLMModel:
+        if self._extraction_model_choice is None:
+            self._extraction_model_choice = resolve_llm_model(
+                LLMRoutingConfig(
+                    default_vendor=self.config.extraction_model_vendor,
+                    default_model=self.config.gemini_model,
+                    backup_vendor=self.config.extraction_backup_model_vendor,
+                    backup_model=self.config.extraction_backup_model,
+                ),
+                context="SceneExtractor.extract",
+            )
+        return self._extraction_model_choice
+
+    def _resolve_refinement_model(self) -> ResolvedLLMModel:
+        return resolve_llm_model(
+            LLMRoutingConfig(
+                default_vendor=self.config.refinement_model_vendor,
+                default_model=self.config.refinement_model,
+                backup_vendor=self.config.refinement_backup_model_vendor,
+                backup_model=self.config.refinement_backup_model,
+            ),
+            context="SceneExtractor.refine",
+        )
 
     def extract_book(self, book_path: str | os.PathLike[str]) -> dict[str, object]:
         resolved_book_path = self._resolve_book_path(book_path)
@@ -297,6 +335,7 @@ class SceneExtractor:
         book_slug: str | None = None,
         chunk_start_index: int | None = None,
     ) -> list[RawScene]:
+        selected_model = self._resolve_extraction_model()
         chunks = self._chunk_chapter(chapter)
         if chunk_limit is not None and chunk_limit <= 0:
             return []
@@ -329,19 +368,31 @@ class SceneExtractor:
             )
             prompt = self._build_chunk_prompt(chunk)
             try:
-                response = asyncio.run(
-                    gemini_api.json_output(
-                        prompt=prompt,
-                        system_instruction=self._gemini_system_instruction(),
-                        model=self.config.gemini_model,
-                        temperature=self.config.gemini_temperature,
+                if selected_model.vendor == "google":
+                    response = asyncio.run(
+                        gemini_api.json_output(
+                            prompt=prompt,
+                            system_instruction=self._gemini_system_instruction(),
+                            model=selected_model.model,
+                            temperature=self.config.gemini_temperature,
+                        )
                     )
-                )
+                else:
+                    response = asyncio.run(
+                        openai_api.json_output(
+                            prompt=prompt,
+                            system_instruction=self._gemini_system_instruction(),
+                            model=selected_model.model,
+                            temperature=self.config.gemini_temperature,
+                        )
+                    )
             except Exception as exc:
                 logger.error(
-                    "Gemini extraction failed for chapter %s chunk %s: %s",
+                    "Extraction failed for chapter %s chunk %s (vendor=%s, model=%s): %s",
                     chapter.number,
                     chunk.index,
+                    selected_model.vendor,
+                    selected_model.model,
                     exc,
                 )
                 print(f"  Chunk {chunk.index}: extraction failed ({exc}); continuing")
@@ -497,7 +548,10 @@ class SceneExtractor:
             raise RuntimeError("Refinement is disabled in the current configuration.")
         if self._refiner is None:
             self._refiner = SceneRefiner(
+                default_vendor=self.config.refinement_model_vendor,
                 model=self.config.refinement_model,
+                backup_vendor=self.config.refinement_backup_model_vendor,
+                backup_model=self.config.refinement_backup_model,
                 temperature=self.config.refinement_temperature,
                 max_tokens=self.config.refinement_max_tokens,
             )
@@ -530,6 +584,22 @@ class SceneExtractor:
         with Session(engine) as session:
             repository = SceneExtractionRepository(session)
             try:
+                extraction_model = self._resolve_extraction_model()
+                refinement_model: ResolvedLLMModel | None = None
+                if self.config.enable_refinement:
+                    if (
+                        self._refiner is not None
+                        and self._refiner.last_model_name
+                        and self._refiner.last_model_vendor
+                    ):
+                        refinement_model = ResolvedLLMModel(
+                            vendor=self._refiner.last_model_vendor,
+                            model=self._refiner.last_model_name,
+                            used_backup=self._refiner.last_model_name
+                            == self.config.refinement_backup_model,
+                        )
+                    else:
+                        refinement_model = self._resolve_refinement_model()
                 for scene in raw_scenes:
                     if scene.scene_id is None:
                         continue
@@ -547,7 +617,15 @@ class SceneExtractor:
                         decision = refinement.decision
                         rationale = refinement.rationale
                         refinement_has_excerpt = False
-                    props: dict[str, object] = {}
+                    props: dict[str, object] = {
+                        "extraction_model_vendor": extraction_model.vendor,
+                        "extraction_used_backup_model": extraction_model.used_backup,
+                    }
+                    if refinement_model is not None:
+                        props["refinement_model_vendor"] = refinement_model.vendor
+                        props["refinement_used_backup_model"] = (
+                            refinement_model.used_backup
+                        )
                     paragraph_start = (
                         scene.paragraph_start
                         if scene.paragraph_start is not None
@@ -589,10 +667,10 @@ class SceneExtractor:
                             "refined_word_count": refined_word_count,
                             "refined_char_count": refined_char_count,
                             "raw_signature": self._hash_signature(scene),
-                            "extraction_model": self.config.gemini_model,
+                            "extraction_model": extraction_model.model,
                             "extraction_temperature": self.config.gemini_temperature,
-                            "refinement_model": self.config.refinement_model
-                            if self.config.enable_refinement
+                            "refinement_model": refinement_model.model
+                            if refinement_model is not None
                             else None,
                             "refinement_temperature": self.config.refinement_temperature
                             if self.config.enable_refinement
@@ -630,7 +708,7 @@ class SceneExtractor:
                             "raw_word_count": raw_word_count,
                             "raw_char_count": raw_char_count,
                             "raw_signature": self._hash_signature(scene),
-                            "extraction_model": self.config.gemini_model,
+                            "extraction_model": extraction_model.model,
                             "extraction_temperature": self.config.gemini_temperature,
                             "provisional_id": scene.provisional_id,
                             "location_marker_normalized": scene.location_marker.strip().lower(),
@@ -643,7 +721,9 @@ class SceneExtractor:
                         }
                         if self.config.enable_refinement:
                             update_payload["refinement_model"] = (
-                                self.config.refinement_model
+                                refinement_model.model
+                                if refinement_model is not None
+                                else None
                             )
                             update_payload["refinement_temperature"] = (
                                 self.config.refinement_temperature
@@ -789,10 +869,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--limit", type=int, help="Maximum number of scenes to consider."
     )
     refine_pending.add_argument(
-        "--model", help="Override the Gemini model used for refinement."
+        "--model", help="Override the default model used for refinement."
     )
     refine_pending.add_argument(
-        "--temperature", type=float, help="Override the Gemini temperature."
+        "--temperature", type=float, help="Override the refinement temperature."
     )
     refine_pending.add_argument(
         "--max-tokens",
@@ -825,6 +905,16 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
     config = SceneExtractionConfig(enable_refinement=True)
     if getattr(args, "model", None):
         config.refinement_model = args.model
+        inferred_vendor = infer_provider_from_model_name(args.model)
+        if inferred_vendor is not None:
+            config.refinement_model_vendor = inferred_vendor
+            if inferred_vendor == config.refinement_backup_model_vendor:
+                if inferred_vendor == "openai":
+                    config.refinement_backup_model_vendor = "google"
+                    config.refinement_backup_model = "gemini-2.5-flash-lite"
+                else:
+                    config.refinement_backup_model_vendor = "openai"
+                    config.refinement_backup_model = "gpt-5-mini"
     if getattr(args, "temperature", None) is not None:
         config.refinement_temperature = args.temperature
     if getattr(args, "max_tokens", None) is not None:
@@ -929,10 +1019,13 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
                 refinement = refinements.get(record.scene_number)
                 if refinement is None:
                     continue
+                applied_refinement_model = (
+                    refiner.last_model_name or config.refinement_model
+                )
                 payload = {
                     "refinement_decision": refinement.decision,
                     "refinement_rationale": refinement.rationale,
-                    "refinement_model": config.refinement_model,
+                    "refinement_model": applied_refinement_model,
                     "refinement_temperature": config.refinement_temperature,
                     "refinement_has_refined_excerpt": False,
                     "refined_at": now,

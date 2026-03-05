@@ -17,7 +17,7 @@ SceneDream is a local-first pipeline for turning text based stories into generat
 - Frontend: React + TypeScript + Chakra UI + TanStack Router
 - Database: PostgreSQL (pipeline metadata)
 - Filesystem: `documents/` for source files, `img/generated/` for outputs
-- AI providers: Gemini/xAI (extraction + ranking) and OpenAI (image generation)
+- AI providers: Gemini/OpenAI (LLM tasks with automatic fallback) and OpenAI (image generation)
 
 ## Quickstart (Docker, Recommended)
 
@@ -27,10 +27,10 @@ SceneDream is a local-first pipeline for turning text based stories into generat
 cp .env.example .env
 ```
 
-2. Update provider keys in `.env` only for features you plan to run:
-- `GEMINI_API_KEY` for extraction/ranking
-- `XAI_API_KEY` for optional refinement/ranking
-- `OPENAI_API_KEY` for image generation
+2. Add your OpenAI key in `.env`:
+- `OPENAI_API_KEY` is sufficient for first-run extraction, ranking, prompt generation, and image generation.
+- `GEMINI_API_KEY` is optional; when present, Gemini models remain the configured defaults with automatic OpenAI fallback.
+- `XAI_API_KEY` remains optional for any xAI experiments.
 
 3. Start the stack:
 

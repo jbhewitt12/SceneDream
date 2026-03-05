@@ -20,7 +20,12 @@ from sqlmodel import Session
 
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
-from app.services.langchain import gemini_api
+from app.services.langchain import gemini_api, openai_api
+from app.services.langchain.model_routing import (
+    LLMProvider,
+    LLMRoutingConfig,
+    resolve_llm_model,
+)
 from models.scene_extraction import SceneExtraction
 from models.scene_ranking import SceneRanking
 
@@ -149,7 +154,9 @@ class _RankingResponse(BaseModel):
 @dataclass(slots=True)
 class SceneRankingConfig:
     model_name: str = "gemini-2.5-flash-lite"
-    model_vendor: str = "google"
+    model_vendor: LLMProvider = "google"
+    backup_model_name: str = "gpt-5-mini"
+    backup_model_vendor: LLMProvider = "openai"
     prompt_version: str = "scene-ranking-v1"
     temperature: float = 0.1
     max_output_tokens: int | None = None
@@ -173,6 +180,8 @@ class SceneRankingConfig:
         data: dict[str, Any] = {
             "model_name": self.model_name,
             "model_vendor": self.model_vendor,
+            "backup_model_name": self.backup_model_name,
+            "backup_model_vendor": self.backup_model_vendor,
             "prompt_version": self.prompt_version,
             "temperature": self.temperature,
             "max_output_tokens": self.max_output_tokens,
@@ -276,6 +285,13 @@ class SceneRankingService:
                 "Skipping scene %s because refinement marked it as discard.",
                 target_scene.id,
             )
+            return None
+        try:
+            config = self._resolve_active_llm_config(config)
+        except Exception as exc:
+            logger.error("Failed to resolve ranking model routing: %s", exc)
+            if config.fail_on_error:
+                raise SceneRankingServiceError(str(exc)) from exc
             return None
         weight_cfg = self._normalize_weight_config(config.weight_config)
         weight_hash = self.compute_weight_hash(weight_cfg)
@@ -427,6 +443,37 @@ class SceneRankingService:
         if not config.autocommit:
             self._session.flush()
         return ranking
+
+    def _resolve_active_llm_config(
+        self,
+        config: SceneRankingConfig,
+    ) -> SceneRankingConfig:
+        resolved = resolve_llm_model(
+            LLMRoutingConfig(
+                default_vendor=config.model_vendor,
+                default_model=config.model_name,
+                backup_vendor=config.backup_model_vendor,
+                backup_model=config.backup_model_name,
+            ),
+            context="SceneRankingService.rank_scene",
+        )
+        metadata = dict(config.metadata)
+        metadata.update(
+            {
+                "llm_default_vendor": config.model_vendor,
+                "llm_default_model": config.model_name,
+                "llm_backup_vendor": config.backup_model_vendor,
+                "llm_backup_model": config.backup_model_name,
+                "llm_selected_vendor": resolved.vendor,
+                "llm_selected_model": resolved.model,
+                "llm_used_backup_model": resolved.used_backup,
+            }
+        )
+        return config.copy_with(
+            model_vendor=resolved.vendor,
+            model_name=resolved.model,
+            metadata=metadata,
+        )
 
     async def rank_scenes(
         self,
@@ -693,7 +740,15 @@ class SceneRankingService:
         attempts = max(config.retry_attempts, 0)
         for attempt in range(attempts + 1):
             try:
-                return await gemini_api.json_output(
+                if config.model_vendor == "google":
+                    return await gemini_api.json_output(
+                        prompt=prompt,
+                        system_instruction=config.system_instruction,
+                        model=config.model_name,
+                        temperature=config.temperature,
+                        max_tokens=config.max_output_tokens,
+                    )
+                return await openai_api.json_output(
                     prompt=prompt,
                     system_instruction=config.system_instruction,
                     model=config.model_name,
@@ -702,7 +757,13 @@ class SceneRankingService:
                 )
             except Exception as exc:  # pragma: no cover - depends on external API
                 last_error = exc
-                logger.warning("Gemini call attempt %s failed: %s", attempt + 1, exc)
+                logger.warning(
+                    "LLM call attempt %s failed (vendor=%s model=%s): %s",
+                    attempt + 1,
+                    config.model_vendor,
+                    config.model_name,
+                    exc,
+                )
                 if attempt >= attempts:
                     break
                 sleep_seconds = config.retry_backoff_seconds * (attempt + 1)

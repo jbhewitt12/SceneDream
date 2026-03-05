@@ -27,6 +27,7 @@ from sqlmodel import Session, select
 
 from app.core.db import engine
 from app.repositories import ImagePromptRepository, SceneRankingRepository
+from app.services.langchain.model_routing import infer_provider_from_model_name
 from app.services.image_prompt_generation.image_prompt_generation_service import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationService,
@@ -80,7 +81,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--temperature",
         type=float,
-        help="Override the sampling temperature for Gemini calls.",
+        help="Override the sampling temperature for LLM calls.",
     )
     run.add_argument(
         "--max-output-tokens",
@@ -255,6 +256,15 @@ async def _handle_run(args: argparse.Namespace) -> int:
     config_kwargs: dict[str, Any] = {}
     if args.model_name:
         config_kwargs["model_name"] = args.model_name
+        inferred_vendor = infer_provider_from_model_name(args.model_name)
+        if inferred_vendor is not None:
+            config_kwargs["model_vendor"] = inferred_vendor
+            if inferred_vendor == "openai":
+                config_kwargs["backup_model_vendor"] = "google"
+                config_kwargs["backup_model_name"] = "gemini-3-pro-preview"
+            else:
+                config_kwargs["backup_model_vendor"] = "openai"
+                config_kwargs["backup_model_name"] = "gpt-5-mini"
     if args.prompt_version:
         config_kwargs["prompt_version"] = args.prompt_version
     if args.temperature is not None:
