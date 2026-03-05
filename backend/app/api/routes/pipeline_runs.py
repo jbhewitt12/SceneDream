@@ -342,6 +342,8 @@ def _build_usage_summary(
             "prompt_generation": {
                 "model_vendor": prompt_defaults.model_vendor,
                 "model_name": prompt_defaults.model_name,
+                "backup_model_vendor": prompt_defaults.backup_model_vendor,
+                "backup_model_name": prompt_defaults.backup_model_name,
                 "prompt_version": prompt_defaults.prompt_version,
                 "target_provider": prompt_defaults.target_provider,
                 "preferred_style": getattr(args, "prompt_art_style", None),

@@ -249,8 +249,9 @@ async def json_output(
     model: str = DEFAULT_PRO_MODEL,
     temperature: float = 0.0,
     max_tokens: int | None = None,
+    force_json_object: bool = True,
     **kwargs: Any,
-) -> dict[str, Any]:
+) -> Any:
     """
     Makes an LLM call that forces JSON output using response_format.
     Parses the response to a Python dict.
@@ -265,13 +266,15 @@ async def json_output(
     :param temperature: Randomness control (low for JSON).
     :param max_tokens: Max response tokens.
     :param kwargs: Additional LLM init params.
-    :return: Parsed JSON as a dict.
+    :param force_json_object: Enforce a top-level JSON object via OpenAI response_format.
+    :return: Parsed JSON payload.
     """
+    response_format = {"type": "json_object"} if force_json_object else None
     llm = _get_llm(
         model,
         temperature,
         max_tokens,
-        response_format={"type": "json_object"},
+        response_format=response_format,
         **kwargs,
     )
     messages = [SystemMessage(content=system_instruction), HumanMessage(content=prompt)]
@@ -285,8 +288,7 @@ async def json_output(
             lines = lines[:-1]
         content = "\n".join(lines).strip()
     try:
-        parsed: dict[str, Any] = json.loads(content)
-        return parsed
+        return json.loads(content)
     except json.JSONDecodeError as exc:
         metadata = getattr(response, "response_metadata", {}) or {}
         finish_reason = metadata.get("finish_reason")

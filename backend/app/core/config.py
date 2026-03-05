@@ -65,6 +65,7 @@ class Settings(BaseSettings):
         )
 
     OPENAI_API_KEY: str | None = None
+    GEMINI_API_KEY: str | None = None
     FLICKR_API_KEY: str | None = None
     FLICKR_API_SECRET: str | None = None
 

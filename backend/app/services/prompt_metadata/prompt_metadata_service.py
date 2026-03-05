@@ -15,7 +15,12 @@ from uuid import UUID
 from sqlmodel import Session
 
 from app.repositories.image_prompt import ImagePromptRepository
-from app.services.langchain import gemini_api
+from app.services.langchain import gemini_api, openai_api
+from app.services.langchain.model_routing import (
+    LLMProvider,
+    LLMRoutingConfig,
+    resolve_llm_model,
+)
 from models.image_prompt import ImagePrompt
 
 logger = logging.getLogger(__name__)
@@ -26,8 +31,10 @@ logger.addHandler(logging.NullHandler())
 class PromptMetadataConfig:
     """Runtime configuration for metadata generation."""
 
-    model_vendor: str = "google"
+    model_vendor: LLMProvider = "google"
     model_name: str = "gemini-3-flash-preview"
+    backup_model_vendor: LLMProvider = "openai"
+    backup_model_name: str = "gpt-5-nano"
     temperature: float = 0.85
     retry_attempts: int = 2
     retry_backoff_seconds: float = 1.0
@@ -329,31 +336,52 @@ class PromptMetadataGenerationService:
         payload: str,
         prompt_id: UUID,
     ) -> Mapping[str, Any]:
+        resolved = resolve_llm_model(
+            LLMRoutingConfig(
+                default_vendor=self._config.model_vendor,
+                default_model=self._config.model_name,
+                backup_vendor=self._config.backup_model_vendor,
+                backup_model=self._config.backup_model_name,
+            ),
+            context="PromptMetadataGenerationService.generate",
+        )
         attempts = max(self._config.retry_attempts, 0) + 1
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
             start_time = time.perf_counter()
             try:
-                response = await gemini_api.json_output(
-                    prompt=payload,
-                    system_instruction=self._system_instruction,
-                    model=self._config.model_name,
-                    temperature=self._config.temperature,
-                )
+                if resolved.vendor == "google":
+                    response = await gemini_api.json_output(
+                        prompt=payload,
+                        system_instruction=self._system_instruction,
+                        model=resolved.model,
+                        temperature=self._config.temperature,
+                    )
+                else:
+                    response = await openai_api.json_output(
+                        prompt=payload,
+                        system_instruction=self._system_instruction,
+                        model=resolved.model,
+                        temperature=self._config.temperature,
+                    )
                 elapsed_ms = int((time.perf_counter() - start_time) * 1000)
                 logger.debug(
-                    "Metadata LLM call succeeded for prompt %s in %sms",
+                    "Metadata LLM call succeeded for prompt %s in %sms (vendor=%s, model=%s)",
                     prompt_id,
                     elapsed_ms,
+                    resolved.vendor,
+                    resolved.model,
                 )
                 return self._coerce_metadata_payload(response)
             except Exception as exc:  # pragma: no cover - retry path
                 last_error = exc
                 logger.warning(
-                    "Gemini metadata call failed for prompt %s (attempt %s/%s): %s",
+                    "Metadata call failed for prompt %s (attempt %s/%s, vendor=%s, model=%s): %s",
                     prompt_id,
                     attempt,
                     attempts,
+                    resolved.vendor,
+                    resolved.model,
                     exc,
                 )
                 if attempt >= attempts:
@@ -361,14 +389,14 @@ class PromptMetadataGenerationService:
                 await asyncio.sleep(max(self._config.retry_backoff_seconds, 0))
         assert last_error is not None
         raise PromptMetadataGenerationServiceError(
-            f"Gemini metadata generation failed after {attempts} attempts"
+            f"Metadata generation failed after {attempts} attempts"
         ) from last_error
 
     def _coerce_metadata_payload(self, payload: Any) -> Mapping[str, Any]:
         if isinstance(payload, Mapping):
             return payload
         raise PromptMetadataGenerationServiceError(
-            "Gemini metadata response must be a JSON object"
+            "Metadata response must be a JSON object"
         )
 
     @staticmethod

@@ -14,7 +14,7 @@ from app.services.image_prompt_generation import (
     ImagePromptGenerationServiceError,
     ImagePromptPreview,
 )
-from app.services.langchain import gemini_api
+from app.services.langchain import gemini_api, openai_api
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
@@ -53,6 +53,12 @@ def _stub_prompt_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
         "app.services.prompt_metadata.prompt_metadata_service.PromptMetadataGenerationService.generate_metadata_for_prompts",
         _fake_generate,
     )
+
+
+@pytest.fixture(autouse=True)
+def _default_llm_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
 
 
 def _variants(
@@ -224,6 +230,36 @@ def test_generate_for_scene_dry_run_returns_previews(
     assert "prompt" in preview.raw_response
     repository = ImagePromptRepository(db)
     assert repository.list_for_scene(scene.id) == []
+
+
+def test_generate_for_scene_falls_back_to_openai(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene = scene_factory()
+    config = ImagePromptGenerationConfig(dry_run=True, variants_count=2)
+    service = ImagePromptGenerationService(db, config=config)
+    _patch_context(service, monkeypatch)
+
+    async def fail_gemini(**_: object) -> list[dict[str, object]]:
+        raise AssertionError("Gemini should not be called when key is missing")
+
+    captured_force_json: dict[str, object] = {}
+
+    async def fake_openai_json_output(**kwargs: object) -> list[dict[str, object]]:
+        captured_force_json["value"] = kwargs.get("force_json_object")
+        return _variants()
+
+    monkeypatch.setattr(gemini_api, "json_output", fail_gemini)
+    monkeypatch.setattr(openai_api, "json_output", fake_openai_json_output)
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+
+    previews = asyncio.run(service.generate_for_scene(scene))
+
+    assert all(isinstance(item, ImagePromptPreview) for item in previews)
+    assert previews[0].model_vendor == "openai"
+    assert previews[0].model_name == "gpt-5-mini"
+    assert captured_force_json["value"] is False
 
 
 def test_generate_for_scene_returns_existing_when_overwrite_disabled(

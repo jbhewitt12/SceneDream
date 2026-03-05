@@ -22,6 +22,7 @@ from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
 from app.services.books import BookContentService
 from app.services.langchain import gemini_api, openai_api
+from app.services.langchain.model_routing import LLMRoutingConfig, resolve_llm_model
 from app.services.prompt_metadata import (
     PromptMetadataConfig,
     PromptMetadataGenerationService,
@@ -146,6 +147,10 @@ class ImagePromptGenerationService:
             dry_run=dry_run,
             metadata=metadata,
         )
+        try:
+            config = self._resolve_active_llm_config(config)
+        except Exception as exc:
+            raise ImagePromptGenerationServiceError(str(exc)) from exc
 
         # Check for blocked content warnings
         if config.skip_scenes_with_warnings and self._scene_has_blocked_warnings(
@@ -468,6 +473,10 @@ class ImagePromptGenerationService:
             dry_run=dry_run,
             metadata=metadata,
         )
+        try:
+            config = self._resolve_active_llm_config(config)
+        except Exception as exc:
+            raise ImagePromptGenerationServiceError(str(exc)) from exc
 
         variant_indices = self._determine_next_variant_indices_for_scene(
             scene.id, variants_count
@@ -800,6 +809,37 @@ class ImagePromptGenerationService:
         )
         return config.variants_count, "config_default"
 
+    def _resolve_active_llm_config(
+        self,
+        config: ImagePromptGenerationConfig,
+    ) -> ImagePromptGenerationConfig:
+        resolved = resolve_llm_model(
+            LLMRoutingConfig(
+                default_vendor=config.model_vendor,
+                default_model=config.model_name,
+                backup_vendor=config.backup_model_vendor,
+                backup_model=config.backup_model_name,
+            ),
+            context="ImagePromptGenerationService.generate",
+        )
+        metadata = dict(config.metadata)
+        metadata.update(
+            {
+                "llm_default_vendor": config.model_vendor,
+                "llm_default_model": config.model_name,
+                "llm_backup_vendor": config.backup_model_vendor,
+                "llm_backup_model": config.backup_model_name,
+                "llm_selected_vendor": resolved.vendor,
+                "llm_selected_model": resolved.model,
+                "llm_used_backup_model": resolved.used_backup,
+            }
+        )
+        return config.copy_with(
+            model_vendor=resolved.vendor,
+            model_name=resolved.model,
+            metadata=metadata,
+        )
+
     def _sample_styles(self, variants_count: int) -> list[str]:
         """Sample recommended and other styles for this request."""
         return self._prompt_builder.sample_styles(variants_count)
@@ -911,6 +951,7 @@ class ImagePromptGenerationService:
                         model=config.model_name,
                         temperature=config.temperature,
                         max_tokens=config.max_output_tokens,
+                        force_json_object=False,
                     )
                 execution_time_ms = int((time.perf_counter() - start_time) * 1000)
                 llm_request_id = None

@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from app.services.langchain import gemini_api
+from app.services.langchain import gemini_api, openai_api
+from app.services.langchain.model_routing import (
+    LLMProvider,
+    LLMRoutingConfig,
+    ResolvedLLMModel,
+    resolve_llm_model,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - type checking only
     from .scene_extraction import Chapter, RawScene
@@ -60,18 +66,35 @@ class SceneRefinementError(RuntimeError):
 
 
 class SceneRefiner:
-    """Handles scene refinement with Gemini."""
+    """Handles scene refinement with provider-aware fallback routing."""
 
     def __init__(
         self,
         *,
+        default_vendor: LLMProvider,
         model: str,
+        backup_vendor: LLMProvider,
+        backup_model: str,
         temperature: float,
         max_tokens: int | None,
     ) -> None:
-        self._model = model
+        self._routing = LLMRoutingConfig(
+            default_vendor=default_vendor,
+            default_model=model,
+            backup_vendor=backup_vendor,
+            backup_model=backup_model,
+        )
         self._temperature = temperature
         self._max_tokens = max_tokens
+        self._last_model: ResolvedLLMModel | None = None
+
+    @property
+    def last_model_name(self) -> str | None:
+        return self._last_model.model if self._last_model else None
+
+    @property
+    def last_model_vendor(self) -> LLMProvider | None:
+        return self._last_model.vendor if self._last_model else None
 
     def refine(
         self,
@@ -84,16 +107,33 @@ class SceneRefiner:
             return {}
         prompt = self._build_refinement_prompt(chapter, scenes)
         try:
-            payload = asyncio.run(
-                gemini_api.structured_output(
-                    prompt=prompt,
-                    schema=_RefinementResponse,
-                    method="json_mode",
-                    model=self._model,
-                    temperature=self._temperature,
-                    max_tokens=self._max_tokens,
-                )
+            resolved = resolve_llm_model(
+                self._routing,
+                context="SceneRefiner.refine",
             )
+            self._last_model = resolved
+            if resolved.vendor == "google":
+                payload = asyncio.run(
+                    gemini_api.structured_output(
+                        prompt=prompt,
+                        schema=_RefinementResponse,
+                        method="json_mode",
+                        model=resolved.model,
+                        temperature=self._temperature,
+                        max_tokens=self._max_tokens,
+                    )
+                )
+            else:
+                payload = asyncio.run(
+                    openai_api.structured_output(
+                        prompt=prompt,
+                        schema=_RefinementResponse,
+                        method="json_mode",
+                        model=resolved.model,
+                        temperature=self._temperature,
+                        max_tokens=self._max_tokens,
+                    )
+                )
         except Exception as exc:
             chapter_number = getattr(chapter, "number", "?")
             logger.error("Refinement failed for chapter %s: %s", chapter_number, exc)

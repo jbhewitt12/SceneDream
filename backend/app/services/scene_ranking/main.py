@@ -21,6 +21,7 @@ from sqlmodel import Session
 
 from app.core.db import engine
 from app.repositories import SceneExtractionRepository
+from app.services.langchain.model_routing import infer_provider_from_model_name
 from app.services.scene_ranking import (
     SceneRankingConfig,
     SceneRankingPreview,
@@ -74,7 +75,7 @@ def _build_parser() -> argparse.ArgumentParser:
     rank.add_argument(
         "--temperature",
         type=float,
-        help="Override the sampling temperature for Gemini calls.",
+        help="Override the sampling temperature for LLM calls.",
     )
     rank.add_argument(
         "--max-output-tokens",
@@ -237,6 +238,15 @@ async def _handle_rank(args: argparse.Namespace) -> int:
     }
     if args.model_name:
         config_kwargs["model_name"] = args.model_name
+        inferred_vendor = infer_provider_from_model_name(args.model_name)
+        if inferred_vendor is not None:
+            config_kwargs["model_vendor"] = inferred_vendor
+            if inferred_vendor == "openai":
+                config_kwargs["backup_model_vendor"] = "google"
+                config_kwargs["backup_model_name"] = "gemini-2.5-flash-lite"
+            else:
+                config_kwargs["backup_model_vendor"] = "openai"
+                config_kwargs["backup_model_name"] = "gpt-5-mini"
     if args.prompt_version:
         config_kwargs["prompt_version"] = args.prompt_version
     if args.temperature is not None:

@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from app.services.langchain.model_routing import LLMProvider
+
 DEFAULT_CHEATSHEET_PATH = "backend/app/services/image_prompt_generation/dalle3_multi_genre_prompting_cheatsheet.md"
 
 
@@ -17,8 +19,10 @@ class ImagePromptGenerationServiceError(RuntimeError):
 class ImagePromptGenerationConfig:
     """Runtime configuration for image prompt generation."""
 
-    model_vendor: str = "google"
+    model_vendor: LLMProvider = "google"
     model_name: str = "gemini-3-pro-preview"
+    backup_model_vendor: LLMProvider = "openai"
+    backup_model_name: str = "gpt-5-mini"
     prompt_version: str = "image-prompts-v3"
     preferred_style: str | None = None
     variants_count: int = 4
@@ -45,6 +49,8 @@ class ImagePromptGenerationConfig:
         data: dict[str, Any] = {
             "model_vendor": self.model_vendor,
             "model_name": self.model_name,
+            "backup_model_vendor": self.backup_model_vendor,
+            "backup_model_name": self.backup_model_name,
             "prompt_version": self.prompt_version,
             "preferred_style": self.preferred_style,
             "variants_count": self.variants_count,
