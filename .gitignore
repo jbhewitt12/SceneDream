@@ -10,6 +10,7 @@ node_modules/
 /books/
 /img/
 /db_backups/
+/documents/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
