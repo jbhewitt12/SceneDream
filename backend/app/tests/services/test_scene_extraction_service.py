@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from sqlmodel import Session
 
@@ -10,6 +12,7 @@ from app.services.scene_extraction.scene_extraction import (
     SceneExtractionConfig,
     SceneExtractor,
 )
+from app.services.scene_extraction.scene_refinement import RefinedScene
 
 
 def test_existing_processed_chunks_uses_repository(
@@ -180,3 +183,323 @@ def test_persist_chapter_scenes_uses_upsert_repository(
         "extraction_model_vendor": "google",
         "extraction_used_backup_model": False,
     }
+
+
+def test_extract_book_processes_chapters_and_persists_results(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor = SceneExtractor(
+        session=db,
+        config=SceneExtractionConfig(enable_refinement=True),
+    )
+    chapters = [
+        Chapter(
+            number=1,
+            title="Opening",
+            paragraphs=["p1", "p2"],
+            source_name="chapter1.xhtml",
+        ),
+        Chapter(
+            number=2,
+            title="Finale",
+            paragraphs=["p3"],
+            source_name="chapter2.xhtml",
+        ),
+    ]
+
+    monkeypatch.setattr(
+        extractor,
+        "_resolve_book_path",
+        lambda _book_path: Path("documents/test.epub"),
+    )
+    monkeypatch.setattr(
+        extractor,
+        "_resolve_book_slug",
+        lambda _book_path: "test-book-service",
+    )
+    monkeypatch.setattr(extractor, "_load_chapters", lambda _book_path: chapters)
+
+    extract_calls: list[dict[str, object]] = []
+    refine_calls: list[int] = []
+    persist_calls: list[dict[str, object]] = []
+
+    def fake_extract_chapter_scenes(
+        chapter: Chapter,
+        *,
+        chunk_limit: int | None = None,
+        book_slug: str | None = None,
+        chunk_start_index: int | None = None,
+    ) -> list[RawScene]:
+        extract_calls.append(
+            {
+                "chapter_number": chapter.number,
+                "chunk_limit": chunk_limit,
+                "book_slug": book_slug,
+                "chunk_start_index": chunk_start_index,
+            }
+        )
+        if chapter.number == 1:
+            return [
+                RawScene(
+                    chapter_number=1,
+                    chapter_title=chapter.title,
+                    provisional_id=1,
+                    location_marker="1-2",
+                    raw_excerpt="Opening scene one.",
+                    chunk_index=0,
+                    chunk_span=(1, 2),
+                    scene_id=1,
+                ),
+                RawScene(
+                    chapter_number=1,
+                    chapter_title=chapter.title,
+                    provisional_id=2,
+                    location_marker="3",
+                    raw_excerpt="Opening scene two.",
+                    chunk_index=1,
+                    chunk_span=(3, 3),
+                    scene_id=2,
+                ),
+            ]
+        return [
+            RawScene(
+                chapter_number=2,
+                chapter_title=chapter.title,
+                provisional_id=1,
+                location_marker="1",
+                raw_excerpt="Finale scene.",
+                chunk_index=0,
+                chunk_span=(1, 1),
+                scene_id=1,
+            )
+        ]
+
+    def fake_refine_chapter_scenes(
+        chapter: Chapter,
+        scenes: list[RawScene],
+    ) -> dict[int, RefinedScene]:
+        refine_calls.append(chapter.number)
+        return {
+            scene.scene_id: RefinedScene(
+                scene_id=scene.scene_id or 0,
+                decision="keep",
+                rationale="Looks cinematic.",
+            )
+            for scene in scenes
+            if scene.scene_id is not None
+        }
+
+    def fake_persist_chapter_scenes(
+        *,
+        book_slug: str,
+        book_path: str | Path,
+        chapter: Chapter,
+        raw_scenes: list[RawScene],
+        refinements: dict[int, RefinedScene],
+    ) -> None:
+        persist_calls.append(
+            {
+                "book_slug": book_slug,
+                "book_path": str(book_path),
+                "chapter_number": chapter.number,
+                "raw_count": len(raw_scenes),
+                "refinement_count": len(refinements),
+            }
+        )
+
+    monkeypatch.setattr(
+        extractor, "_extract_chapter_scenes", fake_extract_chapter_scenes
+    )
+    monkeypatch.setattr(extractor, "_refine_chapter_scenes", fake_refine_chapter_scenes)
+    monkeypatch.setattr(
+        extractor, "_persist_chapter_scenes", fake_persist_chapter_scenes
+    )
+
+    stats = extractor.extract_book("ignored.epub")
+
+    assert stats == {"book_slug": "test-book-service", "chapters": 2, "scenes": 3}
+    assert extract_calls == [
+        {
+            "chapter_number": 1,
+            "chunk_limit": None,
+            "book_slug": "test-book-service",
+            "chunk_start_index": None,
+        },
+        {
+            "chapter_number": 2,
+            "chunk_limit": None,
+            "book_slug": "test-book-service",
+            "chunk_start_index": None,
+        },
+    ]
+    assert refine_calls == [1, 2]
+    assert persist_calls == [
+        {
+            "book_slug": "test-book-service",
+            "book_path": "documents/test.epub",
+            "chapter_number": 1,
+            "raw_count": 2,
+            "refinement_count": 2,
+        },
+        {
+            "book_slug": "test-book-service",
+            "book_path": "documents/test.epub",
+            "chapter_number": 2,
+            "raw_count": 1,
+            "refinement_count": 1,
+        },
+    ]
+
+
+def test_extract_preview_limits_chapters_and_chunks(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor = SceneExtractor(
+        session=db,
+        config=SceneExtractionConfig(enable_refinement=False),
+    )
+    chapters = [
+        Chapter(
+            number=1,
+            title="Preview One",
+            paragraphs=["p1", "p2", "p3"],
+            source_name="chapter1.xhtml",
+        ),
+        Chapter(
+            number=2,
+            title="Preview Two",
+            paragraphs=["p4", "p5"],
+            source_name="chapter2.xhtml",
+        ),
+        Chapter(
+            number=3,
+            title="Preview Three",
+            paragraphs=["p6"],
+            source_name="chapter3.xhtml",
+        ),
+    ]
+
+    monkeypatch.setattr(
+        extractor,
+        "_resolve_book_path",
+        lambda _book_path: Path("documents/preview.epub"),
+    )
+    monkeypatch.setattr(
+        extractor,
+        "_resolve_book_slug",
+        lambda _book_path: "test-book-preview",
+    )
+    monkeypatch.setattr(extractor, "_load_chapters", lambda _book_path: chapters)
+    monkeypatch.setattr(extractor, "_chunk_chapter", lambda _chapter: [object()] * 4)
+
+    extract_calls: list[dict[str, object]] = []
+    persist_calls: list[dict[str, object]] = []
+
+    def fake_extract_chapter_scenes(
+        chapter: Chapter,
+        *,
+        chunk_limit: int | None = None,
+        book_slug: str | None = None,
+        chunk_start_index: int | None = None,
+    ) -> list[RawScene]:
+        extract_calls.append(
+            {
+                "chapter_number": chapter.number,
+                "chunk_limit": chunk_limit,
+                "book_slug": book_slug,
+                "chunk_start_index": chunk_start_index,
+            }
+        )
+        return [
+            RawScene(
+                chapter_number=chapter.number,
+                chapter_title=chapter.title,
+                provisional_id=1,
+                location_marker="1",
+                raw_excerpt=f"Preview scene {chapter.number}.",
+                chunk_index=0,
+                chunk_span=(1, 1),
+                scene_id=1,
+            )
+        ]
+
+    def fake_persist_chapter_scenes(
+        *,
+        book_slug: str,
+        book_path: str | Path,
+        chapter: Chapter,
+        raw_scenes: list[RawScene],
+        refinements: dict[int, RefinedScene],
+    ) -> None:
+        persist_calls.append(
+            {
+                "book_slug": book_slug,
+                "book_path": str(book_path),
+                "chapter_number": chapter.number,
+                "raw_count": len(raw_scenes),
+                "refinement_count": len(refinements),
+            }
+        )
+
+    monkeypatch.setattr(
+        extractor, "_extract_chapter_scenes", fake_extract_chapter_scenes
+    )
+    monkeypatch.setattr(
+        extractor, "_persist_chapter_scenes", fake_persist_chapter_scenes
+    )
+
+    stats = extractor.extract_preview(
+        "ignored.epub",
+        max_chapters=2,
+        max_chunks_per_chapter=1,
+    )
+
+    assert stats["book_slug"] == "test-book-preview"
+    assert stats["chapters"] == 2
+    assert stats["scenes"] == 2
+    assert stats["chapters_processed"] == [
+        {
+            "chapter_number": 1,
+            "chapter_title": "Preview One",
+            "chunks_considered": 1,
+            "raw_scenes": 1,
+        },
+        {
+            "chapter_number": 2,
+            "chapter_title": "Preview Two",
+            "chunks_considered": 1,
+            "raw_scenes": 1,
+        },
+    ]
+    assert extract_calls == [
+        {
+            "chapter_number": 1,
+            "chunk_limit": 1,
+            "book_slug": "test-book-preview",
+            "chunk_start_index": None,
+        },
+        {
+            "chapter_number": 2,
+            "chunk_limit": 1,
+            "book_slug": "test-book-preview",
+            "chunk_start_index": None,
+        },
+    ]
+    assert persist_calls == [
+        {
+            "book_slug": "test-book-preview",
+            "book_path": "ignored.epub",
+            "chapter_number": 1,
+            "raw_count": 1,
+            "refinement_count": 0,
+        },
+        {
+            "book_slug": "test-book-preview",
+            "book_path": "ignored.epub",
+            "chapter_number": 2,
+            "raw_count": 1,
+            "refinement_count": 0,
+        },
+    ]

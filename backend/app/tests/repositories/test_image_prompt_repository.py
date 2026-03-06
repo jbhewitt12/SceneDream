@@ -1,48 +1,8 @@
 import uuid
 
-import pytest
-from sqlalchemy import delete
 from sqlmodel import Session
 
 from app.repositories import ImagePromptRepository, SceneExtractionRepository
-from models.image_prompt import ImagePrompt
-
-
-@pytest.fixture()
-def scene(db: Session) -> object:
-    repository = SceneExtractionRepository(db)
-    book_slug = f"test-book-{uuid.uuid4()}"
-    scene = repository.create(
-        data={
-            "book_slug": book_slug,
-            "source_book_path": "documents/test.epub",
-            "chapter_number": 1,
-            "chapter_title": "Chapter 1",
-            "chapter_source_name": "Test",
-            "scene_number": 1,
-            "location_marker": f"{book_slug}-chapter-1-scene-1",
-            "raw": "A hero steps onto a neon-lit promenade.",
-            "refined": "A hero steps onto a neon-lit promenade buzzing with drones.",
-            "chunk_index": 0,
-            "chunk_paragraph_start": 1,
-            "chunk_paragraph_end": 2,
-            "raw_word_count": 12,
-            "raw_char_count": 64,
-            "refined_word_count": 14,
-            "refined_char_count": 78,
-            "scene_paragraph_start": 4,
-            "scene_paragraph_end": 6,
-            "scene_word_start": 10,
-            "scene_word_end": 48,
-            "extraction_model": "unit-test",
-            "refinement_model": "unit-test",
-        },
-        commit=True,
-    )
-    yield scene
-    db.execute(delete(ImagePrompt).where(ImagePrompt.scene_extraction_id == scene.id))
-    db.delete(scene)
-    db.commit()
 
 
 def _prompt_payload(
@@ -88,7 +48,8 @@ def _prompt_payload(
     }
 
 
-def test_create_and_get_image_prompt(db: Session, scene) -> None:
+def test_create_and_get_image_prompt(db: Session, scene_factory) -> None:
+    scene = scene_factory()
     repository = ImagePromptRepository(db)
     created = repository.create(
         data=_prompt_payload(scene, variant_index=0), commit=True
@@ -102,7 +63,8 @@ def test_create_and_get_image_prompt(db: Session, scene) -> None:
     repository.delete_for_scene(scene.id, commit=True)
 
 
-def test_list_for_scene_orders_by_created_at(db: Session, scene) -> None:
+def test_list_for_scene_orders_by_created_at(db: Session, scene_factory) -> None:
+    scene = scene_factory()
     repository = ImagePromptRepository(db)
     repository.create(data=_prompt_payload(scene, variant_index=0), commit=True)
     repository.create(data=_prompt_payload(scene, variant_index=1), commit=True)
@@ -121,7 +83,10 @@ def test_list_for_scene_orders_by_created_at(db: Session, scene) -> None:
     repository.delete_for_scene(scene.id, commit=True)
 
 
-def test_get_latest_set_for_scene_returns_variants_sorted(db: Session, scene) -> None:
+def test_get_latest_set_for_scene_returns_variants_sorted(
+    db: Session, scene_factory
+) -> None:
+    scene = scene_factory()
     repository = ImagePromptRepository(db)
     repository.bulk_create(
         [
@@ -231,7 +196,8 @@ def test_list_for_book_filters(db: Session) -> None:
     db.commit()
 
 
-def test_delete_for_scene_removes_prompts(db: Session, scene) -> None:
+def test_delete_for_scene_removes_prompts(db: Session, scene_factory) -> None:
+    scene = scene_factory()
     repository = ImagePromptRepository(db)
     repository.bulk_create(
         [
