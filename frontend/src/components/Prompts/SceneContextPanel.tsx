@@ -4,8 +4,8 @@ import {
   Button,
   Collapsible,
   Flex,
+  HStack,
   Heading,
-  Icon,
   Separator,
   SimpleGrid,
   Stack,
@@ -58,13 +58,19 @@ const SceneContextPanel = ({
         <Button
           size="sm"
           variant="ghost"
-          rightIcon={<Icon as={open ? FiChevronUp : FiChevronDown} />}
           onClick={(event) => {
             event.stopPropagation()
             toggleOpen()
           }}
         >
-          {open ? "Hide" : "Show"}
+          <HStack gap={1} align="center">
+            <Text as="span">{open ? "Hide" : "Show"}</Text>
+            {open ? (
+              <FiChevronUp aria-hidden="true" />
+            ) : (
+              <FiChevronDown aria-hidden="true" />
+            )}
+          </HStack>
         </Button>
       </Flex>
       <Collapsible.Root open={open}>
@@ -73,7 +79,7 @@ const SceneContextPanel = ({
           <Stack px={4} py={4} gap={3} fontSize="sm">
             {scene ? (
               <SimpleGrid columns={{ base: 1, md: 2 }} gap={3}>
-                <Stack spacing={1}>
+                <Stack gap={1}>
                   <Text
                     textTransform="uppercase"
                     color="fg.subtle"
@@ -85,7 +91,7 @@ const SceneContextPanel = ({
                     #{scene.chapter_number} · {scene.chapter_title}
                   </Text>
                 </Stack>
-                <Stack spacing={1}>
+                <Stack gap={1}>
                   <Text
                     textTransform="uppercase"
                     color="fg.subtle"
@@ -95,7 +101,7 @@ const SceneContextPanel = ({
                   </Text>
                   <Text>#{scene.scene_number}</Text>
                 </Stack>
-                <Stack spacing={1}>
+                <Stack gap={1}>
                   <Text
                     textTransform="uppercase"
                     color="fg.subtle"
@@ -105,7 +111,7 @@ const SceneContextPanel = ({
                   </Text>
                   <Text>{scene.book_slug}</Text>
                 </Stack>
-                <Stack spacing={1}>
+                <Stack gap={1}>
                   <Text
                     textTransform="uppercase"
                     color="fg.subtle"
@@ -121,7 +127,7 @@ const SceneContextPanel = ({
             )}
             <Separator />
             <SimpleGrid columns={{ base: 1, md: 3 }} gap={3}>
-              <Stack spacing={1}>
+              <Stack gap={1}>
                 <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
                   Paragraph span
                 </Text>
@@ -129,7 +135,7 @@ const SceneContextPanel = ({
                   {formatParagraphSpan(contextWindow.paragraphSpan ?? null)}
                 </Text>
               </Stack>
-              <Stack spacing={1}>
+              <Stack gap={1}>
                 <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
                   Context
                 </Text>
@@ -138,7 +144,7 @@ const SceneContextPanel = ({
                   {contextWindow.paragraphsAfter ?? 0} after
                 </Text>
               </Stack>
-              <Stack spacing={1}>
+              <Stack gap={1}>
                 <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
                   Chapter number
                 </Text>
@@ -146,7 +152,7 @@ const SceneContextPanel = ({
               </Stack>
             </SimpleGrid>
             {contextWindow.extras && (
-              <Stack spacing={2}>
+              <Stack gap={2}>
                 <Text textTransform="uppercase" color="fg.subtle" fontSize="xs">
                   Additional metadata
                 </Text>

@@ -32,7 +32,6 @@ const PromptList = ({
   pagination,
   height = "100%",
   emptyState,
-  onViewPrompt,
 }: PromptListProps) => {
   const page = pagination?.page ?? 1
   const pageSize = pagination?.pageSize
@@ -65,7 +64,7 @@ const PromptList = ({
         shadow="sm"
         px={2}
       >
-        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} p={2}>
+        <SimpleGrid columns={{ base: 1, md: 2 }} gap={4} p={2}>
           {prompts.map((prompt) => (
             <Box key={prompt.id} minW={0}>
               <PromptCard prompt={prompt} />

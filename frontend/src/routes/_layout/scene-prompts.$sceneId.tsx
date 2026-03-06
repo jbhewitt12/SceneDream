@@ -93,7 +93,7 @@ const ScenePromptFilters = ({
         </Button>
       </Flex>
       <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Model
           </Text>
@@ -107,7 +107,7 @@ const ScenePromptFilters = ({
             }
           />
         </Stack>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Prompt version
           </Text>
@@ -121,7 +121,7 @@ const ScenePromptFilters = ({
             }
           />
         </Stack>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Max variants
           </Text>
@@ -135,23 +135,21 @@ const ScenePromptFilters = ({
             }
           />
         </Stack>
-        <Stack
-          spacing={1}
-          direction="row"
-          align="center"
-          justify="space-between"
-        >
+        <Stack gap={1} direction="row" align="center" justify="space-between">
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Newest first
           </Text>
-          <Switch
+          <Switch.Root
             checked={search.newest_first}
-            onChange={(event) =>
+            onCheckedChange={(event) =>
               handleChange({
-                newest_first: (event.target as HTMLInputElement).checked,
+                newest_first: event.checked,
               })
             }
-          />
+          >
+            <Switch.HiddenInput />
+            <Switch.Control />
+          </Switch.Root>
         </Stack>
       </SimpleGrid>
     </Stack>
@@ -170,7 +168,7 @@ function ScenePromptsPage() {
 
   const handleSearchUpdate = (updates: Partial<ScenePromptsSearch>) => {
     navigate({
-      search: (prev) => ({
+      search: (prev: ScenePromptsSearch) => ({
         ...prev,
         ...updates,
       }),
