@@ -3,25 +3,81 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ISSUES_DIR="$ROOT_DIR/issues"
-FIRST_ISSUE=20
-LAST_ISSUE=26
+FIRST_ISSUE=""
+LAST_ISSUE=""
+RANGE_SPEC="${ISSUE_QUEUE_RANGE:-}"
 
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/issue_queue.sh status
-  ./scripts/issue_queue.sh next
-  ./scripts/issue_queue.sh prompt
-  ./scripts/issue_queue.sh run-next
-  ./scripts/issue_queue.sh run-all
-  ./scripts/issue_queue.sh commit "<summary>"
-  ./scripts/issue_queue.sh verify
+  ./scripts/issue_queue.sh [--range NNN-NNN] status
+  ./scripts/issue_queue.sh [--range NNN-NNN] next
+  ./scripts/issue_queue.sh [--range NNN-NNN] prompt
+  ./scripts/issue_queue.sh [--range NNN-NNN] run-next
+  ./scripts/issue_queue.sh [--range NNN-NNN] run-all
+  ./scripts/issue_queue.sh [--range NNN-NNN] commit "<summary>"
+  ./scripts/issue_queue.sh [--range NNN-NNN] verify
+
+Examples:
+  ./scripts/issue_queue.sh --range 020-026 run-all
+  ./scripts/issue_queue.sh --range 027-033 status
+  ISSUE_QUEUE_RANGE=027-033 ./scripts/issue_queue.sh run-next
 
 Commit message format is enforced as:
   issue(0NN): <summary>
 
-The queue covers issues 020 through 026 and reads completion from git history.
+Range selection:
+  - CLI option: --range NNN-NNN
+  - Env var: ISSUE_QUEUE_RANGE=NNN-NNN
+  - Default: auto-detect min/max issue IDs present in ./issues
+
+Completion is read from git history in the selected range.
 EOF
+}
+
+initialize_range() {
+  local spec="${RANGE_SPEC}"
+  if [[ -z "$spec" ]]; then
+    discover_range_from_issues
+    return 0
+  fi
+  parse_range_spec "$spec"
+}
+
+discover_range_from_issues() {
+  local ids=()
+  mapfile -t ids < <(
+    find "$ISSUES_DIR" -maxdepth 1 -type f -name '[0-9][0-9][0-9]-*.md' -exec basename {} \; \
+      | sed -E 's/^([0-9]{3})-.*/\1/' \
+      | sort -n
+  )
+
+  if ((${#ids[@]} == 0)); then
+    echo "No issue files found in $ISSUES_DIR."
+    exit 1
+  fi
+
+  FIRST_ISSUE=$((10#${ids[0]}))
+  LAST_ISSUE=$((10#${ids[${#ids[@]}-1]}))
+}
+
+parse_range_spec() {
+  local spec="$1"
+  if [[ ! "$spec" =~ ^([0-9]{1,3})-([0-9]{1,3})$ ]]; then
+    echo "Invalid range '$spec'. Expected format: NNN-NNN"
+    exit 1
+  fi
+
+  local start=$((10#${BASH_REMATCH[1]}))
+  local end=$((10#${BASH_REMATCH[2]}))
+
+  if ((start > end)); then
+    echo "Invalid range '$spec'. Start must be <= end."
+    exit 1
+  fi
+
+  FIRST_ISSUE="$start"
+  LAST_ISSUE="$end"
 }
 
 pad_issue() {
@@ -254,10 +310,37 @@ cmd_verify() {
     previous_padded="$padded"
   done
 
-  echo "Queue order is valid for issues 020-026."
+  echo "Queue order is valid for issues $(pad_issue "$FIRST_ISSUE")-$(pad_issue "$LAST_ISSUE")."
 }
 
 main() {
+  while (($# > 0)); do
+    case "$1" in
+      --range)
+        if (($# < 2)); then
+          echo "Missing value for --range"
+          usage
+          exit 1
+        fi
+        RANGE_SPEC="$2"
+        shift 2
+        ;;
+      --range=*)
+        RANGE_SPEC="${1#*=}"
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  initialize_range
+
   local command="${1:-}"
   case "$command" in
     status)
@@ -288,4 +371,4 @@ main() {
   esac
 }
 
-main "${1:-}"
+main "$@"
