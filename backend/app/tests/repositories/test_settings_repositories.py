@@ -33,7 +33,7 @@ def test_app_settings_repository_updates_global_defaults(db: Session) -> None:
     assert restored.default_art_style_id == original_style_id
 
 
-def test_art_style_repository_sampling_filters_inactive_rows(db: Session) -> None:
+def test_art_style_repository_list_active_filters_inactive_rows(db: Session) -> None:
     repository = ArtStyleRepository(db)
     suffix = uuid4().hex[:8]
 
@@ -71,11 +71,12 @@ def test_art_style_repository_sampling_filters_inactive_rows(db: Session) -> Non
         refresh=True,
     )
 
-    recommended_styles, other_styles = repository.list_for_sampling()
-    assert recommended.display_name in recommended_styles
-    assert other.display_name in other_styles
-    assert inactive.display_name not in recommended_styles
-    assert inactive.display_name not in other_styles
+    active_styles = repository.list_active()
+    active_display_names = {style.display_name for style in active_styles}
+
+    assert recommended.display_name in active_display_names
+    assert other.display_name in active_display_names
+    assert inactive.display_name not in active_display_names
 
     db.delete(inactive)
     db.delete(other)
