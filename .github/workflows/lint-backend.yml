@@ -3,7 +3,7 @@ name: Lint Backend
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - "backend/**"
       - ".github/workflows/lint-backend.yml"
