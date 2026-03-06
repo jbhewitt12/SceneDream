@@ -74,6 +74,7 @@ class XAIAPI:
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
+            request_timeout=240,
         )
         self.model = model
         self.base_url = base_url

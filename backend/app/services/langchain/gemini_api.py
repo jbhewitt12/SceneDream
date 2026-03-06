@@ -111,6 +111,7 @@ async def simple_call(
     :param kwargs: Additional LLM init params.
     :return: The generated text response as a string.
     """
+    kwargs.setdefault("request_timeout", 120)
     llm = _get_llm(model, temperature, max_tokens, **kwargs)
     response = await retry_with_backoff(llm.ainvoke, prompt)
     return _coerce_content_to_text(response.content)
@@ -142,6 +143,7 @@ async def chat_call(
     :param kwargs: Additional LLM init params.
     :return: The generated response as a string.
     """
+    kwargs.setdefault("request_timeout", 120)
     llm = _get_llm(model, temperature, max_tokens, **kwargs)
     lc_messages: list[SystemMessage | HumanMessage | AIMessage] = []
     for msg in messages:
@@ -191,6 +193,7 @@ async def call_with_tools(
     :param kwargs: Additional LLM init params.
     :return: The full AIMessage response (may include .tool_calls list).
     """
+    kwargs.setdefault("request_timeout", 180)
     llm = _get_llm(model, temperature, max_tokens, **kwargs)
     llm_with_tools = llm.bind_tools(tools)
     response = await retry_with_backoff(llm_with_tools.ainvoke, prompt)
@@ -227,6 +230,7 @@ async def structured_output(
     :param kwargs: Additional LLM init params.
     :return: Instance of the schema with parsed data.
     """
+    kwargs.setdefault("request_timeout", 240)
     llm = _get_llm(model, temperature, max_tokens, **kwargs)
     if method == "json_mode":
         structured_llm = llm.with_structured_output(schema, method="json_mode")
@@ -265,6 +269,7 @@ async def json_output(
     """
     import json
 
+    kwargs.setdefault("request_timeout", 360)
     llm = _get_llm(
         model,
         temperature,
