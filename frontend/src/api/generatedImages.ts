@@ -1,4 +1,8 @@
-import { type CancelablePromise, OpenAPI } from "@/client"
+import {
+  type CancelablePromise,
+  GeneratedImagesService,
+  OpenAPI,
+} from "@/client"
 import { request as __request } from "@/client/core/request"
 
 export type GeneratedImageRead = {
@@ -256,152 +260,59 @@ export const GeneratedImageApi = {
   },
 }
 
-const buildUrl = (path: string) => {
-  const base = OpenAPI.BASE ?? ""
-  if (base) {
-    const sanitizedBase = base.replace(/\/+$/, "")
-    return `${sanitizedBase}${path}`
-  }
-  return path
-}
-
 export const updateImageApproval = async (
   imageId: string,
   approved: boolean | null,
-) => {
-  const url = buildUrl(
-    `/api/v1/generated-images/${encodeURIComponent(imageId)}/approval`,
-  )
-
-  const response = await fetch(url, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
+): Promise<GeneratedImageRead> => {
+  return (await GeneratedImagesService.updateImageApproval({
+    imageId,
+    requestBody: {
+      user_approved: approved,
     },
-    body: JSON.stringify({ user_approved: approved }),
-  })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "")
-    const message = body || `${response.status} ${response.statusText}`
-    throw new Error(`Failed to update approval: ${message}`)
-  }
-
-  return (await response.json()) as GeneratedImageRead
+  })) as GeneratedImageRead
 }
 
 export const remixImage = async (
   imageId: string,
   payload: GeneratedImageRemixRequest | undefined = undefined,
 ): Promise<GeneratedImageRemixResponse> => {
-  const url = buildUrl(
-    `/api/v1/generated-images/${encodeURIComponent(imageId)}/remix`,
-  )
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload ?? {}),
-  })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "")
-    const message = body || `${response.status} ${response.statusText}`
-    throw new Error(`Failed to start remix: ${message}`)
-  }
-
-  return (await response.json()) as GeneratedImageRemixResponse
+  return (await GeneratedImagesService.remixGeneratedImage({
+    imageId,
+    requestBody: payload ?? {},
+  })) as GeneratedImageRemixResponse
 }
 
 export const customRemixImage = async (
   imageId: string,
   customPromptText: string,
 ): Promise<GeneratedImageCustomRemixResponse> => {
-  const url = buildUrl(
-    `/api/v1/generated-images/${encodeURIComponent(imageId)}/custom-remix`,
-  )
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  return (await GeneratedImagesService.customRemixGeneratedImage({
+    imageId,
+    requestBody: {
+      custom_prompt_text: customPromptText,
     },
-    body: JSON.stringify({ custom_prompt_text: customPromptText }),
-  })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "")
-    const message = body || `${response.status} ${response.statusText}`
-    throw new Error(`Failed to start custom remix: ${message}`)
-  }
-
-  return (await response.json()) as GeneratedImageCustomRemixResponse
+  })) as GeneratedImageCustomRemixResponse
 }
 
 export const queueForPosting = async (
   imageId: string,
 ): Promise<QueueForPostingResponse> => {
-  const url = buildUrl(
-    `/api/v1/generated-images/${encodeURIComponent(imageId)}/queue-for-posting`,
-  )
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-  })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "")
-    const message = body || `${response.status} ${response.statusText}`
-    throw new Error(`Failed to queue for posting: ${message}`)
-  }
-
-  return (await response.json()) as QueueForPostingResponse
+  return (await GeneratedImagesService.queueImageForPosting({
+    imageId,
+  })) as QueueForPostingResponse
 }
 
 export const getPostingStatus = async (
   imageId: string,
 ): Promise<PostingStatusResponse> => {
-  const url = buildUrl(
-    `/api/v1/generated-images/${encodeURIComponent(imageId)}/posting-status`,
-  )
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
-  })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "")
-    const message = body || `${response.status} ${response.statusText}`
-    throw new Error(`Failed to get posting status: ${message}`)
-  }
-
-  return (await response.json()) as PostingStatusResponse
+  return (await GeneratedImagesService.getImagePostingStatus({
+    imageId,
+  })) as PostingStatusResponse
 }
 
 export const cropImage = async (imageId: string, file: Blob): Promise<void> => {
-  const url = buildUrl(
-    `/api/v1/generated-images/${encodeURIComponent(imageId)}/crop`,
-  )
-
-  const formData = new FormData()
-  formData.append("file", file)
-
-  const response = await fetch(url, {
-    method: "PUT",
-    body: formData,
+  await GeneratedImagesService.cropImage({
+    imageId,
+    formData: { file },
   })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "")
-    const message = body || `${response.status} ${response.statusText}`
-    throw new Error(`Failed to crop image: ${message}`)
-  }
 }

@@ -15,13 +15,12 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useCallback } from "react"
-import { FiFilter, FiRefreshCcw, FiZap } from "react-icons/fi"
+import { FiFilter, FiRefreshCcw } from "react-icons/fi"
 import { z } from "zod"
 
-import { ImagePromptGenerationApi } from "@/api/imagePromptGeneration"
 import { ImagePromptApi } from "@/api/imagePrompts"
 import {
   type SceneExtractionFilterOptions,
@@ -29,7 +28,6 @@ import {
 } from "@/api/sceneExtractions"
 // Removed InputGroup for selects; using NativeSelect components instead
 import { PromptList } from "@/components/Prompts"
-import useCustomToast from "@/hooks/useCustomToast"
 
 const promptGallerySearchSchema = z.object({
   book_slug: z
@@ -262,7 +260,6 @@ export const Route = createFileRoute("/_layout/prompt-gallery")({
 function PromptGalleryPage() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
-  const { showSuccessToast, showErrorToast } = useCustomToast()
 
   const filtersQuery = useQuery({
     queryKey: ["scene-extractions", "filters"],
@@ -287,28 +284,6 @@ function PromptGalleryPage() {
   const pageSize = search.page_size
   const hasNextPage = prompts.length === pageSize
 
-  const generationMutation = useMutation({
-    mutationFn: () =>
-      ImagePromptGenerationApi.triggerForBook({
-        bookSlug: search.book_slug!,
-        modelName: search.model_name ?? undefined,
-        promptVersion: search.prompt_version ?? undefined,
-      }),
-    onSuccess: () => {
-      showSuccessToast("Prompt generation request sent.")
-    },
-    onError: (error) => {
-      showErrorToast(
-        error instanceof Error
-          ? error.message
-          : "Unable to trigger prompt generation",
-      )
-    },
-  })
-
-  const disableGenerate =
-    !search.book_slug || generationMutation.isPending || filtersQuery.isLoading
-
   return (
     <Container maxW="full" py={4} display="flex" flexDirection="column" gap={4}>
       <Flex align="center" justify="space-between">
@@ -319,15 +294,6 @@ function PromptGalleryPage() {
         >
           Prompt Gallery
         </Heading>
-        <Button
-          leftIcon={<Icon as={FiZap} />}
-          colorScheme="purple"
-          onClick={() => generationMutation.mutate()}
-          isLoading={generationMutation.isPending}
-          disabled={disableGenerate}
-        >
-          Generate prompts
-        </Button>
       </Flex>
       <Box position="sticky" top={0} zIndex={1} bg="bg.canvas">
         <PromptGalleryFilters
