@@ -40,12 +40,6 @@ class ArtStyleRepository:
         )
         return list(self._session.exec(statement))
 
-    def list_for_sampling(self) -> tuple[list[str], list[str]]:
-        styles = self.list_active()
-        recommended = [style.display_name for style in styles if style.is_recommended]
-        other = [style.display_name for style in styles if not style.is_recommended]
-        return recommended, other
-
     def create(
         self,
         *,

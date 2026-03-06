@@ -498,10 +498,10 @@ def test_service_uses_art_style_repository_catalog(
     from types import SimpleNamespace
     from uuid import uuid4
 
-    scene = scene_factory()
+    scene_factory()
 
     monkeypatch.setattr(
-        "app.repositories.art_style.ArtStyleRepository.list_for_sampling",
+        "app.services.art_style.art_style_service.ArtStyleService.get_sampling_distribution",
         lambda self: (["DB Style A", "DB Style B"], ["DB Style C"]),
     )
     monkeypatch.setattr(
@@ -533,7 +533,7 @@ def test_service_prefers_runtime_art_style_override_over_default_setting(
     scene_factory()
 
     monkeypatch.setattr(
-        "app.repositories.art_style.ArtStyleRepository.list_for_sampling",
+        "app.services.art_style.art_style_service.ArtStyleService.get_sampling_distribution",
         lambda self: (["DB Style A", "DB Style B"], ["DB Style C"]),
     )
     monkeypatch.setattr(

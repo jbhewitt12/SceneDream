@@ -20,6 +20,7 @@ from app.repositories.art_style import ArtStyleRepository
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
+from app.services.art_style import ArtStyleService
 from app.services.books import BookContentService
 from app.services.langchain import gemini_api, openai_api
 from app.services.langchain.model_routing import LLMRoutingConfig, resolve_llm_model
@@ -30,8 +31,8 @@ from app.services.prompt_metadata import (
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
-from .core import OTHER_STYLES, RECOMMENDED_STYLES, StyleSampler
 from .context_builder import SceneContextBuilder
+from .core import OTHER_STYLES, RECOMMENDED_STYLES, StyleSampler
 from .models import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationServiceError,
@@ -70,6 +71,7 @@ class ImagePromptGenerationService:
         self._prompt_repo = ImagePromptRepository(session)
         self._ranking_repo = SceneRankingRepository(session)
         self._art_style_repo = ArtStyleRepository(session)
+        self._art_style_service = ArtStyleService(session)
         self._app_settings_repo = AppSettingsRepository(session)
         self._book_service = BookContentService()
         self._context_builder = SceneContextBuilder(self._book_service)
@@ -82,7 +84,7 @@ class ImagePromptGenerationService:
         )
 
         try:
-            recommended, other = self._art_style_repo.list_for_sampling()
+            recommended, other = self._art_style_service.get_sampling_distribution()
         except Exception as exc:  # pragma: no cover - defensive fallback
             logger.warning(
                 "Falling back to static style catalog; failed to load DB styles: %s",
