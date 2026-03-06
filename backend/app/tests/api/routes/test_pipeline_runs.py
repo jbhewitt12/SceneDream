@@ -46,9 +46,9 @@ def test_start_pipeline_run_schedules_background_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        pipeline_runs_routes,
+        pipeline_runs_routes.PipelineRunStartService,
         "_source_path_exists",
-        lambda **_: True,
+        lambda _self, _source_path: True,
     )
 
     execute_mock = AsyncMock(name="_execute_pipeline_run")
@@ -105,9 +105,9 @@ def test_start_pipeline_run_task_creation_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        pipeline_runs_routes,
+        pipeline_runs_routes.PipelineRunStartService,
         "_source_path_exists",
-        lambda **_: True,
+        lambda _self, _source_path: True,
     )
 
     execute_mock = AsyncMock(name="_execute_pipeline_run")
@@ -147,9 +147,9 @@ def test_start_pipeline_run_uses_document_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        pipeline_runs_routes,
+        pipeline_runs_routes.PipelineRunStartService,
         "_source_path_exists",
-        lambda **_: True,
+        lambda _self, _source_path: True,
     )
 
     document = pipeline_document
@@ -258,9 +258,9 @@ def test_start_pipeline_run_applies_art_style_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        pipeline_runs_routes,
+        pipeline_runs_routes.PipelineRunStartService,
         "_source_path_exists",
-        lambda **_: True,
+        lambda _self, _source_path: True,
     )
 
     execute_mock = AsyncMock(name="_execute_pipeline_run")
@@ -326,9 +326,9 @@ def test_start_pipeline_run_rejects_unknown_art_style(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        pipeline_runs_routes,
+        pipeline_runs_routes.PipelineRunStartService,
         "_source_path_exists",
-        lambda **_: True,
+        lambda _self, _source_path: True,
     )
 
     slug = f"test-book-{uuid4()}"
@@ -352,9 +352,9 @@ def test_start_pipeline_run_rejects_inactive_art_style(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        pipeline_runs_routes,
+        pipeline_runs_routes.PipelineRunStartService,
         "_source_path_exists",
-        lambda **_: True,
+        lambda _self, _source_path: True,
     )
 
     style_repo = ArtStyleRepository(db)

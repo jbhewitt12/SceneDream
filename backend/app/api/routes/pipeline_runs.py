@@ -16,20 +16,15 @@ from sqlmodel import Session
 
 from app.api.deps import SessionDep
 from app.core.db import engine
-from app.repositories import (
-    ArtStyleRepository,
-    DocumentRepository,
-    PipelineRunRepository,
-    SceneExtractionRepository,
-)
+from app.repositories import PipelineRunRepository
 from app.schemas import PipelineRunRead, PipelineRunStartRequest
-from app.services.books.book_content_service import BookContentService
-from app.services.image_gen_cli import (
-    _resolve_default_scenes_per_run,
-    _run_full_pipeline,
-)
+from app.services.image_gen_cli import _run_full_pipeline
 from app.services.image_generation.image_generation_service import ImageGenerationConfig
 from app.services.image_prompt_generation.models import ImagePromptGenerationConfig
+from app.services.pipeline import (
+    PipelineRunStartService,
+    PipelineValidationError,
+)
 
 router = APIRouter(prefix="/pipeline-runs", tags=["pipeline-runs"])
 
@@ -221,38 +216,6 @@ def _spawn_background_task(
     return task
 
 
-def _build_run_namespace(
-    *,
-    launch_request: PipelineRunStartRequest,
-    book_slug: str,
-    book_path: str | None,
-    images_for_scenes: int,
-    skip_extraction: bool,
-    prompt_art_style: str | None,
-) -> argparse.Namespace:
-    return argparse.Namespace(
-        command="run",
-        book_slug=book_slug,
-        book_path=book_path,
-        prompts_per_scene=launch_request.prompts_per_scene,
-        ignore_ranking_recommendations=launch_request.ignore_ranking_recommendations,
-        prompts_for_scenes=launch_request.prompts_for_scenes,
-        images_for_scenes=images_for_scenes,
-        skip_extraction=skip_extraction,
-        skip_ranking=launch_request.skip_ranking,
-        skip_prompts=launch_request.skip_prompts,
-        prompt_art_style=prompt_art_style,
-        quality=launch_request.quality,
-        style=launch_request.style,
-        aspect_ratio=launch_request.aspect_ratio,
-        mode=launch_request.mode,
-        poll_timeout=launch_request.poll_timeout,
-        poll_interval=launch_request.poll_interval,
-        dry_run=launch_request.dry_run,
-        verbose=False,
-    )
-
-
 def _update_status(
     *,
     run_id: UUID,
@@ -371,20 +334,6 @@ def _build_usage_summary(
         },
         "diagnostics": diagnostics or {},
     }
-
-
-def _source_path_exists(
-    *,
-    source_path: str | None,
-    book_service: BookContentService,
-) -> bool:
-    if not source_path:
-        return False
-    try:
-        resolved = book_service.resolve_book_path(source_path)
-    except Exception:
-        return False
-    return resolved.exists()
 
 
 async def _execute_pipeline_run(
@@ -565,126 +514,35 @@ async def start_pipeline_run(
     launch_request: PipelineRunStartRequest,
 ) -> PipelineRunRead:
     """Create a pipeline run and execute it in the background."""
-
-    art_style_repo = ArtStyleRepository(session)
-    document_repo = DocumentRepository(session)
-    run_repo = PipelineRunRepository(session)
-    scene_repo = SceneExtractionRepository(session)
-    book_service = BookContentService()
-
-    resolved_document = None
-    resolved_book_slug = launch_request.book_slug
-    resolved_book_path = launch_request.book_path
-    resolved_prompt_art_style: str | None = None
-
-    if launch_request.document_id is not None:
-        resolved_document = document_repo.get(launch_request.document_id)
-        if resolved_document is None:
-            raise HTTPException(status_code=404, detail="Document not found")
-        if not resolved_book_slug:
-            resolved_book_slug = resolved_document.slug
-        if not resolved_book_path and resolved_document.source_path:
-            resolved_book_path = resolved_document.source_path
-
-    if resolved_document is None and resolved_book_slug:
-        resolved_document = document_repo.get_by_slug(resolved_book_slug)
-
-    if launch_request.art_style_id is not None:
-        art_style = art_style_repo.get(launch_request.art_style_id)
-        if art_style is None:
-            raise HTTPException(status_code=404, detail="Art style not found")
-        if not art_style.is_active:
-            raise HTTPException(status_code=400, detail="Art style is inactive")
-        resolved_prompt_art_style = art_style.display_name
-
-    if not resolved_book_slug:
-        raise HTTPException(
-            status_code=400,
-            detail="book_slug is required when document_id is not provided",
-        )
-
-    should_skip_extraction = launch_request.skip_extraction
-    has_existing_extractions = bool(scene_repo.list_for_book(resolved_book_slug))
-    source_path_exists = _source_path_exists(
-        source_path=resolved_book_path,
-        book_service=book_service,
-    )
-
-    if not should_skip_extraction:
-        if source_path_exists:
-            pass
-        elif has_existing_extractions:
-            should_skip_extraction = True
-        elif resolved_book_path:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "book_path does not exist and no extracted scenes are available to resume"
-                ),
-            )
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="book_path is required when extraction is enabled",
-            )
-
-    if not source_path_exists:
-        resolved_book_path = None
-
-    images_for_scenes = launch_request.images_for_scenes
-    if images_for_scenes is None:
-        images_for_scenes = _resolve_default_scenes_per_run()
-
-    args = _build_run_namespace(
-        launch_request=launch_request,
-        book_slug=resolved_book_slug,
-        book_path=resolved_book_path,
-        images_for_scenes=images_for_scenes,
-        skip_extraction=should_skip_extraction,
-        prompt_art_style=resolved_prompt_art_style,
-    )
-
-    config_overrides = launch_request.model_dump(exclude_none=True, mode="json")
-    config_overrides["resolved_book_slug"] = resolved_book_slug
-    if resolved_book_path is not None:
-        config_overrides["resolved_book_path"] = resolved_book_path
-    config_overrides["skip_extraction"] = should_skip_extraction
-    config_overrides["resolved_images_for_scenes"] = images_for_scenes
-    if resolved_prompt_art_style is not None:
-        config_overrides["resolved_prompt_art_style"] = resolved_prompt_art_style
-
-    run = run_repo.create(
-        data={
-            "document_id": resolved_document.id if resolved_document else None,
-            "book_slug": resolved_book_slug,
-            "status": "pending",
-            "current_stage": "pending",
-            "config_overrides": config_overrides,
-        },
-        commit=True,
-        refresh=True,
-    )
+    service = PipelineRunStartService(session)
+    try:
+        resolution = service.resolve_pipeline_request(launch_request)
+    except PipelineValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
     coro = _execute_pipeline_run(
-        run_id=run.id,
-        args=args,
-        config_overrides=config_overrides,
+        run_id=resolution.run.id,
+        args=resolution.args,
+        config_overrides=resolution.config_overrides,
     )
     try:
         _spawn_background_task(
             coro,
-            task_name=f"pipeline-run-{run.id}",
+            task_name=f"pipeline-run-{resolution.run.id}",
         )
     except Exception as exc:
         if asyncio.iscoroutine(coro):
             coro.close()
-        logger.exception("Failed to create pipeline run task: run_id=%s", run.id)
+        logger.exception(
+            "Failed to create pipeline run task: run_id=%s",
+            resolution.run.id,
+        )
         raise HTTPException(
             status_code=500,
             detail="Failed to start pipeline run",
         ) from exc
 
-    return PipelineRunRead.model_validate(run)
+    return PipelineRunRead.model_validate(resolution.run)
 
 
 @router.get("/{run_id}", response_model=PipelineRunRead)
