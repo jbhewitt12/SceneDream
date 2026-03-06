@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from sqlmodel import Session
 
 from app.services.books import BookContentServiceError
 from app.services.books.base import BookChapter, BookContent, BookMetadata
@@ -18,8 +19,11 @@ from app.services.scene_extraction.scene_refinement import SceneRefiner
 
 
 @pytest.fixture
-def extractor() -> SceneExtractor:
-    return SceneExtractor(SceneExtractionConfig(enable_refinement=False))
+def extractor(db: Session) -> SceneExtractor:
+    return SceneExtractor(
+        session=db,
+        config=SceneExtractionConfig(enable_refinement=False),
+    )
 
 
 def _make_book_content(book_path: Path) -> BookContent:
@@ -101,9 +105,10 @@ def test_load_chapters_propagates_service_errors(
 
 def test_extract_chapter_scenes_falls_back_to_openai(
     monkeypatch: pytest.MonkeyPatch,
+    db: Session,
 ) -> None:
     config = SceneExtractionConfig(enable_refinement=False)
-    extractor = SceneExtractor(config)
+    extractor = SceneExtractor(session=db, config=config)
     chapter = Chapter(
         number=1,
         title="Test Chapter",

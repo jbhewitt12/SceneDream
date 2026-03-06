@@ -134,7 +134,11 @@ def _batched_scenes(
 
 
 class SceneExtractor:
-    def __init__(self, config: SceneExtractionConfig | None = None) -> None:
+    def __init__(
+        self, session: Session, config: SceneExtractionConfig | None = None
+    ) -> None:
+        self._session = session
+        self._scene_repo = SceneExtractionRepository(session)
         self.config = config or SceneExtractionConfig()
         load_dotenv()
         self._refiner: SceneRefiner | None = None
@@ -536,12 +540,10 @@ class SceneExtractor:
     def _existing_processed_chunks(self, book_slug: str, chapter: Chapter) -> set[int]:
         if not book_slug:
             return set()
-        with Session(engine) as session:
-            repository = SceneExtractionRepository(session)
-            return repository.chunk_indexes_for_chapter(
-                book_slug=book_slug,
-                chapter_number=chapter.number,
-            )
+        return self._scene_repo.chunk_indexes_for_chapter(
+            book_slug=book_slug,
+            chapter_number=chapter.number,
+        )
 
     def _get_refiner(self) -> SceneRefiner:
         if not self.config.enable_refinement:
@@ -581,171 +583,147 @@ class SceneExtractor:
         if not raw_scenes:
             return
         normalized_book_path = self._book_service.normalize_source_path(book_path)
-        with Session(engine) as session:
-            repository = SceneExtractionRepository(session)
-            try:
-                extraction_model = self._resolve_extraction_model()
-                refinement_model: ResolvedLLMModel | None = None
-                if self.config.enable_refinement:
-                    if (
-                        self._refiner is not None
-                        and self._refiner.last_model_name
-                        and self._refiner.last_model_vendor
-                    ):
-                        refinement_model = ResolvedLLMModel(
-                            vendor=self._refiner.last_model_vendor,
-                            model=self._refiner.last_model_name,
-                            used_backup=self._refiner.last_model_name
-                            == self.config.refinement_backup_model,
-                        )
-                    else:
-                        refinement_model = self._resolve_refinement_model()
-                for scene in raw_scenes:
-                    if scene.scene_id is None:
-                        continue
-                    refinement = refinements.get(scene.scene_id)
-                    raw_text = scene.raw_excerpt.strip()
-                    raw_word_count = self._word_count(raw_text)
-                    raw_char_count = self._char_count(raw_text)
-                    refined_text: str | None = None
-                    decision: str | None = None
-                    rationale: str | None = None
-                    refined_word_count: int | None = None
-                    refined_char_count: int | None = None
-                    refinement_has_excerpt: bool | None = None
-                    if refinement:
-                        decision = refinement.decision
-                        rationale = refinement.rationale
-                        refinement_has_excerpt = False
-                    props: dict[str, object] = {
-                        "extraction_model_vendor": extraction_model.vendor,
-                        "extraction_used_backup_model": extraction_model.used_backup,
+        extraction_model = self._resolve_extraction_model()
+        refinement_model: ResolvedLLMModel | None = None
+        if self.config.enable_refinement:
+            if (
+                self._refiner is not None
+                and self._refiner.last_model_name
+                and self._refiner.last_model_vendor
+            ):
+                refinement_model = ResolvedLLMModel(
+                    vendor=self._refiner.last_model_vendor,
+                    model=self._refiner.last_model_name,
+                    used_backup=self._refiner.last_model_name
+                    == self.config.refinement_backup_model,
+                )
+            else:
+                refinement_model = self._resolve_refinement_model()
+
+        for scene in raw_scenes:
+            if scene.scene_id is None:
+                continue
+            refinement = refinements.get(scene.scene_id)
+            raw_text = scene.raw_excerpt.strip()
+            raw_word_count = self._word_count(raw_text)
+            raw_char_count = self._char_count(raw_text)
+            refined_text: str | None = None
+            decision: str | None = None
+            rationale: str | None = None
+            refined_word_count: int | None = None
+            refined_char_count: int | None = None
+            refinement_has_excerpt: bool | None = None
+            if refinement:
+                decision = refinement.decision
+                rationale = refinement.rationale
+                refinement_has_excerpt = False
+            props: dict[str, object] = {
+                "extraction_model_vendor": extraction_model.vendor,
+                "extraction_used_backup_model": extraction_model.used_backup,
+            }
+            if refinement_model is not None:
+                props["refinement_model_vendor"] = refinement_model.vendor
+                props["refinement_used_backup_model"] = refinement_model.used_backup
+            paragraph_start = (
+                scene.paragraph_start
+                if scene.paragraph_start is not None
+                else scene.chunk_span[0]
+            )
+            paragraph_end = (
+                scene.paragraph_end
+                if scene.paragraph_end is not None
+                else scene.chunk_span[1]
+            )
+            now = (
+                datetime.now(timezone.utc)
+                if refinement and self.config.enable_refinement
+                else None
+            )
+            record = self._scene_repo.get_by_identity(
+                book_slug=book_slug,
+                chapter_number=scene.chapter_number,
+                scene_number=scene.scene_id,
+            )
+            existing_props = dict(record.props or {}) if record is not None else {}
+            for legacy_key in (
+                "provisional_id",
+                "chunk_paragraph_span",
+                "location_marker_normalized",
+                "refinement_summary",
+            ):
+                existing_props.pop(legacy_key, None)
+            existing_props.update(props)
+
+            payload: dict[str, object] = {
+                "source_book_path": normalized_book_path,
+                "chapter_title": scene.chapter_title,
+                "chapter_source_name": chapter.source_name,
+                "location_marker": scene.location_marker,
+                "raw": raw_text,
+                "chunk_index": scene.chunk_index,
+                "chunk_paragraph_start": scene.chunk_span[0],
+                "chunk_paragraph_end": scene.chunk_span[1],
+                "raw_word_count": raw_word_count,
+                "raw_char_count": raw_char_count,
+                "raw_signature": self._hash_signature(scene),
+                "extraction_model": extraction_model.model,
+                "extraction_temperature": self.config.gemini_temperature,
+                "provisional_id": scene.provisional_id,
+                "location_marker_normalized": scene.location_marker.strip().lower(),
+                "scene_paragraph_start": paragraph_start,
+                "scene_paragraph_end": paragraph_end,
+                "scene_word_start": scene.word_start,
+                "scene_word_end": scene.word_end,
+                "refinement_has_refined_excerpt": refinement_has_excerpt,
+                "props": existing_props,
+            }
+            if record is None:
+                payload.update(
+                    {
+                        "book_slug": book_slug,
+                        "chapter_number": scene.chapter_number,
+                        "scene_number": scene.scene_id,
+                        "refined": refined_text,
+                        "refinement_decision": decision,
+                        "refinement_rationale": rationale,
+                        "refined_word_count": refined_word_count,
+                        "refined_char_count": refined_char_count,
+                        "refinement_model": refinement_model.model
+                        if refinement_model is not None
+                        else None,
+                        "refinement_temperature": self.config.refinement_temperature
+                        if self.config.enable_refinement
+                        else None,
+                        "refined_at": now,
                     }
-                    if refinement_model is not None:
-                        props["refinement_model_vendor"] = refinement_model.vendor
-                        props["refinement_used_backup_model"] = (
-                            refinement_model.used_backup
-                        )
-                    paragraph_start = (
-                        scene.paragraph_start
-                        if scene.paragraph_start is not None
-                        else scene.chunk_span[0]
+                )
+            else:
+                if self.config.enable_refinement:
+                    payload["refinement_model"] = (
+                        refinement_model.model if refinement_model is not None else None
                     )
-                    paragraph_end = (
-                        scene.paragraph_end
-                        if scene.paragraph_end is not None
-                        else scene.chunk_span[1]
+                    payload["refinement_temperature"] = (
+                        self.config.refinement_temperature
                     )
-                    now = (
-                        datetime.now(timezone.utc)
-                        if refinement and self.config.enable_refinement
-                        else None
-                    )
-                    record = repository.get_by_identity(
-                        book_slug=book_slug,
-                        chapter_number=scene.chapter_number,
-                        scene_number=scene.scene_id,
-                    )
-                    if record is None:
-                        payload = {
-                            "book_slug": book_slug,
-                            "source_book_path": normalized_book_path,
-                            "chapter_number": scene.chapter_number,
-                            "chapter_title": scene.chapter_title,
-                            "chapter_source_name": chapter.source_name,
-                            "scene_number": scene.scene_id,
-                            "location_marker": scene.location_marker,
-                            "raw": raw_text,
+                if refinement:
+                    payload.update(
+                        {
                             "refined": refined_text,
                             "refinement_decision": decision,
                             "refinement_rationale": rationale,
-                            "chunk_index": scene.chunk_index,
-                            "chunk_paragraph_start": scene.chunk_span[0],
-                            "chunk_paragraph_end": scene.chunk_span[1],
-                            "raw_word_count": raw_word_count,
-                            "raw_char_count": raw_char_count,
                             "refined_word_count": refined_word_count,
                             "refined_char_count": refined_char_count,
-                            "raw_signature": self._hash_signature(scene),
-                            "extraction_model": extraction_model.model,
-                            "extraction_temperature": self.config.gemini_temperature,
-                            "refinement_model": refinement_model.model
-                            if refinement_model is not None
-                            else None,
-                            "refinement_temperature": self.config.refinement_temperature
-                            if self.config.enable_refinement
-                            else None,
                             "refined_at": now,
-                            "provisional_id": scene.provisional_id,
-                            "location_marker_normalized": scene.location_marker.strip().lower(),
-                            "scene_paragraph_start": paragraph_start,
-                            "scene_paragraph_end": paragraph_end,
-                            "scene_word_start": scene.word_start,
-                            "scene_word_end": scene.word_end,
-                            "refinement_has_refined_excerpt": refinement_has_excerpt,
-                            "props": props,
                         }
-                        repository.create(data=payload, commit=False, refresh=False)
-                    else:
-                        existing_props = dict(record.props or {})
-                        for legacy_key in (
-                            "provisional_id",
-                            "chunk_paragraph_span",
-                            "location_marker_normalized",
-                            "refinement_summary",
-                        ):
-                            existing_props.pop(legacy_key, None)
-                        existing_props.update(props)
-                        update_payload = {
-                            "source_book_path": normalized_book_path,
-                            "chapter_title": scene.chapter_title,
-                            "chapter_source_name": chapter.source_name,
-                            "location_marker": scene.location_marker,
-                            "raw": raw_text,
-                            "chunk_index": scene.chunk_index,
-                            "chunk_paragraph_start": scene.chunk_span[0],
-                            "chunk_paragraph_end": scene.chunk_span[1],
-                            "raw_word_count": raw_word_count,
-                            "raw_char_count": raw_char_count,
-                            "raw_signature": self._hash_signature(scene),
-                            "extraction_model": extraction_model.model,
-                            "extraction_temperature": self.config.gemini_temperature,
-                            "provisional_id": scene.provisional_id,
-                            "location_marker_normalized": scene.location_marker.strip().lower(),
-                            "scene_paragraph_start": paragraph_start,
-                            "scene_paragraph_end": paragraph_end,
-                            "scene_word_start": scene.word_start,
-                            "scene_word_end": scene.word_end,
-                            "refinement_has_refined_excerpt": refinement_has_excerpt,
-                            "props": existing_props,
-                        }
-                        if self.config.enable_refinement:
-                            update_payload["refinement_model"] = (
-                                refinement_model.model
-                                if refinement_model is not None
-                                else None
-                            )
-                            update_payload["refinement_temperature"] = (
-                                self.config.refinement_temperature
-                            )
-                        if refinement:
-                            update_payload.update(
-                                {
-                                    "refined": refined_text,
-                                    "refinement_decision": decision,
-                                    "refinement_rationale": rationale,
-                                    "refined_word_count": refined_word_count,
-                                    "refined_char_count": refined_char_count,
-                                    "refined_at": now,
-                                }
-                            )
-                        repository.update(
-                            record, data=update_payload, commit=False, refresh=False
-                        )
-                session.commit()
-            except Exception:
-                session.rollback()
-                raise
+                    )
+            self._scene_repo.upsert_by_identity(
+                book_slug=book_slug,
+                chapter_number=scene.chapter_number,
+                scene_number=scene.scene_id,
+                values=payload,
+                commit=False,
+                refresh=False,
+            )
 
     @staticmethod
     def _parse_location_marker(
@@ -891,12 +869,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _cmd_preview(args: argparse.Namespace) -> int:
-    extractor = SceneExtractor()
-    stats = extractor.extract_preview(
-        args.book,
-        max_chapters=args.chapters,
-        max_chunks_per_chapter=args.chunks,
-    )
+    with Session(engine) as session:
+        extractor = SceneExtractor(session=session)
+        stats = extractor.extract_preview(
+            args.book,
+            max_chapters=args.chapters,
+            max_chunks_per_chapter=args.chunks,
+        )
+        session.commit()
     print(json.dumps(stats, indent=2, ensure_ascii=False))
     return 0
 
@@ -919,11 +899,11 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
         config.refinement_temperature = args.temperature
     if getattr(args, "max_tokens", None) is not None:
         config.refinement_max_tokens = args.max_tokens
-    extractor = SceneExtractor(config=config)
-    refiner = extractor.get_refiner()
     limit = args.limit if args.limit and args.limit > 0 else None
     with Session(engine) as session:
-        repository = SceneExtractionRepository(session)
+        extractor = SceneExtractor(session=session, config=config)
+        refiner = extractor.get_refiner()
+        repository = extractor._scene_repo
         records = repository.list_unrefined(
             book_slug=args.book,
             chapter_number=args.chapter,
