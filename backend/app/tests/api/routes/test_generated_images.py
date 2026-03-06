@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Generator
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -21,6 +22,41 @@ from app.repositories import (
 from models.generated_image import GeneratedImage
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
+
+
+def test_resolve_image_file_falls_back_to_legacy_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_root = tmp_path / "project"
+    generated_root = (project_root / "img").resolve()
+    generated_root.mkdir(parents=True, exist_ok=True)
+
+    legacy_project_root = tmp_path / "legacy"
+    legacy_file = (
+        legacy_project_root / "img" / "generated" / "book" / "chapter" / "image.png"
+    )
+    legacy_file.parent.mkdir(parents=True, exist_ok=True)
+    legacy_file.write_bytes(b"png")
+
+    monkeypatch.setattr(generated_images_routes, "_PROJECT_ROOT", project_root)
+    monkeypatch.setattr(generated_images_routes, "_GENERATED_IMAGES_ROOT", generated_root)
+    monkeypatch.setattr(
+        generated_images_routes,
+        "_LEGACY_PROJECT_ROOT",
+        legacy_project_root,
+    )
+    monkeypatch.setattr(
+        generated_images_routes,
+        "_LEGACY_GENERATED_IMAGES_ROOT",
+        (legacy_project_root / "img" / "generated").resolve(),
+    )
+
+    resolved = generated_images_routes._resolve_image_file(
+        "img/generated/book/chapter",
+        "image.png",
+    )
+
+    assert resolved == legacy_file.resolve()
 
 
 @pytest.fixture()

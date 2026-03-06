@@ -65,6 +65,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if not (_PROJECT_ROOT / "img").is_dir():
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _GENERATED_IMAGES_ROOT = (_PROJECT_ROOT / "img").resolve()
+_LEGACY_PROJECT_ROOT = Path("/")
+_LEGACY_GENERATED_IMAGES_ROOT = Path("/img/generated").resolve()
 logger = logging.getLogger(__name__)
 
 
@@ -139,6 +141,17 @@ def _resolve_image_file(storage_path: str, file_name: str) -> Path:
     except ValueError as exc:  # pragma: no cover - defensive guard
         raise HTTPException(status_code=404, detail="Image file not available") from exc
 
+    if candidate.exists():
+        return candidate
+
+    # Legacy fallback for files written to /img/... by older container layouts.
+    legacy_candidate = (_LEGACY_PROJECT_ROOT / relative_dir / file_name).resolve()
+    try:
+        legacy_candidate.relative_to(_LEGACY_GENERATED_IMAGES_ROOT)
+    except ValueError:
+        return candidate
+    if legacy_candidate.exists():
+        return legacy_candidate
     return candidate
 
 

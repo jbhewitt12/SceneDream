@@ -1,5 +1,6 @@
 """Unit tests for ImageGenerationService."""
 
+from pathlib import Path
 from collections.abc import Callable
 from uuid import uuid4
 
@@ -9,6 +10,7 @@ from sqlmodel import Session
 from app.repositories import GeneratedImageRepository
 from app.services.image_generation import dalle_image_api
 from app.services.image_generation.image_generation_service import (
+    _default_project_root_from_path,
     ImageGenerationConfig,
     ImageGenerationService,
     derive_style_from_tags,
@@ -51,6 +53,22 @@ def test_derive_style_from_tags():
     assert derive_style_from_tags(None, "natural") == "natural"
     assert derive_style_from_tags(["cinematic"], "vivid") == "vivid"
     assert derive_style_from_tags(None, None) == "vivid"
+
+
+def test_default_project_root_detects_local_layout() -> None:
+    source_file = Path(
+        "/Users/test/SceneDream/backend/app/services/image_generation/image_generation_service.py"
+    )
+    assert _default_project_root_from_path(source_file) == Path(
+        "/Users/test/SceneDream"
+    )
+
+
+def test_default_project_root_detects_container_layout() -> None:
+    source_file = Path(
+        "/app/app/services/image_generation/image_generation_service.py"
+    )
+    assert _default_project_root_from_path(source_file) == Path("/app")
 
 
 async def test_generate_for_selection_dry_run(
