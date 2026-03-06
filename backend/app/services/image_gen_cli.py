@@ -130,6 +130,17 @@ async def _emit_stage_update(
         await result
 
 
+def _extract_book_with_session(
+    config: SceneExtractionConfig,
+    book_path: Path,
+) -> dict[str, object]:
+    with Session(engine) as session:
+        extractor = SceneExtractor(session=session, config=config)
+        stats = extractor.extract_book(book_path)
+        session.commit()
+        return stats
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Orchestrate the complete image generation pipeline"
@@ -525,8 +536,9 @@ async def _run_full_pipeline(
     book_slug = args.book_slug
     if not book_slug and book_path:
         config = SceneExtractionConfig()
-        extractor = SceneExtractor(config=config)
-        book_slug = extractor._resolve_book_slug(book_path)
+        with Session(engine) as session:
+            extractor = SceneExtractor(session=session, config=config)
+            book_slug = extractor._resolve_book_slug(book_path)
         logger.info("Resolved book slug: %s", book_slug)
 
     # Auto-detect if extraction should be skipped
@@ -535,20 +547,23 @@ async def _run_full_pipeline(
     resume_from_chunk: int | None = None
     if not skip_extraction and book_slug and not args.dry_run:
         detection_config = SceneExtractionConfig(book_slug=book_slug)
-        detection_extractor = SceneExtractor(config=detection_config)
         resolved_detection_path: Path | None = None
-        if book_path:
-            try:
-                resolved_detection_path = detection_extractor._resolve_book_path(
-                    book_path
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Unable to resolve book path '%s' when checking extraction completeness: %s",
-                    book_path,
-                    exc,
-                )
         with Session(engine) as session:
+            detection_extractor = SceneExtractor(
+                session=session,
+                config=detection_config,
+            )
+            if book_path:
+                try:
+                    resolved_detection_path = detection_extractor._resolve_book_path(
+                        book_path
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Unable to resolve book path '%s' when checking extraction completeness: %s",
+                        book_path,
+                        exc,
+                    )
             scene_repo = SceneExtractionRepository(session)
             existing_scenes = scene_repo.list_for_book(book_slug)
             if existing_scenes:
@@ -673,11 +688,13 @@ async def _run_full_pipeline(
                 resume_from_chapter=resume_from_chapter,
                 resume_from_chunk=resume_from_chunk,
             )
-            extractor = SceneExtractor(config=config)
+            if book_path is None:
+                raise ValueError("--book-path is required for scene extraction")
             loop = asyncio.get_running_loop()
             extraction_stats = await loop.run_in_executor(
                 None,
-                extractor.extract_book,  # type: ignore[arg-type]
+                _extract_book_with_session,
+                config,
                 book_path,
             )
             scenes_count = extraction_stats.get("scenes", 0)
@@ -1073,11 +1090,11 @@ async def _run_extract(args: argparse.Namespace) -> PipelineStats:
         enable_refinement=not args.no_refine,
         book_slug=args.book_slug,
     )
-    extractor = SceneExtractor(config=config)
     loop = asyncio.get_running_loop()
     extraction_stats = await loop.run_in_executor(
         None,
-        extractor.extract_book,
+        _extract_book_with_session,
+        config,
         book_path,
     )
     scenes_count = extraction_stats.get("scenes", 0)

@@ -10,6 +10,9 @@ from __future__ import annotations
 import argparse
 import json
 
+from sqlmodel import Session
+
+from app.core.db import engine
 from app.services.scene_extraction.scene_extraction import (
     EXCESSION_EPUB_PATH,
     SceneExtractionConfig,
@@ -49,24 +52,30 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _create_extractor(enable_refinement: bool) -> SceneExtractor:
+def _create_extractor(session: Session, enable_refinement: bool) -> SceneExtractor:
     config = SceneExtractionConfig(enable_refinement=enable_refinement)
-    return SceneExtractor(config=config)
+    return SceneExtractor(session=session, config=config)
 
 
 def _handle_preview(chapters: int, enable_refinement: bool) -> dict[str, object]:
-    extractor = _create_extractor(enable_refinement)
-    chapters_to_process = max(chapters, 0)
-    return extractor.extract_preview(
-        EXCESSION_EPUB_PATH,
-        max_chapters=chapters_to_process,
-        max_chunks_per_chapter=0,
-    )
+    with Session(engine) as session:
+        extractor = _create_extractor(session, enable_refinement)
+        chapters_to_process = max(chapters, 0)
+        stats = extractor.extract_preview(
+            EXCESSION_EPUB_PATH,
+            max_chapters=chapters_to_process,
+            max_chunks_per_chapter=0,
+        )
+        session.commit()
+        return stats
 
 
 def _handle_full(enable_refinement: bool) -> dict[str, object]:
-    extractor = _create_extractor(enable_refinement)
-    return extractor.extract_book(EXCESSION_EPUB_PATH)
+    with Session(engine) as session:
+        extractor = _create_extractor(session, enable_refinement)
+        stats = extractor.extract_book(EXCESSION_EPUB_PATH)
+        session.commit()
+        return stats
 
 
 def main(argv: list[str] | None = None) -> int:

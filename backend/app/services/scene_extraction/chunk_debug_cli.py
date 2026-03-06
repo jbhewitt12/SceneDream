@@ -3,6 +3,9 @@ from __future__ import annotations
 import argparse
 from collections.abc import Iterable, Sequence
 
+from sqlmodel import Session
+
+from app.core.db import engine
 from app.services.scene_extraction.scene_extraction import (
     Chapter,
     ChapterChunk,
@@ -103,46 +106,47 @@ def inspect_book_chunks(args: argparse.Namespace) -> int:
         book_slug=args.book_slug,
         enable_refinement=False,
     )
-    extractor = SceneExtractor(config=config)
-    book_path = extractor._resolve_book_path(args.book_path)
-    chapters = extractor._load_chapters(book_path)
-    selected_chapters = _filter_chapters(
-        chapters,
-        include_numbers=args.chapters,
-        max_chapters=args.max_chapters,
-    )
+    with Session(engine) as session:
+        extractor = SceneExtractor(session=session, config=config)
+        book_path = extractor._resolve_book_path(args.book_path)
+        chapters = extractor._load_chapters(book_path)
+        selected_chapters = _filter_chapters(
+            chapters,
+            include_numbers=args.chapters,
+            max_chapters=args.max_chapters,
+        )
 
-    if not selected_chapters:
-        raise SystemExit("No chapters selected for inspection.")
+        if not selected_chapters:
+            raise SystemExit("No chapters selected for inspection.")
 
-    for chapter in selected_chapters:
-        print("=" * 80)
-        print(f"Chapter {chapter.number}: {chapter.title}")
-        print(f"Source: {chapter.source_name}")
-        print("-" * 80)
-        chunk_displayed = 0
+        for chapter in selected_chapters:
+            print("=" * 80)
+            print(f"Chapter {chapter.number}: {chapter.title}")
+            print(f"Source: {chapter.source_name}")
+            print("-" * 80)
+            chunk_displayed = 0
 
-        for chunk in _iter_chunks(extractor, chapter):
-            if args.chunk_limit is not None and chunk_displayed >= args.chunk_limit:
-                break
+            for chunk in _iter_chunks(extractor, chapter):
+                if args.chunk_limit is not None and chunk_displayed >= args.chunk_limit:
+                    break
 
-            print(
-                f"Chunk {chunk.index} | Paragraphs {chunk.start_paragraph}-{chunk.end_paragraph}"
-            )
-            print(f"Paragraph count: {len(chunk.paragraphs)}")
+                print(
+                    f"Chunk {chunk.index} | Paragraphs {chunk.start_paragraph}-{chunk.end_paragraph}"
+                )
+                print(f"Paragraph count: {len(chunk.paragraphs)}")
 
-            if args.show_prompts or not args.show_paragraphs:
-                prompt = _format_prompt(extractor, chunk)
-                print("\n--- Prompt Start ---")
-                print(prompt)
-                print("--- Prompt End ---\n")
+                if args.show_prompts or not args.show_paragraphs:
+                    prompt = _format_prompt(extractor, chunk)
+                    print("\n--- Prompt Start ---")
+                    print(prompt)
+                    print("--- Prompt End ---\n")
 
-            if args.show_paragraphs:
-                print("--- Numbered Paragraphs ---")
-                print(chunk.formatted_paragraphs())
-                print("--- Paragraphs End ---\n")
+                if args.show_paragraphs:
+                    print("--- Numbered Paragraphs ---")
+                    print(chunk.formatted_paragraphs())
+                    print("--- Paragraphs End ---\n")
 
-            chunk_displayed += 1
+                chunk_displayed += 1
 
     return 0
 
