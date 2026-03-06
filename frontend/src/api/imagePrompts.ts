@@ -2,7 +2,6 @@ import {
   type ImagePromptListResponse,
   type ImagePromptRead,
   ImagePromptsService,
-  OpenAPI,
 } from "@/client"
 
 export type ImagePromptAttributes = Record<string, unknown>
@@ -105,63 +104,26 @@ const sanitizeText = (value?: string | null) => {
   return trimmed.length ? trimmed : undefined
 }
 
-const buildUrl = (path: string) => {
-  const base = OpenAPI.BASE ?? ""
-  if (base) {
-    const sanitizedBase = base.replace(/\/+$/, "")
-    return `${sanitizedBase}${path}`
-  }
-  return path
-}
-
 export const generatePromptMetadata = async (
   promptId: string,
   variantsCount = 5,
 ): Promise<MetadataGenerationResponse> => {
-  const url = buildUrl(
-    `/api/v1/image-prompts/${encodeURIComponent(promptId)}/metadata/generate`,
-  )
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  return (await ImagePromptsService.generateMetadataVariants({
+    promptId,
+    requestBody: {
+      variants_count: variantsCount,
     },
-    body: JSON.stringify({ variants_count: variantsCount }),
-  })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "")
-    const message = body || `${response.status} ${response.statusText}`
-    throw new Error(`Failed to generate metadata: ${message}`)
-  }
-
-  return (await response.json()) as MetadataGenerationResponse
+  })) as MetadataGenerationResponse
 }
 
 export const updatePromptMetadata = async (
   promptId: string,
   metadata: MetadataUpdateRequest,
 ): Promise<ImagePromptMetadataRead> => {
-  const url = buildUrl(
-    `/api/v1/image-prompts/${encodeURIComponent(promptId)}/metadata`,
-  )
-
-  const response = await fetch(url, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(metadata),
-  })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "")
-    const message = body || `${response.status} ${response.statusText}`
-    throw new Error(`Failed to update metadata: ${message}`)
-  }
-
-  return (await response.json()) as ImagePromptMetadataRead
+  return (await ImagePromptsService.updatePromptMetadata({
+    promptId,
+    requestBody: metadata,
+  })) as ImagePromptMetadataRead
 }
 
 export type ScenePromptListParams = {
@@ -250,45 +212,18 @@ export const ImagePromptApi = {
       params.pageSize && params.pageSize > 0 ? params.pageSize : 24
     const offset = (page - 1) * pageSize
 
-    const queryParams = new URLSearchParams()
-    if (params.bookSlug) {
-      queryParams.set("book_slug", params.bookSlug)
-    }
-    if (params.chapterNumber !== undefined && params.chapterNumber !== null) {
-      queryParams.set("chapter_number", String(params.chapterNumber))
-    }
-    const modelName = sanitizeText(params.modelName)
-    if (modelName) {
-      queryParams.set("model_name", modelName)
-    }
-    const promptVersion = sanitizeText(params.promptVersion)
-    if (promptVersion) {
-      queryParams.set("prompt_version", promptVersion)
-    }
-    const styleTag = sanitizeText(params.styleTag)
-    if (styleTag) {
-      queryParams.set("style_tag", styleTag)
-    }
-    queryParams.set(
-      "newest_first",
-      String(params.newestFirst === undefined ? true : params.newestFirst),
-    )
-    queryParams.set("limit", String(pageSize))
-    queryParams.set("offset", String(offset))
-    if (params.includeScene !== undefined) {
-      queryParams.set("include_scene", String(params.includeScene))
-    }
+    const data = await ImagePromptsService.listPrompts({
+      bookSlug: params.bookSlug ?? undefined,
+      chapterNumber: params.chapterNumber ?? undefined,
+      modelName: sanitizeText(params.modelName),
+      promptVersion: sanitizeText(params.promptVersion),
+      styleTag: sanitizeText(params.styleTag),
+      newestFirst: params.newestFirst === undefined ? true : params.newestFirst,
+      limit: pageSize,
+      offset,
+      includeScene: params.includeScene,
+    })
 
-    const url = buildUrl(`/api/v1/image-prompts/list?${queryParams.toString()}`)
-    const response = await fetch(url)
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "")
-      const message = body || `${response.status} ${response.statusText}`
-      throw new Error(`Failed to list prompts: ${message}`)
-    }
-
-    const data = (await response.json()) as ImagePromptListResponse
     return {
       ...data,
       data: data.data.map(normalizePrompt),

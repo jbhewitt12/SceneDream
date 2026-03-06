@@ -1,4 +1,4 @@
-import { OpenAPI } from "@/client"
+import { SettingsService } from "@/client"
 
 export type ArtStyle = {
   id: string
@@ -30,48 +30,16 @@ export type AppSettingsUpdateRequest = {
   default_art_style_id?: string | null
 }
 
-const buildUrl = (path: string) => {
-  const base = OpenAPI.BASE ?? ""
-  if (base?.endsWith("/")) {
-    return `${base.replace(/\/+$/, "")}${path}`
-  }
-  return `${base}${path}`
-}
-
-const parseErrorBody = async (response: Response) => {
-  try {
-    const payload = await response.json()
-    if (payload && typeof payload.detail === "string") {
-      return payload.detail
-    }
-  } catch {
-    // fall back to status text below
-  }
-  return `${response.status} ${response.statusText}`
-}
-
 export const SettingsApi = {
-  async get(): Promise<AppSettingsBundleResponse> {
-    const response = await fetch(buildUrl("/api/v1/settings"))
-    if (!response.ok) {
-      throw new Error(await parseErrorBody(response))
-    }
-    return (await response.json()) as AppSettingsBundleResponse
+  get(): Promise<AppSettingsBundleResponse> {
+    return SettingsService.getSettings()
   },
 
-  async update(
+  update(
     payload: AppSettingsUpdateRequest,
   ): Promise<AppSettingsBundleResponse> {
-    const response = await fetch(buildUrl("/api/v1/settings"), {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
+    return SettingsService.updateSettings({
+      requestBody: payload,
     })
-    if (!response.ok) {
-      throw new Error(await parseErrorBody(response))
-    }
-    return (await response.json()) as AppSettingsBundleResponse
   },
 }

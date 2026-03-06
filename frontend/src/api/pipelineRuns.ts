@@ -1,4 +1,4 @@
-import { OpenAPI } from "@/client"
+import { PipelineRunsService } from "@/client"
 
 export type PipelineRunStartRequest = {
   document_id?: string
@@ -36,46 +36,16 @@ export type PipelineRun = {
   updated_at: string
 }
 
-const buildUrl = (path: string) => {
-  const base = OpenAPI.BASE ?? ""
-  if (base?.endsWith("/")) {
-    return `${base.replace(/\/+$/, "")}${path}`
-  }
-  return `${base}${path}`
-}
-
-const parseErrorBody = async (response: Response) => {
-  try {
-    const payload = await response.json()
-    if (payload && typeof payload.detail === "string") {
-      return payload.detail
-    }
-  } catch {
-    // fall back to status text below
-  }
-  return `${response.status} ${response.statusText}`
-}
-
 export const PipelineRunsApi = {
   async start(payload: PipelineRunStartRequest): Promise<PipelineRun> {
-    const response = await fetch(buildUrl("/api/v1/pipeline-runs"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    })
-    if (!response.ok) {
-      throw new Error(await parseErrorBody(response))
-    }
-    return (await response.json()) as PipelineRun
+    return (await PipelineRunsService.startPipelineRun({
+      requestBody: payload,
+    })) as PipelineRun
   },
 
   async get(runId: string): Promise<PipelineRun> {
-    const response = await fetch(buildUrl(`/api/v1/pipeline-runs/${runId}`))
-    if (!response.ok) {
-      throw new Error(await parseErrorBody(response))
-    }
-    return (await response.json()) as PipelineRun
+    return (await PipelineRunsService.getPipelineRun({
+      runId,
+    })) as PipelineRun
   },
 }

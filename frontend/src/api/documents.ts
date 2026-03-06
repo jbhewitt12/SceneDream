@@ -1,4 +1,4 @@
-import { OpenAPI } from "@/client"
+import { DocumentsService } from "@/client"
 
 export type DocumentDashboardCounts = {
   extracted: number
@@ -45,32 +45,8 @@ export type DocumentDashboardResponse = {
   total: number
 }
 
-const buildUrl = (path: string) => {
-  const base = OpenAPI.BASE ?? ""
-  if (base?.endsWith("/")) {
-    return `${base.replace(/\/+$/, "")}${path}`
-  }
-  return `${base}${path}`
-}
-
-const parseErrorBody = async (response: Response) => {
-  try {
-    const payload = await response.json()
-    if (payload && typeof payload.detail === "string") {
-      return payload.detail
-    }
-  } catch {
-    // fall back to status text below
-  }
-  return `${response.status} ${response.statusText}`
-}
-
 export const DocumentsApi = {
   async getDashboard(): Promise<DocumentDashboardResponse> {
-    const response = await fetch(buildUrl("/api/v1/documents/dashboard"))
-    if (!response.ok) {
-      throw new Error(await parseErrorBody(response))
-    }
-    return (await response.json()) as DocumentDashboardResponse
+    return (await DocumentsService.getDocumentsDashboard()) as DocumentDashboardResponse
   },
 }

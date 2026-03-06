@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   Container,
   Flex,
@@ -13,25 +12,19 @@ import {
   Switch,
   Text,
 } from "@chakra-ui/react"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import {
   Link as RouterLink,
   createFileRoute,
   useNavigate,
 } from "@tanstack/react-router"
 import { useMemo } from "react"
-import { FiArrowLeft, FiFilter, FiRefreshCcw, FiZap } from "react-icons/fi"
+import { FiArrowLeft, FiFilter, FiRefreshCcw } from "react-icons/fi"
 import { z } from "zod"
 
-import { ImagePromptGenerationApi } from "@/api/imagePromptGeneration"
 import { ImagePromptApi } from "@/api/imagePrompts"
 import type { ImagePromptSceneSummary } from "@/client"
-import {
-  PromptDetailDrawer,
-  PromptList,
-  SceneContextPanel,
-} from "@/components/Prompts"
-import useCustomToast from "@/hooks/useCustomToast"
+import { PromptList, SceneContextPanel } from "@/components/Prompts"
 
 const scenePromptsSearchSchema = z.object({
   model_name: z
@@ -174,7 +167,6 @@ function ScenePromptsPage() {
   const { sceneId } = Route.useParams()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
-  const { showSuccessToast, showErrorToast } = useCustomToast()
 
   const handleSearchUpdate = (updates: Partial<ScenePromptsSearch>) => {
     navigate({
@@ -214,27 +206,6 @@ function ScenePromptsPage() {
     return undefined
   }, [prompts, promptQuery.data?.meta])
 
-  const generationMutation = useMutation({
-    mutationFn: () =>
-      ImagePromptGenerationApi.triggerForScene({
-        sceneId,
-        modelName: search.model_name ?? undefined,
-        promptVersion: search.prompt_version ?? undefined,
-      }),
-    onSuccess: () => {
-      showSuccessToast("Prompt generation triggered for scene.")
-    },
-    onError: (error) => {
-      showErrorToast(
-        error instanceof Error
-          ? error.message
-          : "Unable to trigger prompts for this scene",
-      )
-    },
-  })
-
-  const disableGenerate = generationMutation.isPending
-
   return (
     <Container maxW="4xl" py={4} display="flex" flexDirection="column" gap={4}>
       <Flex align="center" justify="space-between" gap={4} flexWrap="wrap">
@@ -253,16 +224,6 @@ function ScenePromptsPage() {
               Back to gallery
             </Button>
           </RouterLink>
-          <Button
-            colorScheme="purple"
-            onClick={() => generationMutation.mutate()}
-            loading={generationMutation.isPending}
-            disabled={disableGenerate}
-            gap={1}
-          >
-            <Icon as={FiZap} />
-            Generate prompts
-          </Button>
         </HStack>
       </Flex>
       {sceneSummary && (
