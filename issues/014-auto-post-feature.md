@@ -1,21 +1,17 @@
 I just added backend/app/services/flickr/flickr_service.py.
 
-I have already added the required values to.env.
+I have already added the required values to `.env`.
 
-I have also already run this and had the Flickr token saved:
-```
-cd /Users/joshhewitt/dev/SceneDream/backend && uv run python -c "
+I have also already completed Flickr OAuth setup in local development using this reusable flow:
+```bash
+cd backend && uv run python -c "
 from app.core.config import settings
 from app.services.flickr.flickr_service import FlickrService
 service = FlickrService(settings.FLICKR_API_KEY, settings.FLICKR_API_SECRET)
 "
-Starting Flickr OAuth authentication (one-time process)...
-
-Please open this URL in your browser and authorize the app:
-https://www.flickr.com/services/oauth/authorize?oauth_token=REDACTED&perms=write
-
-Enter the verifier code provided by Flickr: 555-703-687
-Authentication successful! Access token saved.
+# The service prints an authorization URL.
+# Approve access in Flickr and complete the CLI prompt.
+# Credentials are persisted locally after successful authorization.
 ```
 
 I want to create a new system that will help me to automatically post images that I have approved for posting to whatever applications I have set up to post to, like Flickr or Twitter.

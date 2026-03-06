@@ -75,8 +75,8 @@ Convert the background task execution from synchronous task queuing to async tas
    - No task queue system (Celery, RQ, etc.) in dependencies
 
 **Files affected:**
-- `/Users/joshhewitt/dev/SceneDream/backend/app/api/routes/generated_images.py` (main changes)
-- Potentially `/Users/joshhewitt/dev/SceneDream/backend/app/services/image_prompt_generation/image_prompt_generation_service.py` (make async)
+- `backend/app/api/routes/generated_images.py` (main changes)
+- Potentially `backend/app/services/image_prompt_generation/image_prompt_generation_service.py` (make async)
 
 **Similar features for reference:**
 - Image generation already uses async/await throughout
