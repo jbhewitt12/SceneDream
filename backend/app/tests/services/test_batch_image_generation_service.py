@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -14,8 +14,8 @@ from sqlmodel import Session
 from app.repositories.image_generation_batch import ImageGenerationBatchRepository
 from app.services.image_generation.batch_image_generation_service import (
     _QUALITY_MAPPING,
-    _default_project_root_from_path,
     BatchImageGenerationService,
+    _default_project_root_from_path,
 )
 from app.services.image_generation.image_generation_service import (
     GenerationTask,

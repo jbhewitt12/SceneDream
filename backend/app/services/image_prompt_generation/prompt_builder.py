@@ -232,7 +232,9 @@ class PromptBuilder:
             if path.parts and path.parts[0] == "backend":
                 candidates.append(_BACKEND_ROOT / Path(*path.parts[1:]))
 
-        resolved = next((candidate for candidate in candidates if candidate.exists()), None)
+        resolved = next(
+            (candidate for candidate in candidates if candidate.exists()), None
+        )
         if resolved is None:
             raise ImagePromptGenerationServiceError(
                 f"Cheat sheet file not found: {path_str}"

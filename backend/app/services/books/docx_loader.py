@@ -39,11 +39,15 @@ class DocxBookLoader:
 
         lines = [paragraph.text for paragraph in document.paragraphs]
         paragraphs = split_wrapped_paragraphs(lines)
-        paragraphs, boilerplate_warnings = trim_project_gutenberg_boilerplate(paragraphs)
+        paragraphs, boilerplate_warnings = trim_project_gutenberg_boilerplate(
+            paragraphs
+        )
         warnings.extend(boilerplate_warnings)
 
         if not paragraphs:
-            raise ValueError(f"DOCX document '{path}' did not contain readable content.")
+            raise ValueError(
+                f"DOCX document '{path}' did not contain readable content."
+            )
 
         title = extract_declared_title(paragraphs) or path.stem
         chapters = build_chapters_from_paragraphs(

@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from app.services.image_prompt_generation.models import ImagePromptGenerationServiceError
+from app.services.image_prompt_generation.models import (
+    ImagePromptGenerationServiceError,
+)
 from app.services.image_prompt_generation.prompt_builder import PromptBuilder
 
 

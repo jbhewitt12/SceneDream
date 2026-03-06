@@ -82,7 +82,9 @@ class PipelineRunStartService:
             )
 
         should_skip_extraction = launch_request.skip_extraction
-        has_existing_extractions = bool(self._scene_repo.list_for_book(resolved_book_slug))
+        has_existing_extractions = bool(
+            self._scene_repo.list_for_book(resolved_book_slug)
+        )
         source_path_exists = self._source_path_exists(resolved_book_path)
 
         if not should_skip_extraction:
@@ -185,4 +187,3 @@ class PipelineRunStartService:
         except Exception:
             return False
         return resolved.exists()
-

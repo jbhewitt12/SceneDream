@@ -7,12 +7,13 @@ from collections.abc import Callable
 from sqlmodel import Session
 
 from app.repositories import GeneratedImageRepository
-from models.generated_image import GeneratedImage
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
 
-def _image_payload(scene: SceneExtraction, prompt: ImagePrompt, **overrides: object) -> dict:
+def _image_payload(
+    scene: SceneExtraction, prompt: ImagePrompt, **overrides: object
+) -> dict:
     data: dict[str, object] = {
         "scene_extraction_id": scene.id,
         "image_prompt_id": prompt.id,

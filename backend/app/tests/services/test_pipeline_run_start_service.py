@@ -172,7 +172,10 @@ def test_resolve_pipeline_request_requires_book_slug_without_document_id(
             _build_request(book_slug=None, book_path=None, images_for_scenes=1)
         )
 
-    assert exc_info.value.detail == "book_slug is required when document_id is not provided"
+    assert (
+        exc_info.value.detail
+        == "book_slug is required when document_id is not provided"
+    )
     assert exc_info.value.status_code == 400
 
 
