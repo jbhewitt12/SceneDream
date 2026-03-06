@@ -117,17 +117,17 @@ For branch protection/rulesets, keep required checks limited to this baseline:
 - Keep commits logically grouped.
 - Avoid unrelated refactors in feature/fix PRs.
 
-## Sequential Agent Queue (Issues 020-026)
+## Sequential Agent Queue (General-Purpose)
 
-Use this workflow when you want one issue per agent context, with one commit per issue.
+Use this workflow when you want one issue per agent context, one commit per issue, and a fresh context between issues.
 
-1. Run the whole queue (one command):
+1. Pick an issue range and set it once (recommended):
 
 ```bash
-./scripts/issue_queue.sh run-all
+export ISSUE_QUEUE_RANGE=027-033
 ```
 
-This launches a fresh `codex exec --ephemeral` agent per issue, in order, and stops if an issue does not create the expected commit message (`issue(0NN): ...`).
+You can also pass `--range` per command instead of exporting the env var.
 
 2. Check queue state:
 
@@ -135,25 +135,23 @@ This launches a fresh `codex exec --ephemeral` agent per issue, in order, and st
 ./scripts/issue_queue.sh status
 ```
 
-3. Get the next pending issue:
+3. Run the whole range automatically (one command):
+
+```bash
+./scripts/issue_queue.sh run-all
+```
+
+This launches a fresh `codex exec --ephemeral` agent per issue in range order and stops if an issue does not create the expected commit message (`issue(0NN): ...`).
+
+4. Optional: run one issue at a time:
 
 ```bash
 ./scripts/issue_queue.sh next
-```
-
-4. Generate a handoff prompt for a fresh agent context:
-
-```bash
 ./scripts/issue_queue.sh prompt
-```
-
-5. Optional: run only the next issue in a fresh agent context:
-
-```bash
 ./scripts/issue_queue.sh run-next
 ```
 
-6. In that agent context, implement only the shown issue, run required checks, stage files, then commit with:
+5. In a manual fresh agent context, implement only the shown issue, run checks, stage files, then commit exactly once:
 
 ```bash
 ./scripts/issue_queue.sh commit "<short summary>"
@@ -161,13 +159,13 @@ This launches a fresh `codex exec --ephemeral` agent per issue, in order, and st
 
 This creates a commit message in the required format: `issue(0NN): <summary>`.
 
-7. Validate ordering (optional but recommended):
+6. Validate ordering (recommended):
 
 ```bash
 ./scripts/issue_queue.sh verify
 ```
 
-8. If not using `run-all`, start a new agent context and repeat from step 3 until all issues are complete.
+7. If not using `run-all`, repeat steps 2-6 until the range is complete.
 
 ## Reporting Security Issues
 
