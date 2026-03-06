@@ -7,8 +7,7 @@ on:
 
 jobs:
   deploy:
-    # Do not deploy in the main repository, only in user projects
-    if: github.repository_owner != 'fastapi'
+    if: github.repository == 'jbhewitt12/SceneDream'
     runs-on:
       - self-hosted
       - production
