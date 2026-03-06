@@ -7,7 +7,6 @@ import logging
 import mimetypes
 import time
 from collections.abc import Coroutine
-from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
@@ -40,7 +39,12 @@ from app.schemas import (
     SocialMediaPostRead,
 )
 from app.services.image_generation.image_generation_service import (
+    ImageFileDeletedError,
+    ImageFileError,
+    ImageFileNotFoundError,
+    ImageFileWriteError,
     ImageGenerationService,
+    ImageNotFoundError,
 )
 from app.services.image_prompt_generation.image_prompt_generation_service import (
     REMIX_VARIANTS_COUNT,
@@ -58,15 +62,6 @@ _MAX_LIST_LIMIT = 200
 _DEFAULT_SCENE_LIMIT = 20
 _MAX_SCENE_LIMIT = 100
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]
-# In Docker the backend code lives one level higher (/app/app/...) so parents[4]
-# resolves to "/" instead of the real project root.  Fall back to parents[3] when
-# the img/ directory cannot be found at the first candidate.
-if not (_PROJECT_ROOT / "img").is_dir():
-    _PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_GENERATED_IMAGES_ROOT = (_PROJECT_ROOT / "img").resolve()
-_LEGACY_PROJECT_ROOT = Path("/")
-_LEGACY_GENERATED_IMAGES_ROOT = Path("/img/generated").resolve()
 logger = logging.getLogger(__name__)
 
 
@@ -130,29 +125,9 @@ def _build_list_item(record: Any) -> GeneratedImageListItem:
     return GeneratedImageListItem.model_validate(payload)
 
 
-def _resolve_image_file(storage_path: str, file_name: str) -> Path:
-    """Resolve the on-disk path for a generated image and guard against traversal."""
-
-    relative_dir = Path(storage_path.strip("/"))
-    candidate = (_PROJECT_ROOT / relative_dir / file_name).resolve()
-
-    try:
-        candidate.relative_to(_GENERATED_IMAGES_ROOT)
-    except ValueError as exc:  # pragma: no cover - defensive guard
-        raise HTTPException(status_code=404, detail="Image file not available") from exc
-
-    if candidate.exists():
-        return candidate
-
-    # Legacy fallback for files written to /img/... by older container layouts.
-    legacy_candidate = (_LEGACY_PROJECT_ROOT / relative_dir / file_name).resolve()
-    try:
-        legacy_candidate.relative_to(_LEGACY_GENERATED_IMAGES_ROOT)
-    except ValueError:
-        return candidate
-    if legacy_candidate.exists():
-        return legacy_candidate
-    return candidate
+async def _read_upload_contents(file: UploadFile) -> bytes:
+    """Read uploaded file contents from an HTTP request."""
+    return await file.read()
 
 
 async def _execute_remix_generation(
@@ -484,17 +459,24 @@ def stream_generated_image_file(
 ) -> FileResponse:
     """Stream the binary image file for a generated image."""
 
-    repository = GeneratedImageRepository(session)
-    record = repository.get(image_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="Generated image not found")
-
-    if record.file_deleted:
-        raise HTTPException(status_code=410, detail="Image file has been deleted")
-
-    file_path = _resolve_image_file(record.storage_path, record.file_name)
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Generated image file not found")
+    service = ImageGenerationService(session)
+    try:
+        file_path = service.get_image_file_path(image_id)
+    except ImageNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="Generated image not found"
+        ) from exc
+    except ImageFileDeletedError as exc:
+        raise HTTPException(
+            status_code=410, detail="Image file has been deleted"
+        ) from exc
+    except ImageFileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Generated image file not found",
+        ) from exc
+    except ImageFileError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     media_type, _ = mimetypes.guess_type(file_path.name)
     return FileResponse(
@@ -956,32 +938,25 @@ async def crop_image(
     Accepts a multipart file upload containing the cropped image data
     and overwrites the original file on disk.
     """
-    repository = GeneratedImageRepository(session)
-    image = repository.get(image_id)
-    if image is None:
-        raise HTTPException(status_code=404, detail="Generated image not found")
+    service = ImageGenerationService(session)
 
-    if image.file_deleted:
-        raise HTTPException(status_code=410, detail="Image file has been deleted")
-
-    file_path = _resolve_image_file(image.storage_path, image.file_name)
-    if not file_path.exists() or not file_path.is_file():
+    try:
+        contents = await _read_upload_contents(file)
+        await service.save_cropped_image(image_id, contents)
+    except ImageNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="Generated image not found"
+        ) from exc
+    except ImageFileDeletedError as exc:
+        raise HTTPException(
+            status_code=410, detail="Image file has been deleted"
+        ) from exc
+    except ImageFileNotFoundError as exc:
         raise HTTPException(
             status_code=400,
             detail="Original image file not found on disk",
-        )
-
-    try:
-        contents = await file.read()
-        file_path.write_bytes(contents)
-        logger.info(
-            "Cropped image %s written to %s (%d bytes)",
-            image_id,
-            file_path,
-            len(contents),
-        )
-    except Exception as exc:
-        logger.exception("Failed to write cropped image %s: %s", image_id, exc)
+        ) from exc
+    except ImageFileWriteError as exc:
         raise HTTPException(
             status_code=500,
             detail="Failed to save cropped image",
