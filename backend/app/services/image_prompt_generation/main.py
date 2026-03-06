@@ -27,13 +27,13 @@ from sqlmodel import Session, select
 
 from app.core.db import engine
 from app.repositories import ImagePromptRepository, SceneRankingRepository
-from app.services.langchain.model_routing import infer_provider_from_model_name
 from app.services.image_prompt_generation.image_prompt_generation_service import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationService,
     ImagePromptGenerationServiceError,
 )
 from app.services.image_prompt_generation.models import ImagePromptPreview
+from app.services.langchain.model_routing import infer_provider_from_model_name
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 

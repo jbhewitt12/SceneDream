@@ -65,7 +65,9 @@ def test_resolve_llm_model_raises_without_available_keys(
     monkeypatch.setenv("GEMINI_API_KEY", "")
     monkeypatch.setenv("OPENAI_API_KEY", "")
 
-    with pytest.raises(LLMRoutingError, match="Set OPENAI_API_KEY and/or GEMINI_API_KEY"):
+    with pytest.raises(
+        LLMRoutingError, match="Set OPENAI_API_KEY and/or GEMINI_API_KEY"
+    ):
         resolve_llm_model(
             LLMRoutingConfig(
                 default_vendor="google",

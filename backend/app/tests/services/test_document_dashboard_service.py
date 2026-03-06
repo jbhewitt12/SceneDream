@@ -11,8 +11,10 @@ from app.repositories import (
     PipelineRunRepository,
     SceneRankingRepository,
 )
-from app.services.document_dashboard_service import DocumentDashboardService
-from app.services.document_dashboard_service import _default_project_root_from_path
+from app.services.document_dashboard_service import (
+    DocumentDashboardService,
+    _default_project_root_from_path,
+)
 
 
 def test_document_dashboard_service_reports_stage_counts_for_document(

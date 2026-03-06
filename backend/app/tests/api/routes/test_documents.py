@@ -61,7 +61,11 @@ def test_get_documents_dashboard_returns_pipeline_status(
         assert payload["total"] >= 1
 
         target = next(
-            (entry for entry in payload["data"] if entry["document_id"] == str(document.id)),
+            (
+                entry
+                for entry in payload["data"]
+                if entry["document_id"] == str(document.id)
+            ),
             None,
         )
 

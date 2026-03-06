@@ -20,6 +20,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from uuid import UUID
 
 from sqlmodel import Session
 
@@ -74,7 +75,7 @@ def run(args: argparse.Namespace) -> None:
 
         files_deleted = 0
         bytes_freed = 0
-        ids_to_mark: list = []
+        ids_to_mark: list[UUID] = []
 
         for image in images:
             relative_dir = Path(image.storage_path.strip("/"))

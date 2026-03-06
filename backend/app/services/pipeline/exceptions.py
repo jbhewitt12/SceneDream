@@ -21,4 +21,3 @@ class DocumentNotFoundError(PipelineValidationError):
 
 class SourceDocumentMissingError(PipelineValidationError):
     """Raised when extraction is requested but source content cannot be resolved."""
-

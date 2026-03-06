@@ -6,9 +6,11 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import func
+from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, select
 
 from app.schemas.document import (
@@ -25,7 +27,6 @@ from models.pipeline_run import PipelineRun
 from models.scene_extraction import SceneExtraction
 from models.scene_ranking import SceneRanking
 
-
 SUPPORTED_SOURCE_EXTENSIONS = {
     ".epub",
     ".mobi",
@@ -35,6 +36,11 @@ SUPPORTED_SOURCE_EXTENSIONS = {
     ".md",
     ".docx",
 }
+
+
+def _column(value: object) -> ColumnElement[Any]:
+    """Coerce SQLModel attributes into SQLAlchemy column expressions for typing."""
+    return cast(ColumnElement[Any], value)
 
 
 def _default_project_root_from_path(source_file: Path) -> Path:
@@ -140,7 +146,7 @@ class DocumentDashboardService:
 
     def _build_entry_rows(self) -> list[_EntryBuilder]:
         rows_by_key = self._scan_documents_directory()
-        statement = select(Document).order_by(Document.created_at.desc())
+        statement = select(Document).order_by(_column(Document.created_at).desc())
         for document in self._session.exec(statement):
             normalized_source_path = self._book_service.normalize_source_path(
                 document.source_path
@@ -197,88 +203,134 @@ class DocumentDashboardService:
         return rows
 
     def _count_extracted(self) -> tuple[dict[UUID, int], dict[str, int]]:
+        document_id_col = _column(SceneExtraction.document_id)
+        scene_extraction_id_col = _column(SceneExtraction.id)
+        book_slug_col = _column(SceneExtraction.book_slug)
+
         by_document_id = self._count_by_document_id(
-            select(SceneExtraction.document_id, func.count(SceneExtraction.id))
-            .where(SceneExtraction.document_id.is_not(None))
-            .group_by(SceneExtraction.document_id)
+            select(
+                document_id_col,
+                func.count(scene_extraction_id_col),
+            )
+            .where(document_id_col.is_not(None))
+            .group_by(document_id_col)
         )
         by_legacy_slug = self._count_by_legacy_slug(
-            select(SceneExtraction.book_slug, func.count(SceneExtraction.id))
-            .where(SceneExtraction.document_id.is_(None))
-            .group_by(SceneExtraction.book_slug)
+            select(
+                book_slug_col,
+                func.count(scene_extraction_id_col),
+            )
+            .where(document_id_col.is_(None))
+            .group_by(book_slug_col)
         )
         return by_document_id, by_legacy_slug
 
     def _count_ranked(self) -> tuple[dict[UUID, int], dict[str, int]]:
+        document_id_col = _column(SceneExtraction.document_id)
+        scene_extraction_id_col = _column(SceneExtraction.id)
+        book_slug_col = _column(SceneExtraction.book_slug)
+        scene_ranking_id_col = _column(SceneRanking.id)
+        ranking_scene_extraction_id_col = _column(SceneRanking.scene_extraction_id)
+
         by_document_id = self._count_by_document_id(
-            select(SceneExtraction.document_id, func.count(SceneRanking.id))
+            select(
+                document_id_col,
+                func.count(scene_ranking_id_col),
+            )
             .select_from(SceneRanking)
             .join(
                 SceneExtraction,
-                SceneRanking.scene_extraction_id == SceneExtraction.id,
+                ranking_scene_extraction_id_col == scene_extraction_id_col,
             )
-            .where(SceneExtraction.document_id.is_not(None))
-            .group_by(SceneExtraction.document_id)
+            .where(document_id_col.is_not(None))
+            .group_by(document_id_col)
         )
         by_legacy_slug = self._count_by_legacy_slug(
-            select(SceneExtraction.book_slug, func.count(SceneRanking.id))
+            select(
+                book_slug_col,
+                func.count(scene_ranking_id_col),
+            )
             .select_from(SceneRanking)
             .join(
                 SceneExtraction,
-                SceneRanking.scene_extraction_id == SceneExtraction.id,
+                ranking_scene_extraction_id_col == scene_extraction_id_col,
             )
-            .where(SceneExtraction.document_id.is_(None))
-            .group_by(SceneExtraction.book_slug)
+            .where(document_id_col.is_(None))
+            .group_by(book_slug_col)
         )
         return by_document_id, by_legacy_slug
 
     def _count_prompted(self) -> tuple[dict[UUID, int], dict[str, int]]:
+        document_id_col = _column(SceneExtraction.document_id)
+        scene_extraction_id_col = _column(SceneExtraction.id)
+        book_slug_col = _column(SceneExtraction.book_slug)
+        image_prompt_id_col = _column(ImagePrompt.id)
+        prompt_scene_extraction_id_col = _column(ImagePrompt.scene_extraction_id)
+
         by_document_id = self._count_by_document_id(
-            select(SceneExtraction.document_id, func.count(ImagePrompt.id))
+            select(
+                document_id_col,
+                func.count(image_prompt_id_col),
+            )
             .select_from(ImagePrompt)
             .join(
                 SceneExtraction,
-                ImagePrompt.scene_extraction_id == SceneExtraction.id,
+                prompt_scene_extraction_id_col == scene_extraction_id_col,
             )
-            .where(SceneExtraction.document_id.is_not(None))
-            .group_by(SceneExtraction.document_id)
+            .where(document_id_col.is_not(None))
+            .group_by(document_id_col)
         )
         by_legacy_slug = self._count_by_legacy_slug(
-            select(SceneExtraction.book_slug, func.count(ImagePrompt.id))
+            select(
+                book_slug_col,
+                func.count(image_prompt_id_col),
+            )
             .select_from(ImagePrompt)
             .join(
                 SceneExtraction,
-                ImagePrompt.scene_extraction_id == SceneExtraction.id,
+                prompt_scene_extraction_id_col == scene_extraction_id_col,
             )
-            .where(SceneExtraction.document_id.is_(None))
-            .group_by(SceneExtraction.book_slug)
+            .where(document_id_col.is_(None))
+            .group_by(book_slug_col)
         )
         return by_document_id, by_legacy_slug
 
     def _count_imaged(self) -> tuple[dict[UUID, int], dict[str, int]]:
+        document_id_col = _column(SceneExtraction.document_id)
+        scene_extraction_id_col = _column(SceneExtraction.id)
+        book_slug_col = _column(SceneExtraction.book_slug)
+        generated_image_id_col = _column(GeneratedImage.id)
+        image_scene_extraction_id_col = _column(GeneratedImage.scene_extraction_id)
+
         by_document_id = self._count_by_document_id(
-            select(SceneExtraction.document_id, func.count(GeneratedImage.id))
+            select(
+                document_id_col,
+                func.count(generated_image_id_col),
+            )
             .select_from(GeneratedImage)
             .join(
                 SceneExtraction,
-                GeneratedImage.scene_extraction_id == SceneExtraction.id,
+                image_scene_extraction_id_col == scene_extraction_id_col,
             )
-            .where(SceneExtraction.document_id.is_not(None))
-            .group_by(SceneExtraction.document_id)
+            .where(document_id_col.is_not(None))
+            .group_by(document_id_col)
         )
         by_legacy_slug = self._count_by_legacy_slug(
-            select(SceneExtraction.book_slug, func.count(GeneratedImage.id))
+            select(
+                book_slug_col,
+                func.count(generated_image_id_col),
+            )
             .select_from(GeneratedImage)
             .join(
                 SceneExtraction,
-                GeneratedImage.scene_extraction_id == SceneExtraction.id,
+                image_scene_extraction_id_col == scene_extraction_id_col,
             )
-            .where(SceneExtraction.document_id.is_(None))
-            .group_by(SceneExtraction.book_slug)
+            .where(document_id_col.is_(None))
+            .group_by(book_slug_col)
         )
         return by_document_id, by_legacy_slug
 
-    def _count_by_document_id(self, statement: object) -> dict[UUID, int]:
+    def _count_by_document_id(self, statement: Any) -> dict[UUID, int]:
         counts: dict[UUID, int] = {}
         for document_id, count in self._session.exec(statement):
             if document_id is None:
@@ -286,7 +338,7 @@ class DocumentDashboardService:
             counts[document_id] = int(count or 0)
         return counts
 
-    def _count_by_legacy_slug(self, statement: object) -> dict[str, int]:
+    def _count_by_legacy_slug(self, statement: Any) -> dict[str, int]:
         counts: dict[str, int] = {}
         for slug, count in self._session.exec(statement):
             if slug is None:
@@ -308,12 +360,15 @@ class DocumentDashboardService:
     def _latest_runs(
         self,
     ) -> tuple[dict[UUID, PipelineRun], dict[str, PipelineRun]]:
-        statement = select(PipelineRun).order_by(PipelineRun.created_at.desc())
+        statement = select(PipelineRun).order_by(_column(PipelineRun.created_at).desc())
         latest_by_document: dict[UUID, PipelineRun] = {}
         latest_by_legacy_slug: dict[str, PipelineRun] = {}
 
         for run in self._session.exec(statement):
-            if run.document_id is not None and run.document_id not in latest_by_document:
+            if (
+                run.document_id is not None
+                and run.document_id not in latest_by_document
+            ):
                 latest_by_document[run.document_id] = run
                 continue
             if run.document_id is None and run.book_slug:

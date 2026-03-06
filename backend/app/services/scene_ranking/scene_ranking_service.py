@@ -741,20 +741,26 @@ class SceneRankingService:
         for attempt in range(attempts + 1):
             try:
                 if config.model_vendor == "google":
-                    return await gemini_api.json_output(
+                    payload = await gemini_api.json_output(
                         prompt=prompt,
                         system_instruction=config.system_instruction,
                         model=config.model_name,
                         temperature=config.temperature,
                         max_tokens=config.max_output_tokens,
                     )
-                return await openai_api.json_output(
-                    prompt=prompt,
-                    system_instruction=config.system_instruction,
-                    model=config.model_name,
-                    temperature=config.temperature,
-                    max_tokens=config.max_output_tokens,
-                )
+                else:
+                    payload = await openai_api.json_output(
+                        prompt=prompt,
+                        system_instruction=config.system_instruction,
+                        model=config.model_name,
+                        temperature=config.temperature,
+                        max_tokens=config.max_output_tokens,
+                    )
+                if not isinstance(payload, Mapping):
+                    raise SceneRankingServiceError(
+                        "Ranking model returned a non-object JSON payload."
+                    )
+                return {str(key): value for key, value in payload.items()}
             except Exception as exc:  # pragma: no cover - depends on external API
                 last_error = exc
                 logger.warning(

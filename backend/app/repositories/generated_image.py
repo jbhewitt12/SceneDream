@@ -434,7 +434,7 @@ class GeneratedImageRepository:
         result = self._session.execute(stmt)
         if commit:
             self._session.commit()
-        return result.rowcount  # type: ignore[return-value]
+        return int(result.rowcount or 0)
 
     def list_non_approved_with_files(
         self,

@@ -13,7 +13,9 @@ EXAMPLE_DOCX = (
 )
 
 
-@pytest.mark.skipif(not EXAMPLE_DOCX.exists(), reason="Example DOCX document not available")
+@pytest.mark.skipif(
+    not EXAMPLE_DOCX.exists(), reason="Example DOCX document not available"
+)
 def test_load_example_docx_document() -> None:
     loader = DocxBookLoader()
     content = loader.load(EXAMPLE_DOCX)

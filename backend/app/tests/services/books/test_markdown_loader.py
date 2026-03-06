@@ -13,7 +13,9 @@ EXAMPLE_MD = (
 )
 
 
-@pytest.mark.skipif(not EXAMPLE_MD.exists(), reason="Example Markdown document not available")
+@pytest.mark.skipif(
+    not EXAMPLE_MD.exists(), reason="Example Markdown document not available"
+)
 def test_load_example_markdown_document() -> None:
     loader = MarkdownBookLoader()
     content = loader.load(EXAMPLE_MD)

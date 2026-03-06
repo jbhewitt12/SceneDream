@@ -170,7 +170,10 @@ def main() -> None:
     )
 
     refiner = SceneRefiner(
+        default_vendor="google",
         model=args.model,
+        backup_vendor="openai",
+        backup_model="gpt-5-mini",
         temperature=args.temperature,
         max_tokens=args.max_tokens,
     )

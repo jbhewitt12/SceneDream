@@ -11,7 +11,9 @@ EXAMPLE_TXT = (
 )
 
 
-@pytest.mark.skipif(not EXAMPLE_TXT.exists(), reason="Example TXT document not available")
+@pytest.mark.skipif(
+    not EXAMPLE_TXT.exists(), reason="Example TXT document not available"
+)
 def test_load_example_txt_document() -> None:
     loader = TextBookLoader()
     content = loader.load(EXAMPLE_TXT)

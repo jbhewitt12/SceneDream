@@ -38,7 +38,9 @@ class TextBookLoader:
 
         lines = text.splitlines()
         paragraphs = split_wrapped_paragraphs(lines)
-        paragraphs, boilerplate_warnings = trim_project_gutenberg_boilerplate(paragraphs)
+        paragraphs, boilerplate_warnings = trim_project_gutenberg_boilerplate(
+            paragraphs
+        )
         warnings.extend(boilerplate_warnings)
 
         if not paragraphs:
