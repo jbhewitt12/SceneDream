@@ -15,8 +15,8 @@ Redact or rewrite internal-only details in docs while preserving technical inten
 ## Codebase Research Summary
 
 ### Examples identified
-- `issues/011-concurrent-remix-endpoints.md` contains `/Users/joshhewitt/...` path references
-- `issues/014-auto-post-feature.md` includes local shell transcript details and one-time verifier code text
+- `issues/011-concurrent-remix-endpoints.md` contains `<repo-root>/...` style path references that should be repo-relative
+- `issues/014-auto-post-feature.md` includes local shell transcript details and one-time auth exchange text
 - Multiple planning docs contain localhost/manual transcript snippets
 
 ## Key Decisions
@@ -30,7 +30,7 @@ Redact or rewrite internal-only details in docs while preserving technical inten
 **Goal**: Remove personal local path references.
 
 **Tasks**:
-- Replace `/Users/joshhewitt/dev/SceneDream/...` references with repo-relative paths.
+- Replace `<repo-root>/...` absolute-path references with repo-relative paths.
 - Use neutral placeholders where absolute paths are not needed.
 
 **Verification**:
@@ -41,10 +41,10 @@ Redact or rewrite internal-only details in docs while preserving technical inten
 
 **Tasks**:
 - Rewrite copied command transcripts to safe examples.
-- Remove verifier/token-like one-time values from markdown history docs.
+- Remove one-time auth exchange values from markdown history docs.
 
 **Verification**:
-- [ ] No auth-verifier transcript values remain in tracked markdown
+- [ ] No one-time auth transcript values remain in tracked markdown
 
 ### Phase 3: Documentation consistency pass
 **Goal**: Keep public docs clear and reusable.
@@ -65,11 +65,11 @@ Redact or rewrite internal-only details in docs while preserving technical inten
 | `open_source_plan.md` (as needed) | Modify |
 
 ## Testing Strategy
-- `rg -n "/Users/joshhewitt|oauth_token|verifier code" issues open_source_plan.md`
+- `rg -n "/Users/<username>|/home/<username>" issues open_source_plan.md`
+- `rg -n "oauth/authorize\\?|Enter the .*provided by" issues open_source_plan.md`
 - Manual read-through of modified issue files for clarity
 
 ## Acceptance Criteria
 - [ ] No personal absolute filesystem paths remain in public markdown docs
 - [ ] No one-time auth transcript values remain in tracked docs
 - [ ] Doc examples are portable and repo-relative where possible
-
