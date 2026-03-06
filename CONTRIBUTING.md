@@ -121,25 +121,39 @@ For branch protection/rulesets, keep required checks limited to this baseline:
 
 Use this workflow when you want one issue per agent context, with one commit per issue.
 
-1. Check queue state:
+1. Run the whole queue (one command):
+
+```bash
+./scripts/issue_queue.sh run-all
+```
+
+This launches a fresh `codex exec --ephemeral` agent per issue, in order, and stops if an issue does not create the expected commit message (`issue(0NN): ...`).
+
+2. Check queue state:
 
 ```bash
 ./scripts/issue_queue.sh status
 ```
 
-2. Get the next pending issue:
+3. Get the next pending issue:
 
 ```bash
 ./scripts/issue_queue.sh next
 ```
 
-3. Generate a handoff prompt for a fresh agent context:
+4. Generate a handoff prompt for a fresh agent context:
 
 ```bash
 ./scripts/issue_queue.sh prompt
 ```
 
-4. In that agent context, implement only the shown issue, run required checks, stage files, then commit with:
+5. Optional: run only the next issue in a fresh agent context:
+
+```bash
+./scripts/issue_queue.sh run-next
+```
+
+6. In that agent context, implement only the shown issue, run required checks, stage files, then commit with:
 
 ```bash
 ./scripts/issue_queue.sh commit "<short summary>"
@@ -147,13 +161,13 @@ Use this workflow when you want one issue per agent context, with one commit per
 
 This creates a commit message in the required format: `issue(0NN): <summary>`.
 
-5. Validate ordering (optional but recommended):
+7. Validate ordering (optional but recommended):
 
 ```bash
 ./scripts/issue_queue.sh verify
 ```
 
-6. Start a new agent context and repeat from step 2 until all issues are complete.
+8. If not using `run-all`, start a new agent context and repeat from step 3 until all issues are complete.
 
 ## Reporting Security Issues
 

@@ -12,6 +12,8 @@ Usage:
   ./scripts/issue_queue.sh status
   ./scripts/issue_queue.sh next
   ./scripts/issue_queue.sh prompt
+  ./scripts/issue_queue.sh run-next
+  ./scripts/issue_queue.sh run-all
   ./scripts/issue_queue.sh commit "<summary>"
   ./scripts/issue_queue.sh verify
 
@@ -103,6 +105,11 @@ cmd_prompt() {
     echo "All queued issues are complete."
     return 0
   fi
+  render_prompt "$id"
+}
+
+render_prompt() {
+  local id="$1"
   local padded
   padded="$(pad_issue "$id")"
   local file
@@ -123,6 +130,60 @@ Issue specification:
 EOF
   echo "-----"
   cat "$file"
+}
+
+run_agent_for_issue() {
+  local id="$1"
+  local padded
+  padded="$(pad_issue "$id")"
+  local before_hash
+  before_hash="$(issue_commit_hash "$id")"
+
+  if [[ -n "$before_hash" ]]; then
+    echo "Issue ${padded} is already complete."
+    return 0
+  fi
+
+  local tmp_prompt
+  tmp_prompt="$(mktemp)"
+  render_prompt "$id" >"$tmp_prompt"
+
+  echo "Running fresh agent context for issue ${padded}..."
+  if ! codex exec --ephemeral --cd "$ROOT_DIR" - <"$tmp_prompt"; then
+    rm -f "$tmp_prompt"
+    echo "Agent run failed for issue ${padded}."
+    return 1
+  fi
+  rm -f "$tmp_prompt"
+
+  local after_hash
+  after_hash="$(issue_commit_hash "$id")"
+  if [[ -z "$after_hash" ]]; then
+    echo "Issue ${padded} still pending. Expected commit subject: issue(${padded}): <summary>"
+    return 1
+  fi
+
+  echo "Issue ${padded} completed."
+}
+
+cmd_run_next() {
+  local id
+  if ! id="$(next_pending_issue)"; then
+    echo "All queued issues are complete."
+    return 0
+  fi
+  run_agent_for_issue "$id"
+}
+
+cmd_run_all() {
+  local id
+  while id="$(next_pending_issue)"; do
+    if ! run_agent_for_issue "$id"; then
+      echo "Stopping queue."
+      return 1
+    fi
+  done
+  echo "All queued issues are complete."
 }
 
 cmd_commit() {
@@ -207,6 +268,12 @@ main() {
       ;;
     prompt)
       cmd_prompt
+      ;;
+    run-next)
+      cmd_run_next
+      ;;
+    run-all)
+      cmd_run_all
       ;;
     commit)
       shift || true
