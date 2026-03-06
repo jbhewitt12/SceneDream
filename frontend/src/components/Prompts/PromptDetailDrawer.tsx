@@ -76,7 +76,7 @@ const PromptDetailDrawer = ({
                 </Heading>
                 <SimpleGrid columns={{ base: 1, md: 2 }} gap={3} fontSize="sm">
                   {attributeEntries.map(([key, value]) => (
-                    <Stack key={key} spacing={1}>
+                    <Stack key={key} gap={1}>
                       <Text
                         textTransform="uppercase"
                         color="fg.subtle"

@@ -685,13 +685,15 @@ const GeneratedImageModal = ({
                         size="sm"
                         variant="outline"
                         colorPalette="purple"
-                        leftIcon={<FiEdit3 />}
                         loading={isRemixing}
                         loadingText="Remixing"
                         onClick={handleCustomRemix}
                         disabled={isCustomRemixDisabled}
                       >
-                        Remix with Edits
+                        <HStack gap={1} align="center">
+                          <FiEdit3 aria-hidden="true" />
+                          <Text as="span">Remix with Edits</Text>
+                        </HStack>
                       </Button>
                     </HStack>
                   </Box>

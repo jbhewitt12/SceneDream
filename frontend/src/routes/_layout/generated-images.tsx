@@ -159,7 +159,7 @@ const GeneratedImagesFilters = ({
         </Button>
       </Flex>
       <SimpleGrid columns={{ base: 1, md: 4 }} gap={4}>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Book
           </Text>
@@ -182,7 +182,7 @@ const GeneratedImagesFilters = ({
             <NativeSelectIndicator />
           </NativeSelectRoot>
         </Stack>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Provider
           </Text>
@@ -205,7 +205,7 @@ const GeneratedImagesFilters = ({
             <NativeSelectIndicator />
           </NativeSelectRoot>
         </Stack>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Approval
           </Text>
@@ -242,7 +242,7 @@ const GeneratedImagesFilters = ({
             <NativeSelectIndicator />
           </NativeSelectRoot>
         </Stack>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Posted
           </Text>
@@ -576,18 +576,23 @@ function GeneratedImagesGalleryPage() {
   )
 
   const handleRemix = useCallback(
-    (imageId: string) => remixMutation.mutateAsync(imageId),
+    async (imageId: string): Promise<void> => {
+      await remixMutation.mutateAsync(imageId)
+    },
     [remixMutation],
   )
 
   const handleCustomRemix = useCallback(
-    (imageId: string, customPromptText: string) =>
-      customRemixMutation.mutateAsync({ imageId, customPromptText }),
+    async (imageId: string, customPromptText: string): Promise<void> => {
+      await customRemixMutation.mutateAsync({ imageId, customPromptText })
+    },
     [customRemixMutation],
   )
 
   const handleQueueForPosting = useCallback(
-    (imageId: string) => queueMutation.mutateAsync(imageId),
+    async (imageId: string): Promise<void> => {
+      await queueMutation.mutateAsync(imageId)
+    },
     [queueMutation],
   )
 

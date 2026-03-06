@@ -66,7 +66,7 @@ const GeneratedImageCard = ({
       flexDirection="column"
     >
       <Box px={3} pt={3} pb={2}>
-        <Text fontSize="sm" fontWeight="semibold" noOfLines={2}>
+        <Text fontSize="sm" fontWeight="semibold" lineClamp={2}>
           {promptTitle}
         </Text>
       </Box>
@@ -162,8 +162,8 @@ const GeneratedImageCard = ({
                 size="sm"
                 variant="outline"
                 colorPalette="purple"
-                isLoading={isRemixing}
-                isDisabled={isRemixing || remixCompleted || image.file_deleted}
+                loading={isRemixing}
+                disabled={isRemixing || remixCompleted || image.file_deleted}
                 title={
                   image.file_deleted
                     ? "File deleted"

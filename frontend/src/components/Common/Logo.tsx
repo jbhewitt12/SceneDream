@@ -1,4 +1,4 @@
-import { Flex, Heading, Icon, Text } from "@chakra-ui/react"
+import { Flex, Heading, Icon } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 import { FiAperture } from "react-icons/fi"
 

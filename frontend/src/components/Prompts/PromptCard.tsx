@@ -4,7 +4,6 @@ import {
   Button,
   Flex,
   HStack,
-  Icon,
   SimpleGrid,
   Stack,
   TagLabel,
@@ -53,7 +52,7 @@ type PromptCardProps = {
 
 const PromptCard = ({ prompt }: PromptCardProps) => {
   const { showSuccessToast } = useCustomToast()
-  const clipboard = useClipboard(prompt.prompt_text)
+  const clipboard = useClipboard({ value: prompt.prompt_text })
   const [expanded, setExpanded] = useState(false)
 
   const attributes = useMemo(() => {
@@ -77,11 +76,10 @@ const PromptCard = ({ prompt }: PromptCardProps) => {
   }, [prompt.attributes])
 
   const handleCopy = () => {
-    clipboard.onCopy()
+    const alreadyCopied = clipboard.copied
+    clipboard.copy()
     showSuccessToast(
-      clipboard.hasCopied
-        ? "Prompt already copied"
-        : "Prompt copied to clipboard",
+      alreadyCopied ? "Prompt already copied" : "Prompt copied to clipboard",
     )
   }
 
@@ -105,7 +103,7 @@ const PromptCard = ({ prompt }: PromptCardProps) => {
     >
       <Stack gap={2}>
         <Flex align="center" justify="space-between">
-          <Text fontWeight="bold" noOfLines={2} fontSize="sm">
+          <Text fontWeight="bold" lineClamp={2} fontSize="sm">
             {title}
           </Text>
           <Badge colorScheme="purple" title={variantLabel}>
@@ -132,7 +130,7 @@ const PromptCard = ({ prompt }: PromptCardProps) => {
       </Stack>
 
       {expanded && attributes.length > 0 && (
-        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={2} fontSize="xs">
+        <SimpleGrid columns={{ base: 1, md: 2 }} gap={2} fontSize="xs">
           {attributes.map(({ key, value }) => (
             <Flex key={key} direction="column" gap={1}>
               <Text textTransform="uppercase" color="fg.subtle" fontSize="2xs">
@@ -152,13 +150,15 @@ const PromptCard = ({ prompt }: PromptCardProps) => {
         <HStack gap={2}>
           <Button
             size="sm"
-            leftIcon={<Icon as={FiCopy} />}
             onClick={(e) => {
               e.stopPropagation()
               handleCopy()
             }}
           >
-            Copy
+            <HStack gap={1} align="center">
+              <FiCopy aria-hidden="true" />
+              <Text as="span">Copy</Text>
+            </HStack>
           </Button>
         </HStack>
       </Flex>

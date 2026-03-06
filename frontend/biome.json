@@ -10,7 +10,8 @@
       "src/client",
       "src/routeTree.gen.ts",
       "playwright.config.ts",
-      "playwright-report"
+      "playwright-report",
+      "openapi.json"
     ]
   },
   "linter": {

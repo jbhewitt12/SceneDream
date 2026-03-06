@@ -15,7 +15,7 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react"
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useCallback } from "react"
 import { FiFilter, FiRefreshCcw } from "react-icons/fi"
@@ -132,7 +132,7 @@ const PromptGalleryFilters = ({
         </Button>
       </Flex>
       <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Book
           </Text>
@@ -156,7 +156,7 @@ const PromptGalleryFilters = ({
             <NativeSelectIndicator />
           </NativeSelectRoot>
         </Stack>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Chapter
           </Text>
@@ -181,7 +181,7 @@ const PromptGalleryFilters = ({
             <NativeSelectIndicator />
           </NativeSelectRoot>
         </Stack>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Style tag
           </Text>
@@ -196,7 +196,7 @@ const PromptGalleryFilters = ({
             disabled={disabled}
           />
         </Stack>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Model
           </Text>
@@ -211,7 +211,7 @@ const PromptGalleryFilters = ({
             disabled={disabled}
           />
         </Stack>
-        <Stack spacing={1}>
+        <Stack gap={1}>
           <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
             Prompt version
           </Text>
@@ -245,8 +245,7 @@ const usePromptGalleryData = (search: PromptGallerySearch) => {
         pageSize: search.page_size,
         includeScene: search.include_scene,
       }),
-    placeholderData: (previousData) => previousData,
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   })
 
   return query
@@ -269,7 +268,7 @@ function PromptGalleryPage() {
   const handleSearchUpdate = useCallback(
     (updates: Partial<PromptGallerySearch>) => {
       navigate({
-        search: (prev) => ({
+        search: (prev: PromptGallerySearch) => ({
           ...prev,
           ...updates,
         }),
