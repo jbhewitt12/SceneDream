@@ -4,7 +4,7 @@ set -e
 set -x
 
 cd backend
-uv run python -c "import app.main; import json; print(json.dumps(app.main.app.openapi()))" > ../openapi.json
+uv run python -c "import json; from pathlib import Path; import app.main; Path('../openapi.json').write_text(json.dumps(app.main.app.openapi(), indent=2) + '\n')"
 cd ..
 cp openapi.json frontend/openapi.json
 cd frontend
