@@ -117,6 +117,44 @@ For branch protection/rulesets, keep required checks limited to this baseline:
 - Keep commits logically grouped.
 - Avoid unrelated refactors in feature/fix PRs.
 
+## Sequential Agent Queue (Issues 020-026)
+
+Use this workflow when you want one issue per agent context, with one commit per issue.
+
+1. Check queue state:
+
+```bash
+./scripts/issue_queue.sh status
+```
+
+2. Get the next pending issue:
+
+```bash
+./scripts/issue_queue.sh next
+```
+
+3. Generate a handoff prompt for a fresh agent context:
+
+```bash
+./scripts/issue_queue.sh prompt
+```
+
+4. In that agent context, implement only the shown issue, run required checks, stage files, then commit with:
+
+```bash
+./scripts/issue_queue.sh commit "<short summary>"
+```
+
+This creates a commit message in the required format: `issue(0NN): <summary>`.
+
+5. Validate ordering (optional but recommended):
+
+```bash
+./scripts/issue_queue.sh verify
+```
+
+6. Start a new agent context and repeat from step 2 until all issues are complete.
+
 ## Reporting Security Issues
 
 Do not open public issues for vulnerabilities. Follow the process in [SECURITY.md](SECURITY.md).
