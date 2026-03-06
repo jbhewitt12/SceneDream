@@ -28,7 +28,24 @@ from models.image_prompt import ImagePrompt
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+
+def _default_project_root_from_path(source_file: Path) -> Path:
+    """Resolve the repository root across local and containerized layouts."""
+    try:
+        candidate = source_file.resolve().parents[4]
+    except IndexError:
+        return source_file.resolve().parent
+
+    # In Docker images backend code is /app/app/... and parents[4] is "/".
+    if candidate == Path("/"):
+        try:
+            return source_file.resolve().parents[3]
+        except IndexError:
+            return source_file.resolve().parent
+    return candidate
+
+
+_PROJECT_ROOT = _default_project_root_from_path(Path(__file__))
 
 
 class ImageGenerationServiceError(RuntimeError):

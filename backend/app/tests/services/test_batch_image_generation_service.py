@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from collections.abc import Callable
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -13,6 +14,7 @@ from sqlmodel import Session
 from app.repositories.image_generation_batch import ImageGenerationBatchRepository
 from app.services.image_generation.batch_image_generation_service import (
     _QUALITY_MAPPING,
+    _default_project_root_from_path,
     BatchImageGenerationService,
 )
 from app.services.image_generation.image_generation_service import (
@@ -66,6 +68,22 @@ def test_build_jsonl_produces_valid_format(db: Session) -> None:
     assert row["body"]["prompt"] == "A test prompt for image generation"
     assert row["body"]["size"] == "1024x1024"
     assert row["body"]["output_format"] == "png"
+
+
+def test_default_project_root_detects_local_layout() -> None:
+    source_file = Path(
+        "/Users/test/SceneDream/backend/app/services/image_generation/batch_image_generation_service.py"
+    )
+    assert _default_project_root_from_path(source_file) == Path(
+        "/Users/test/SceneDream"
+    )
+
+
+def test_default_project_root_detects_container_layout() -> None:
+    source_file = Path(
+        "/app/app/services/image_generation/batch_image_generation_service.py"
+    )
+    assert _default_project_root_from_path(source_file) == Path("/app")
 
 
 def test_build_jsonl_quality_mapping_standard(db: Session) -> None:
