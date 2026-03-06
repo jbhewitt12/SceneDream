@@ -46,10 +46,57 @@ def _default_project_root_from_path(source_file: Path) -> Path:
 
 
 _PROJECT_ROOT = _default_project_root_from_path(Path(__file__))
+_GENERATED_IMAGES_ROOT = (_PROJECT_ROOT / "img").resolve()
+_LEGACY_PROJECT_ROOT = Path("/")
+_LEGACY_GENERATED_IMAGES_ROOT = Path("/img/generated").resolve()
 
 
 class ImageGenerationServiceError(RuntimeError):
     """Raised when image generation fails under strict settings."""
+
+
+class ImageNotFoundError(ImageGenerationServiceError):
+    """Raised when a generated image record cannot be found."""
+
+
+class ImageFileError(ImageGenerationServiceError):
+    """Raised when a generated image file operation fails."""
+
+
+class ImageFileDeletedError(ImageFileError):
+    """Raised when a generated image has been marked as file-deleted."""
+
+
+class ImageFileNotFoundError(ImageFileError):
+    """Raised when an expected generated image file is missing."""
+
+
+class ImageFileWriteError(ImageFileError):
+    """Raised when writing a generated image file fails."""
+
+
+def _resolve_image_file(storage_path: str, file_name: str) -> Path:
+    """Resolve generated image file path and guard against traversal."""
+
+    relative_dir = Path(storage_path.strip("/"))
+    candidate = (_PROJECT_ROOT / relative_dir / file_name).resolve()
+
+    try:
+        candidate.relative_to(_GENERATED_IMAGES_ROOT)
+    except ValueError as exc:
+        raise ImageFileError("Image file not available") from exc
+
+    if candidate.exists():
+        return candidate
+
+    legacy_candidate = (_LEGACY_PROJECT_ROOT / relative_dir / file_name).resolve()
+    try:
+        legacy_candidate.relative_to(_LEGACY_GENERATED_IMAGES_ROOT)
+    except ValueError:
+        return candidate
+    if legacy_candidate.exists():
+        return legacy_candidate
+    return candidate
 
 
 @dataclass(slots=True)
@@ -222,6 +269,48 @@ class ImageGenerationService:
         self._prompt_repo = ImagePromptRepository(session)
         self._scene_repo = SceneExtractionRepository(session)
         self._ranking_repo = SceneRankingRepository(session)
+
+    def get_image_file_path(self, image_id: UUID) -> Path:
+        """Return the on-disk path for a generated image."""
+
+        image = self._image_repo.get(image_id)
+        if image is None:
+            raise ImageNotFoundError("Generated image not found")
+        if image.file_deleted:
+            raise ImageFileDeletedError("Image file has been deleted")
+
+        file_path = _resolve_image_file(image.storage_path, image.file_name)
+        if not file_path.exists() or not file_path.is_file():
+            raise ImageFileNotFoundError("Generated image file not found")
+
+        return file_path
+
+    async def save_cropped_image(self, image_id: UUID, file_contents: bytes) -> None:
+        """Persist cropped image bytes over the original generated image file."""
+
+        image = self._image_repo.get(image_id)
+        if image is None:
+            raise ImageNotFoundError("Generated image not found")
+        if image.file_deleted:
+            raise ImageFileDeletedError("Image file has been deleted")
+
+        file_path = _resolve_image_file(image.storage_path, image.file_name)
+        if not file_path.exists() or not file_path.is_file():
+            raise ImageFileNotFoundError("Original image file not found on disk")
+
+        loop = asyncio.get_running_loop()
+        try:
+            await loop.run_in_executor(None, file_path.write_bytes, file_contents)
+        except Exception as exc:
+            logger.exception("Failed to write cropped image %s: %s", image_id, exc)
+            raise ImageFileWriteError("Failed to save cropped image") from exc
+
+        logger.info(
+            "Cropped image %s written to %s (%d bytes)",
+            image_id,
+            file_path,
+            len(file_contents),
+        )
 
     async def generate_for_selection(
         self,
@@ -859,6 +948,11 @@ __all__ = [
     "ImageGenerationService",
     "ImageGenerationConfig",
     "ImageGenerationServiceError",
+    "ImageNotFoundError",
+    "ImageFileError",
+    "ImageFileDeletedError",
+    "ImageFileNotFoundError",
+    "ImageFileWriteError",
     "GenerationTask",
     "GenerationResult",
     "map_aspect_ratio_to_size",

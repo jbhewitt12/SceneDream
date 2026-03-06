@@ -1,18 +1,25 @@
 """Unit tests for ImageGenerationService."""
 
-from pathlib import Path
+import asyncio
 from collections.abc import Callable
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 from sqlmodel import Session
 
+import app.services.image_generation.image_generation_service as image_generation_service_module
 from app.repositories import GeneratedImageRepository
 from app.services.image_generation import dalle_image_api
 from app.services.image_generation.image_generation_service import (
-    _default_project_root_from_path,
+    ImageFileNotFoundError,
+    ImageFileWriteError,
     ImageGenerationConfig,
     ImageGenerationService,
+    ImageNotFoundError,
+    _default_project_root_from_path,
     derive_style_from_tags,
     map_aspect_ratio_to_size,
 )
@@ -65,9 +72,7 @@ def test_default_project_root_detects_local_layout() -> None:
 
 
 def test_default_project_root_detects_container_layout() -> None:
-    source_file = Path(
-        "/app/app/services/image_generation/image_generation_service.py"
-    )
+    source_file = Path("/app/app/services/image_generation/image_generation_service.py")
     assert _default_project_root_from_path(source_file) == Path("/app")
 
 
@@ -238,3 +243,167 @@ async def test_generate_for_selection_filters_by_chapter_range(
     )
 
     assert result_ids == []
+
+
+def test_resolve_image_file_falls_back_to_legacy_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_root = tmp_path / "project"
+    generated_root = (project_root / "img").resolve()
+    generated_root.mkdir(parents=True, exist_ok=True)
+
+    legacy_project_root = tmp_path / "legacy"
+    legacy_file = (
+        legacy_project_root / "img" / "generated" / "book" / "chapter" / "image.png"
+    )
+    legacy_file.parent.mkdir(parents=True, exist_ok=True)
+    legacy_file.write_bytes(b"png")
+
+    monkeypatch.setattr(image_generation_service_module, "_PROJECT_ROOT", project_root)
+    monkeypatch.setattr(
+        image_generation_service_module,
+        "_GENERATED_IMAGES_ROOT",
+        generated_root,
+    )
+    monkeypatch.setattr(
+        image_generation_service_module,
+        "_LEGACY_PROJECT_ROOT",
+        legacy_project_root,
+    )
+    monkeypatch.setattr(
+        image_generation_service_module,
+        "_LEGACY_GENERATED_IMAGES_ROOT",
+        (legacy_project_root / "img" / "generated").resolve(),
+    )
+
+    resolved = image_generation_service_module._resolve_image_file(
+        "img/generated/book/chapter",
+        "image.png",
+    )
+
+    assert resolved == legacy_file.resolve()
+
+
+async def test_save_cropped_image_writes_file_contents(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ImageGenerationService(db, api_key="test-key")
+    image_id = uuid4()
+    image = SimpleNamespace(
+        id=image_id,
+        storage_path="img/generated/book/chapter-1",
+        file_name="image.png",
+        file_deleted=False,
+    )
+    file_path = MagicMock(spec=Path)
+    file_path.exists.return_value = True
+    file_path.is_file.return_value = True
+
+    class FakeLoop:
+        def __init__(self) -> None:
+            self.run_in_executor_called = False
+
+        async def run_in_executor(
+            self,
+            _executor: object | None,
+            func: Callable[..., object],
+            *args: object,
+        ) -> object:
+            self.run_in_executor_called = True
+            return func(*args)
+
+    fake_loop = FakeLoop()
+    monkeypatch.setattr(service._image_repo, "get", lambda _: image)
+    monkeypatch.setattr(
+        image_generation_service_module,
+        "_resolve_image_file",
+        lambda _storage_path, _file_name: file_path,
+    )
+    monkeypatch.setattr(asyncio, "get_running_loop", lambda: fake_loop)
+
+    payload = b"cropped-image-bytes"
+    await service.save_cropped_image(image_id, payload)
+
+    assert fake_loop.run_in_executor_called is True
+    file_path.write_bytes.assert_called_once_with(payload)
+
+
+async def test_save_cropped_image_raises_when_image_not_found(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ImageGenerationService(db, api_key="test-key")
+    image_id = uuid4()
+    monkeypatch.setattr(service._image_repo, "get", lambda _: None)
+
+    with pytest.raises(ImageNotFoundError, match="Generated image not found"):
+        await service.save_cropped_image(image_id, b"cropped-image-bytes")
+
+
+async def test_save_cropped_image_raises_when_write_fails(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ImageGenerationService(db, api_key="test-key")
+    image_id = uuid4()
+    image = SimpleNamespace(
+        id=image_id,
+        storage_path="img/generated/book/chapter-1",
+        file_name="image.png",
+        file_deleted=False,
+    )
+    file_path = MagicMock(spec=Path)
+    file_path.exists.return_value = True
+    file_path.is_file.return_value = True
+    file_path.write_bytes.side_effect = OSError("disk full")
+
+    class FakeLoop:
+        async def run_in_executor(
+            self,
+            _executor: object | None,
+            func: Callable[..., object],
+            *args: object,
+        ) -> object:
+            return func(*args)
+
+    monkeypatch.setattr(service._image_repo, "get", lambda _: image)
+    monkeypatch.setattr(
+        image_generation_service_module,
+        "_resolve_image_file",
+        lambda _storage_path, _file_name: file_path,
+    )
+    monkeypatch.setattr(asyncio, "get_running_loop", lambda: FakeLoop())
+
+    with pytest.raises(ImageFileWriteError, match="Failed to save cropped image"):
+        await service.save_cropped_image(image_id, b"cropped-image-bytes")
+
+
+async def test_save_cropped_image_raises_when_file_missing(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ImageGenerationService(db, api_key="test-key")
+    image_id = uuid4()
+    image = SimpleNamespace(
+        id=image_id,
+        storage_path="img/generated/book/chapter-1",
+        file_name="image.png",
+        file_deleted=False,
+    )
+    file_path = MagicMock(spec=Path)
+    file_path.exists.return_value = False
+    file_path.is_file.return_value = False
+
+    monkeypatch.setattr(service._image_repo, "get", lambda _: image)
+    monkeypatch.setattr(
+        image_generation_service_module,
+        "_resolve_image_file",
+        lambda _storage_path, _file_name: file_path,
+    )
+
+    with pytest.raises(
+        ImageFileNotFoundError,
+        match="Original image file not found on disk",
+    ):
+        await service.save_cropped_image(image_id, b"cropped-image-bytes")
