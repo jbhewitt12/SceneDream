@@ -23,7 +23,7 @@ dependencies = [
     "langchain-google-genai==2.1.12",
     "langchain-xai==0.2.5",
     "ebooklib==0.19",
-    "beautifulsoup4==4.12.3",
+    "beautifulsoup4==4.14.3",
     "pyyaml==6.0.2",
     "openai==2.1.0",
     "requests>=2.1.0,<3.0.0",
