@@ -19,7 +19,7 @@ dependencies = [
     "pydantic-settings<3.0.0,>=2.2.1",
     "sentry-sdk[fastapi]<2.0.0,>=1.40.6",
     "langchain==0.3.27",
-    "langchain-community==0.3.30",
+    "langchain-community==0.4.1",
     "langchain-google-genai==2.1.12",
     "langchain-xai==0.2.5",
     "ebooklib==0.19",
