@@ -86,13 +86,21 @@ Pull requests use a small set of CI checks intended to catch regressions without
 - **Lint Backend** (`.github/workflows/lint-backend.yml`) for backend-only changes.
 - **Test Backend** (`.github/workflows/test-backend.yml`) for backend-only changes.
 - **Frontend CI** (`.github/workflows/frontend-ci.yml`) for frontend/OpenAPI changes.
+- **Secret Scan (Advisory)** (`.github/workflows/secret-scan.yml`) on pull requests to scan tracked files and PR diffs for accidental secrets.
 
-These workflows are path-scoped and skip draft pull requests to reduce unnecessary noise.
+Lint/test/build workflows are path-scoped to reduce unnecessary noise, while `Secret Scan` runs on all non-draft pull requests.
 
 For branch protection/rulesets, keep required checks limited to this baseline:
 - `Lint Backend`
 - `Test Backend`
 - `Frontend CI`
+
+`Secret Scan` is intentionally advisory (non-blocking) while scanner tuning and false-positive handling are refined.
+
+Dependabot coverage is configured in `.github/dependabot.yml` for:
+- GitHub Actions (`directory: /`)
+- Backend Python dependencies (`package-ecosystem: pip`, `directory: /backend`)
+- Frontend npm dependencies (`package-ecosystem: npm`, `directory: /frontend`)
 
 ## Testing Expectations
 
