@@ -36,11 +36,11 @@ jobs:
       working-directory: frontend
     - run: uv sync
       working-directory: backend
+    - name: Prepare CI environment file
+      run: cp .env.example .env
     - run: uv run bash scripts/generate-client.sh
       env:
         VIRTUAL_ENV: backend/.venv
-        ENVIRONMENT: production
-        POSTGRES_PASSWORD: just-for-generating-client
     - name: Add changes to git
       run: |
         git config --local user.email "github-actions@github.com"
