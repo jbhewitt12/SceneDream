@@ -547,11 +547,13 @@ function DocumentCard({
             label="Prompts"
             count={entry.counts.prompts_generated}
             status={entry.stages.prompts_generated.status}
+            showStatus={false}
           />
           <StageBadge
             label="Images"
             count={entry.counts.images_generated}
             status={entry.stages.images_generated.status}
+            showStatus={false}
           />
         </Grid>
 
@@ -704,12 +706,20 @@ function StageBadge({
   count,
   status,
   error,
+  showStatus = true,
 }: {
   label: string
   count: number
   status: string
   error?: string | null
+  showStatus?: boolean
 }) {
+  const badgeColor = showStatus
+    ? stageStatusColor(status)
+    : count > 0
+      ? "blue"
+      : "gray"
+
   return (
     <Box borderWidth="1px" borderRadius="md" p={3}>
       <Stack gap={1}>
@@ -717,18 +727,20 @@ function StageBadge({
           <Text fontSize="sm" color="fg.muted">
             {label}
           </Text>
-          <Badge colorScheme={stageStatusColor(status)}>{count}</Badge>
+          <Badge colorScheme={badgeColor}>{count}</Badge>
         </HStack>
-        <HStack justify="space-between" align="center">
-          <Text fontSize="xs" color="fg.subtle" textTransform="uppercase">
-            {formatStageStatus(status)}
-          </Text>
-          {error ? (
-            <Text fontSize="xs" color="red.300" maxW="160px" truncate>
-              {error}
+        {showStatus ? (
+          <HStack justify="space-between" align="center">
+            <Text fontSize="xs" color="fg.subtle" textTransform="uppercase">
+              {formatStageStatus(status)}
             </Text>
-          ) : null}
-        </HStack>
+            {error ? (
+              <Text fontSize="xs" color="red.300" maxW="160px" truncate>
+                {error}
+              </Text>
+            ) : null}
+          </HStack>
+        ) : null}
       </Stack>
     </Box>
   )
