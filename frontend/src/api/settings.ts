@@ -30,6 +30,17 @@ export type AppSettingsUpdateRequest = {
   default_art_style_id?: string | null
 }
 
+export type ArtStyleListsRead = {
+  recommended_styles: string[]
+  other_styles: string[]
+  updated_at: string
+}
+
+export type ArtStyleListsUpdateRequest = {
+  recommended_styles: string[]
+  other_styles: string[]
+}
+
 export const SettingsApi = {
   get(): Promise<AppSettingsBundleResponse> {
     return SettingsService.getSettings()
@@ -39,6 +50,18 @@ export const SettingsApi = {
     payload: AppSettingsUpdateRequest,
   ): Promise<AppSettingsBundleResponse> {
     return SettingsService.updateSettings({
+      requestBody: payload,
+    })
+  },
+
+  getArtStyleLists(): Promise<ArtStyleListsRead> {
+    return SettingsService.getArtStyleLists()
+  },
+
+  updateArtStyleLists(
+    payload: ArtStyleListsUpdateRequest,
+  ): Promise<ArtStyleListsRead> {
+    return SettingsService.updateArtStyleLists({
       requestBody: payload,
     })
   },

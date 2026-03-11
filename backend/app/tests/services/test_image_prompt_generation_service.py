@@ -582,6 +582,22 @@ def test_service_prefers_runtime_art_style_override_over_default_setting(
     assert "DB Style C" in sampled_styles
 
 
+def test_service_raises_when_style_catalog_is_empty(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene_factory()
+    monkeypatch.setattr(
+        "app.services.art_style.art_style_service.ArtStyleService.get_sampling_distribution",
+        lambda self: ([], []),
+    )
+
+    with pytest.raises(
+        ImagePromptGenerationServiceError,
+        match="Art style catalog is empty",
+    ):
+        ImagePromptGenerationService(db)
+
+
 def test_render_prompt_template_includes_suggested_styles(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:

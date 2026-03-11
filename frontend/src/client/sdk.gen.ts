@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { DocumentsGetDocumentsDashboardResponse, GeneratedImagesListProvidersResponse, GeneratedImagesListGeneratedImagesData, GeneratedImagesListGeneratedImagesResponse, GeneratedImagesGetGeneratedImageData, GeneratedImagesGetGeneratedImageResponse, GeneratedImagesUpdateImageApprovalData, GeneratedImagesUpdateImageApprovalResponse, GeneratedImagesStreamGeneratedImageFileData, GeneratedImagesStreamGeneratedImageFileResponse, GeneratedImagesListGeneratedImagesForSceneData, GeneratedImagesListGeneratedImagesForSceneResponse, GeneratedImagesListGeneratedImagesForPromptData, GeneratedImagesListGeneratedImagesForPromptResponse, GeneratedImagesRemixGeneratedImageData, GeneratedImagesRemixGeneratedImageResponse, GeneratedImagesCustomRemixGeneratedImageData, GeneratedImagesCustomRemixGeneratedImageResponse, GeneratedImagesTriggerImageGenerationData, GeneratedImagesTriggerImageGenerationResponse, GeneratedImagesQueueImageForPostingData, GeneratedImagesQueueImageForPostingResponse, GeneratedImagesGetImagePostingStatusData, GeneratedImagesGetImagePostingStatusResponse, GeneratedImagesRetryFailedPostsData, GeneratedImagesRetryFailedPostsResponse, GeneratedImagesCropImageData, GeneratedImagesCropImageResponse, ImagePromptsListPromptsForSceneData, ImagePromptsListPromptsForSceneResponse, ImagePromptsListPromptsData, ImagePromptsListPromptsResponse, ImagePromptsListPromptsForBookData, ImagePromptsListPromptsForBookResponse, ImagePromptsGetImagePromptData, ImagePromptsGetImagePromptResponse, ImagePromptsGenerateMetadataVariantsData, ImagePromptsGenerateMetadataVariantsResponse, ImagePromptsUpdatePromptMetadataData, ImagePromptsUpdatePromptMetadataResponse, PipelineRunsStartPipelineRunData, PipelineRunsStartPipelineRunResponse, PipelineRunsGetPipelineRunData, PipelineRunsGetPipelineRunResponse, SceneExtractionsListSceneExtractionsData, SceneExtractionsListSceneExtractionsResponse, SceneExtractionsGetFilterOptionsResponse, SceneExtractionsGetSceneExtractionData, SceneExtractionsGetSceneExtractionResponse, SceneRankingsListTopSceneRankingsData, SceneRankingsListTopSceneRankingsResponse, SceneRankingsListSceneRankingHistoryData, SceneRankingsListSceneRankingHistoryResponse, SceneRankingsGetSceneRankingData, SceneRankingsGetSceneRankingResponse, SettingsGetSettingsResponse, SettingsUpdateSettingsData, SettingsUpdateSettingsResponse, SettingsListArtStylesResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { DocumentsGetDocumentsDashboardResponse, GeneratedImagesListProvidersResponse, GeneratedImagesListGeneratedImagesData, GeneratedImagesListGeneratedImagesResponse, GeneratedImagesGetGeneratedImageData, GeneratedImagesGetGeneratedImageResponse, GeneratedImagesUpdateImageApprovalData, GeneratedImagesUpdateImageApprovalResponse, GeneratedImagesStreamGeneratedImageFileData, GeneratedImagesStreamGeneratedImageFileResponse, GeneratedImagesListGeneratedImagesForSceneData, GeneratedImagesListGeneratedImagesForSceneResponse, GeneratedImagesListGeneratedImagesForPromptData, GeneratedImagesListGeneratedImagesForPromptResponse, GeneratedImagesRemixGeneratedImageData, GeneratedImagesRemixGeneratedImageResponse, GeneratedImagesCustomRemixGeneratedImageData, GeneratedImagesCustomRemixGeneratedImageResponse, GeneratedImagesTriggerImageGenerationData, GeneratedImagesTriggerImageGenerationResponse, GeneratedImagesQueueImageForPostingData, GeneratedImagesQueueImageForPostingResponse, GeneratedImagesGetImagePostingStatusData, GeneratedImagesGetImagePostingStatusResponse, GeneratedImagesRetryFailedPostsData, GeneratedImagesRetryFailedPostsResponse, GeneratedImagesCropImageData, GeneratedImagesCropImageResponse, ImagePromptsListPromptsForSceneData, ImagePromptsListPromptsForSceneResponse, ImagePromptsListPromptsData, ImagePromptsListPromptsResponse, ImagePromptsListPromptsForBookData, ImagePromptsListPromptsForBookResponse, ImagePromptsGetImagePromptData, ImagePromptsGetImagePromptResponse, ImagePromptsGenerateMetadataVariantsData, ImagePromptsGenerateMetadataVariantsResponse, ImagePromptsUpdatePromptMetadataData, ImagePromptsUpdatePromptMetadataResponse, PipelineRunsStartPipelineRunData, PipelineRunsStartPipelineRunResponse, PipelineRunsGetPipelineRunData, PipelineRunsGetPipelineRunResponse, SceneExtractionsListSceneExtractionsData, SceneExtractionsListSceneExtractionsResponse, SceneExtractionsGetFilterOptionsResponse, SceneExtractionsGetSceneExtractionData, SceneExtractionsGetSceneExtractionResponse, SceneRankingsListTopSceneRankingsData, SceneRankingsListTopSceneRankingsResponse, SceneRankingsListSceneRankingHistoryData, SceneRankingsListSceneRankingHistoryResponse, SceneRankingsGetSceneRankingData, SceneRankingsGetSceneRankingResponse, SettingsGetSettingsResponse, SettingsUpdateSettingsData, SettingsUpdateSettingsResponse, SettingsListArtStylesResponse, SettingsGetArtStyleListsResponse, SettingsUpdateArtStyleListsData, SettingsUpdateArtStyleListsResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class DocumentsService {
     /**
@@ -834,6 +834,39 @@ export class SettingsService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/settings/art-styles'
+        });
+    }
+    
+    /**
+     * Get Art Style Lists
+     * Return recommended/other style pools as line-oriented settings arrays.
+     * @returns ArtStyleListsRead Successful Response
+     * @throws ApiError
+     */
+    public static getArtStyleLists(): CancelablePromise<SettingsGetArtStyleListsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/settings/art-style-lists'
+        });
+    }
+    
+    /**
+     * Update Art Style Lists
+     * Replace active recommended/other style pools from full list payloads.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns ArtStyleListsRead Successful Response
+     * @throws ApiError
+     */
+    public static updateArtStyleLists(data: SettingsUpdateArtStyleListsData): CancelablePromise<SettingsUpdateArtStyleListsResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/settings/art-style-lists',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
         });
     }
     

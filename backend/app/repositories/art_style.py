@@ -28,6 +28,14 @@ class ArtStyleRepository:
         statement = select(ArtStyle).where(ArtStyle.slug == slug)
         return self._session.exec(statement).first()
 
+    def list_all(self) -> list[ArtStyle]:
+        statement = select(ArtStyle).order_by(
+            ArtStyle.is_recommended.desc(),
+            ArtStyle.sort_order.asc(),
+            ArtStyle.display_name.asc(),
+        )
+        return list(self._session.exec(statement))
+
     def list_active(self) -> list[ArtStyle]:
         statement = (
             select(ArtStyle)

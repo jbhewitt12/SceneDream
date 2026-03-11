@@ -35,6 +35,23 @@ export type ArtStyleListResponse = {
 };
 
 /**
+ * Line-oriented art-style settings payload split by style pool.
+ */
+export type ArtStyleListsRead = {
+    recommended_styles: Array<(string)>;
+    other_styles: Array<(string)>;
+    updated_at: string;
+};
+
+/**
+ * Full-replacement payload for editable style pools.
+ */
+export type ArtStyleListsUpdateRequest = {
+    recommended_styles: Array<(string)>;
+    other_styles: Array<(string)>;
+};
+
+/**
  * Detailed representation of an art style entry.
  */
 export type ArtStyleRead = {
@@ -106,13 +123,22 @@ export type DocumentDashboardRunSummary = {
 };
 
 /**
- * Boolean completion flags for document pipeline stages.
+ * Per-stage status metadata used by the dashboard.
  */
 export type DocumentDashboardStages = {
-    extracted?: boolean;
-    ranked?: boolean;
-    prompts_generated?: boolean;
-    images_generated?: boolean;
+    extraction?: DocumentDashboardStageStatus;
+    ranking?: DocumentDashboardStageStatus;
+    prompts_generated?: DocumentDashboardStageStatus;
+    images_generated?: DocumentDashboardStageStatus;
+};
+
+/**
+ * Explicit status payload for one pipeline stage.
+ */
+export type DocumentDashboardStageStatus = {
+    status?: string;
+    completed_at?: (string | null);
+    error?: (string | null);
 };
 
 /**
@@ -887,5 +913,13 @@ export type SettingsUpdateSettingsData = {
 export type SettingsUpdateSettingsResponse = (AppSettingsBundleResponse);
 
 export type SettingsListArtStylesResponse = (ArtStyleListResponse);
+
+export type SettingsGetArtStyleListsResponse = (ArtStyleListsRead);
+
+export type SettingsUpdateArtStyleListsData = {
+    requestBody: ArtStyleListsUpdateRequest;
+};
+
+export type SettingsUpdateArtStyleListsResponse = (ArtStyleListsRead);
 
 export type UtilsHealthCheckResponse = (boolean);

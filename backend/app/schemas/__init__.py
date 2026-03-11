@@ -4,6 +4,8 @@ from .app_settings import (
     AppSettingsBundleResponse,
     AppSettingsRead,
     AppSettingsUpdateRequest,
+    ArtStyleListsRead,
+    ArtStyleListsUpdateRequest,
 )
 from .art_style import ArtStyleListResponse, ArtStyleRead
 from .common import Message
@@ -76,6 +78,8 @@ __all__ = [
     "AppSettingsBundleResponse",
     "AppSettingsRead",
     "AppSettingsUpdateRequest",
+    "ArtStyleListsRead",
+    "ArtStyleListsUpdateRequest",
     "ArtStyleListResponse",
     "ArtStyleRead",
     "Message",

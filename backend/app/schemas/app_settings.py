@@ -34,3 +34,18 @@ class AppSettingsBundleResponse(BaseModel):
 
     settings: AppSettingsRead
     art_styles: list[ArtStyleRead]
+
+
+class ArtStyleListsRead(BaseModel):
+    """Line-oriented art-style settings payload split by style pool."""
+
+    recommended_styles: list[str]
+    other_styles: list[str]
+    updated_at: datetime
+
+
+class ArtStyleListsUpdateRequest(BaseModel):
+    """Full-replacement payload for editable style pools."""
+
+    recommended_styles: list[str]
+    other_styles: list[str]

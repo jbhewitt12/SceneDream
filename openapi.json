@@ -2249,6 +2249,68 @@
         }
       }
     },
+    "/api/v1/settings/art-style-lists": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Art Style Lists",
+        "description": "Return recommended/other style pools as line-oriented settings arrays.",
+        "operationId": "settings-get_art_style_lists",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtStyleListsRead"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Art Style Lists",
+        "description": "Replace active recommended/other style pools from full list payloads.",
+        "operationId": "settings-update_art_style_lists",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtStyleListsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtStyleListsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/pipeline-runs": {
       "post": {
         "tags": [
@@ -2452,6 +2514,62 @@
         ],
         "title": "ArtStyleListResponse",
         "description": "Collection response for art styles."
+      },
+      "ArtStyleListsRead": {
+        "properties": {
+          "recommended_styles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Styles"
+          },
+          "other_styles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Other Styles"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recommended_styles",
+          "other_styles",
+          "updated_at"
+        ],
+        "title": "ArtStyleListsRead",
+        "description": "Line-oriented art-style settings payload split by style pool."
+      },
+      "ArtStyleListsUpdateRequest": {
+        "properties": {
+          "recommended_styles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Styles"
+          },
+          "other_styles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Other Styles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recommended_styles",
+          "other_styles"
+        ],
+        "title": "ArtStyleListsUpdateRequest",
+        "description": "Full-replacement payload for editable style pools."
       },
       "ArtStyleRead": {
         "properties": {
@@ -2750,32 +2868,59 @@
         "title": "DocumentDashboardRunSummary",
         "description": "Latest pipeline-run summary for a document."
       },
+      "DocumentDashboardStageStatus": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "pending"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "title": "DocumentDashboardStageStatus",
+        "description": "Explicit status payload for one pipeline stage."
+      },
       "DocumentDashboardStages": {
         "properties": {
-          "extracted": {
-            "type": "boolean",
-            "title": "Extracted",
-            "default": false
+          "extraction": {
+            "$ref": "#/components/schemas/DocumentDashboardStageStatus"
           },
-          "ranked": {
-            "type": "boolean",
-            "title": "Ranked",
-            "default": false
+          "ranking": {
+            "$ref": "#/components/schemas/DocumentDashboardStageStatus"
           },
           "prompts_generated": {
-            "type": "boolean",
-            "title": "Prompts Generated",
-            "default": false
+            "$ref": "#/components/schemas/DocumentDashboardStageStatus"
           },
           "images_generated": {
-            "type": "boolean",
-            "title": "Images Generated",
-            "default": false
+            "$ref": "#/components/schemas/DocumentDashboardStageStatus"
           }
         },
         "type": "object",
         "title": "DocumentDashboardStages",
-        "description": "Boolean completion flags for document pipeline stages."
+        "description": "Per-stage status metadata used by the dashboard."
       },
       "GeneratedImageApprovalUpdate": {
         "properties": {

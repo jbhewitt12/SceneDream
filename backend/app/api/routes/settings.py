@@ -11,7 +11,13 @@ from app.schemas import (
     AppSettingsRead,
     AppSettingsUpdateRequest,
     ArtStyleListResponse,
+    ArtStyleListsRead,
+    ArtStyleListsUpdateRequest,
     ArtStyleRead,
+)
+from app.services.art_style import (
+    ArtStyleCatalogService,
+    ArtStyleCatalogValidationError,
 )
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -93,4 +99,39 @@ async def list_art_styles(*, session: SessionDep) -> ArtStyleListResponse:
     styles = repository.list_active()
     return ArtStyleListResponse(
         data=[ArtStyleRead.model_validate(style) for style in styles]
+    )
+
+
+@router.get("/art-style-lists", response_model=ArtStyleListsRead)
+async def get_art_style_lists(*, session: SessionDep) -> ArtStyleListsRead:
+    """Return recommended/other style pools as line-oriented settings arrays."""
+    service = ArtStyleCatalogService(session)
+    snapshot = service.get_style_lists()
+    return ArtStyleListsRead(
+        recommended_styles=snapshot.recommended_styles,
+        other_styles=snapshot.other_styles,
+        updated_at=snapshot.updated_at,
+    )
+
+
+@router.put("/art-style-lists", response_model=ArtStyleListsRead)
+async def update_art_style_lists(
+    *,
+    session: SessionDep,
+    update: ArtStyleListsUpdateRequest,
+) -> ArtStyleListsRead:
+    """Replace active recommended/other style pools from full list payloads."""
+    service = ArtStyleCatalogService(session)
+    try:
+        snapshot = service.replace_style_lists(
+            recommended_styles=update.recommended_styles,
+            other_styles=update.other_styles,
+        )
+    except ArtStyleCatalogValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    return ArtStyleListsRead(
+        recommended_styles=snapshot.recommended_styles,
+        other_styles=snapshot.other_styles,
+        updated_at=snapshot.updated_at,
     )

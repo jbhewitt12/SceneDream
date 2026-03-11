@@ -32,7 +32,7 @@ from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
 from .context_builder import SceneContextBuilder
-from .core import OTHER_STYLES, RECOMMENDED_STYLES, StyleSampler
+from .core import StyleSampler
 from .models import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationServiceError,
@@ -78,28 +78,20 @@ class ImagePromptGenerationService:
         self._prompt_builder = PromptBuilder(style_sampler=self._build_style_sampler())
 
     def _build_style_sampler(self) -> StyleSampler:
-        """Build a style sampler using DB catalog values with safe fallbacks."""
+        """Build a style sampler using active DB catalog values."""
         preferred_style = (
             self._config.preferred_style or self._resolve_default_art_style_name()
         )
 
-        try:
-            recommended, other = self._art_style_service.get_sampling_distribution()
-        except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.warning(
-                "Falling back to static style catalog; failed to load DB styles: %s",
-                exc,
-            )
-            return StyleSampler(preferred_style=preferred_style)
-
+        recommended, other = self._art_style_service.get_sampling_distribution()
         if not recommended and not other:
-            return StyleSampler(preferred_style=preferred_style)
+            raise ImagePromptGenerationServiceError(
+                "Art style catalog is empty. Add at least one active style in Settings."
+            )
 
-        resolved_recommended = tuple(recommended) if recommended else RECOMMENDED_STYLES
-        resolved_other = tuple(other) if other else OTHER_STYLES
         return StyleSampler(
-            recommended_styles=resolved_recommended,
-            other_styles=resolved_other,
+            recommended_styles=tuple(recommended),
+            other_styles=tuple(other),
             preferred_style=preferred_style,
         )
 
