@@ -1,6 +1,10 @@
 # SceneDream
 
-SceneDream is a local-first pipeline for turning text based stories into generated scene artwork. It ingests source text, extracts cinematic scenes, ranks them, creates image generation prompts, and renders images.
+SceneDream is a project for automatically turning text based stories into AI images. You put in a story, and it comes out as a bunch of images.
+
+It's set up as a pipeline you run on your own computer that ingests source text, extracts cinematic scenes, ranks them, creates image generation prompts, and generates images.
+
+All you'll need to get it working is an OpenAI API key and a text based story.
 
 ## Pipeline Overview
 
@@ -9,14 +13,14 @@ SceneDream is a local-first pipeline for turning text based stories into generat
 3. Optionally refine scenes
 4. Rank scenes for generation priority
 5. Generate prompt variants
-6. Generate images and persist assets
+6. Generate images (Default to gpt-image-1.5) and persist assets
 
 ## Architecture
 
 - Backend: FastAPI + SQLModel + Alembic
 - Frontend: React + TypeScript + Chakra UI + TanStack Router
 - Database: PostgreSQL (pipeline metadata)
-- Filesystem: `documents/` for source files, `img/generated/` for outputs
+- Filesystem: `documents/` for source text files, `img/generated/` for outputs
 - AI providers: Gemini/OpenAI (LLM tasks with automatic fallback) and OpenAI (image generation)
 
 ## Quickstart (Docker, Recommended)
