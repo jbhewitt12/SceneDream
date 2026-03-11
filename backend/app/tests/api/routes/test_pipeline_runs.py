@@ -509,6 +509,8 @@ def test_execute_pipeline_run_records_stage_durations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     updates: list[dict[str, object]] = []
+    stage_running_calls: list[dict[str, object]] = []
+    sync_calls: list[dict[str, object]] = []
 
     async def _fake_run_full_pipeline(*_args, **_kwargs):  # type: ignore[no-untyped-def]
         stage_callback = _kwargs.get("stage_callback")
@@ -539,6 +541,16 @@ def test_execute_pipeline_run_records_stage_durations(
         pipeline_runs_routes,
         "_update_status",
         _capture_update,
+    )
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_set_document_stage_running",
+        lambda **kwargs: stage_running_calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_sync_document_stage_statuses",
+        lambda **kwargs: sync_calls.append(kwargs),
     )
 
     asyncio.run(
@@ -576,12 +588,20 @@ def test_execute_pipeline_run_records_stage_durations(
     assert "stage_started" in event_types
     assert "stage_completed" in event_types
     assert "run_completed" in event_types
+    assert [call["pipeline_stage"] for call in stage_running_calls] == [
+        "extracting",
+        "ranking",
+    ]
+    assert len(sync_calls) == 1
+    assert sync_calls[0]["preserve_failed_pipeline_stage"] is None
 
 
 def test_execute_pipeline_run_records_usage_summary_on_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     updates: list[dict[str, object]] = []
+    failed_calls: list[dict[str, object]] = []
+    sync_calls: list[dict[str, object]] = []
 
     async def _fake_run_full_pipeline(*_args, **_kwargs):  # type: ignore[no-untyped-def]
         raise RuntimeError("boom")
@@ -598,6 +618,16 @@ def test_execute_pipeline_run_records_usage_summary_on_failure(
         pipeline_runs_routes,
         "_update_status",
         _capture_update,
+    )
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_set_document_stage_failed",
+        lambda **kwargs: failed_calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_sync_document_stage_statuses",
+        lambda **kwargs: sync_calls.append(kwargs),
     )
 
     asyncio.run(
@@ -633,6 +663,11 @@ def test_execute_pipeline_run_records_usage_summary_on_failure(
     assert diagnostics["error"]["code"] == "pipeline_exception"
     assert diagnostics["error"]["stage"] == "pending"
     assert diagnostics["error"]["message"] == "boom"
+    assert len(failed_calls) == 1
+    assert failed_calls[0]["pipeline_stage"] is None
+    assert failed_calls[0]["error_message"] == "boom"
+    assert len(sync_calls) == 1
+    assert sync_calls[0]["preserve_failed_pipeline_stage"] is None
 
 
 def test_execute_pipeline_run_classifies_missing_source_failures(

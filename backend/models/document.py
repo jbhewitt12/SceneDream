@@ -41,6 +41,28 @@ class Document(SQLModel, table=True):
         index=True,
     )
     ingestion_error: str | None = Field(default=None, sa_column=Column(Text))
+    extraction_status: str = Field(
+        default="pending",
+        max_length=32,
+        nullable=False,
+        index=True,
+    )
+    extraction_completed_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    extraction_error: str | None = Field(default=None, sa_column=Column(Text))
+    ranking_status: str = Field(
+        default="pending",
+        max_length=32,
+        nullable=False,
+        index=True,
+    )
+    ranking_completed_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    ranking_error: str | None = Field(default=None, sa_column=Column(Text))
     source_metadata: dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False),

@@ -6,7 +6,7 @@ import argparse
 import asyncio
 import json
 import logging
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -16,15 +16,17 @@ from sqlmodel import Session
 
 from app.api.deps import SessionDep
 from app.core.db import engine
-from app.repositories import PipelineRunRepository
+from app.repositories import DocumentRepository, PipelineRunRepository
 from app.schemas import PipelineRunRead, PipelineRunStartRequest
 from app.services.image_gen_cli import _run_full_pipeline
 from app.services.image_generation.image_generation_service import ImageGenerationConfig
 from app.services.image_prompt_generation.models import ImagePromptGenerationConfig
 from app.services.pipeline import (
+    DocumentStageStatusService,
     PipelineRunStartService,
     PipelineValidationError,
 )
+from models.document import Document
 
 router = APIRouter(prefix="/pipeline-runs", tags=["pipeline-runs"])
 
@@ -243,6 +245,102 @@ def _update_status(
             )
 
 
+def _apply_document_stage_update_for_run(
+    *,
+    run_id: UUID,
+    update_fn: Callable[[DocumentStageStatusService, Document], object],
+) -> None:
+    with Session(engine) as background_session:
+        run_repository = PipelineRunRepository(background_session)
+        run = run_repository.get(run_id)
+        if run is None:
+            return
+        if run.document_id is None:
+            return
+
+        document_repository = DocumentRepository(background_session)
+        document = document_repository.get(run.document_id)
+        if document is None:
+            return
+
+        status_service = DocumentStageStatusService(background_session)
+        update_fn(status_service, document)
+        background_session.commit()
+
+
+def _set_document_stage_running(*, run_id: UUID, pipeline_stage: str) -> None:
+    stage = DocumentStageStatusService.to_document_stage_name(pipeline_stage)
+    if stage is None:
+        return
+    try:
+        _apply_document_stage_update_for_run(
+            run_id=run_id,
+            update_fn=lambda service, document: service.mark_stage_running(
+                document=document,
+                stage=stage,
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to mark document stage running: run_id=%s stage=%s",
+            run_id,
+            pipeline_stage,
+        )
+
+
+def _set_document_stage_failed(
+    *,
+    run_id: UUID,
+    pipeline_stage: str | None,
+    error_message: str | None,
+) -> None:
+    stage = DocumentStageStatusService.to_document_stage_name(pipeline_stage)
+    if stage is None:
+        return
+    try:
+        _apply_document_stage_update_for_run(
+            run_id=run_id,
+            update_fn=lambda service, document: service.mark_stage_failed(
+                document=document,
+                stage=stage,
+                error_message=error_message,
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to mark document stage failed: run_id=%s stage=%s",
+            run_id,
+            pipeline_stage,
+        )
+
+
+def _sync_document_stage_statuses(
+    *,
+    run_id: UUID,
+    preserve_failed_pipeline_stage: str | None = None,
+) -> None:
+    preserve_failed: set[str] = set()
+    failed_stage = DocumentStageStatusService.to_document_stage_name(
+        preserve_failed_pipeline_stage
+    )
+    if failed_stage is not None:
+        preserve_failed.add(failed_stage)
+
+    try:
+        _apply_document_stage_update_for_run(
+            run_id=run_id,
+            update_fn=lambda service, document: service.sync_document(
+                document=document,
+                preserve_failed_stages=preserve_failed,
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to synchronize document stage status: run_id=%s",
+            run_id,
+        )
+
+
 def _format_failure_message(exc: Exception) -> str:
     message = str(exc).strip() or exc.__class__.__name__
     return message[:2000]
@@ -381,6 +479,7 @@ async def _execute_pipeline_run(
             current_stage=stage,
             error_message=None,
         )
+        _set_document_stage_running(run_id=run_id, pipeline_stage=stage)
 
     try:
         stats = await _run_full_pipeline(args, stage_callback=_stage_callback)
@@ -426,6 +525,15 @@ async def _execute_pipeline_run(
             usage_summary=usage_summary,
             completed=True,
         )
+        _set_document_stage_failed(
+            run_id=run_id,
+            pipeline_stage=diagnostics.current_stage,
+            error_message=failure_message,
+        )
+        _sync_document_stage_statuses(
+            run_id=run_id,
+            preserve_failed_pipeline_stage=diagnostics.current_stage,
+        )
         return
 
     if stats.errors:
@@ -460,6 +568,15 @@ async def _execute_pipeline_run(
             usage_summary=usage_summary,
             completed=True,
         )
+        _set_document_stage_failed(
+            run_id=run_id,
+            pipeline_stage=diagnostics.current_stage,
+            error_message=combined_error[:2000],
+        )
+        _sync_document_stage_statuses(
+            run_id=run_id,
+            preserve_failed_pipeline_stage=diagnostics.current_stage,
+        )
         _log_pipeline_event(
             event="run_failed",
             level=logging.ERROR,
@@ -493,6 +610,10 @@ async def _execute_pipeline_run(
         error_message=None,
         usage_summary=usage_summary,
         completed=True,
+    )
+    _sync_document_stage_statuses(
+        run_id=run_id,
+        preserve_failed_pipeline_stage=None,
     )
     _log_pipeline_event(
         event="run_completed",

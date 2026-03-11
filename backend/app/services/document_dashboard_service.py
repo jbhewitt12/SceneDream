@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
@@ -18,6 +19,7 @@ from app.schemas.document import (
     DocumentDashboardEntry,
     DocumentDashboardRunSummary,
     DocumentDashboardStages,
+    DocumentDashboardStageStatus,
 )
 from app.services.books.book_content_service import BookContentService
 from models.document import Document
@@ -69,6 +71,12 @@ class _EntryBuilder:
     file_exists: bool
     ingestion_state: str | None = None
     ingestion_error: str | None = None
+    extraction_status: str | None = None
+    extraction_completed_at: datetime | None = None
+    extraction_error: str | None = None
+    ranking_status: str | None = None
+    ranking_completed_at: datetime | None = None
+    ranking_error: str | None = None
 
 
 class DocumentDashboardService:
@@ -113,12 +121,7 @@ class DocumentDashboardService:
                     by_legacy_slug=imaged_slug,
                 ),
             )
-            stages = DocumentDashboardStages(
-                extracted=counts.extracted > 0,
-                ranked=counts.ranked > 0,
-                prompts_generated=counts.prompts_generated > 0,
-                images_generated=counts.images_generated > 0,
-            )
+            stages = self._build_stage_statuses(row=row, counts=counts)
             latest_run = self._resolve_latest_run(
                 row=row,
                 latest_run_by_document=latest_run_by_document,
@@ -173,6 +176,12 @@ class DocumentDashboardService:
             existing.file_exists = self._path_exists(normalized_source_path)
             existing.ingestion_state = document.ingestion_state
             existing.ingestion_error = document.ingestion_error
+            existing.extraction_status = document.extraction_status
+            existing.extraction_completed_at = document.extraction_completed_at
+            existing.extraction_error = document.extraction_error
+            existing.ranking_status = document.ranking_status
+            existing.ranking_completed_at = document.ranking_completed_at
+            existing.ranking_error = document.ranking_error
             rows_by_key[row_key] = existing
 
         return list(rows_by_key.values())
@@ -356,6 +365,65 @@ class DocumentDashboardService:
         if row.document_id is not None:
             return int(by_document_id.get(row.document_id, 0))
         return int(by_legacy_slug.get(row.slug, 0))
+
+    def _build_stage_statuses(
+        self,
+        *,
+        row: _EntryBuilder,
+        counts: DocumentDashboardCounts,
+    ) -> DocumentDashboardStages:
+        if row.document_id is None:
+            return self._build_legacy_stage_statuses(counts=counts)
+
+        extraction_status = row.extraction_status or "pending"
+        ranking_status = row.ranking_status or "pending"
+        prompts_status = "completed" if counts.prompts_generated > 0 else "pending"
+        images_status = "completed" if counts.images_generated > 0 else "pending"
+
+        return DocumentDashboardStages(
+            extraction=DocumentDashboardStageStatus(
+                status=extraction_status,
+                completed_at=row.extraction_completed_at,
+                error=row.extraction_error,
+            ),
+            ranking=DocumentDashboardStageStatus(
+                status=ranking_status,
+                completed_at=row.ranking_completed_at,
+                error=row.ranking_error,
+            ),
+            prompts_generated=DocumentDashboardStageStatus(
+                status=prompts_status,
+                completed_at=None,
+                error=None,
+            ),
+            images_generated=DocumentDashboardStageStatus(
+                status=images_status,
+                completed_at=None,
+                error=None,
+            ),
+        )
+
+    def _build_legacy_stage_statuses(
+        self,
+        *,
+        counts: DocumentDashboardCounts,
+    ) -> DocumentDashboardStages:
+        extraction_status = "completed" if counts.extracted > 0 else "pending"
+        if counts.extracted == 0 or counts.ranked == 0:
+            ranking_status = "pending"
+        elif counts.ranked >= counts.extracted:
+            ranking_status = "completed"
+        else:
+            ranking_status = "stale"
+        prompts_status = "completed" if counts.prompts_generated > 0 else "pending"
+        images_status = "completed" if counts.images_generated > 0 else "pending"
+
+        return DocumentDashboardStages(
+            extraction=DocumentDashboardStageStatus(status=extraction_status),
+            ranking=DocumentDashboardStageStatus(status=ranking_status),
+            prompts_generated=DocumentDashboardStageStatus(status=prompts_status),
+            images_generated=DocumentDashboardStageStatus(status=images_status),
+        )
 
     def _latest_runs(
         self,

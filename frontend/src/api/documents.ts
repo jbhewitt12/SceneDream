@@ -7,11 +7,17 @@ export type DocumentDashboardCounts = {
   images_generated: number
 }
 
+export type DocumentDashboardStageStatus = {
+  status: string
+  completed_at: string | null
+  error: string | null
+}
+
 export type DocumentDashboardStages = {
-  extracted: boolean
-  ranked: boolean
-  prompts_generated: boolean
-  images_generated: boolean
+  extraction: DocumentDashboardStageStatus
+  ranking: DocumentDashboardStageStatus
+  prompts_generated: DocumentDashboardStageStatus
+  images_generated: DocumentDashboardStageStatus
 }
 
 export type DocumentDashboardRunSummary = {

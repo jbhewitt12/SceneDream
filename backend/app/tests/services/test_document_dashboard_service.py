@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -37,6 +38,10 @@ def test_document_dashboard_service_reports_stage_counts_for_document(
             "source_path": source_path,
             "source_type": "epub",
             "ingestion_state": "ingested",
+            "extraction_status": "completed",
+            "extraction_completed_at": datetime.now(timezone.utc),
+            "ranking_status": "completed",
+            "ranking_completed_at": datetime.now(timezone.utc),
             "source_metadata": {},
         },
         commit=True,
@@ -109,10 +114,12 @@ def test_document_dashboard_service_reports_stage_counts_for_document(
     assert match.counts.ranked == 1
     assert match.counts.prompts_generated == 1
     assert match.counts.images_generated == 1
-    assert match.stages.extracted is True
-    assert match.stages.ranked is True
-    assert match.stages.prompts_generated is True
-    assert match.stages.images_generated is True
+    assert match.stages.extraction.status == "completed"
+    assert match.stages.extraction.error is None
+    assert match.stages.ranking.status == "completed"
+    assert match.stages.ranking.error is None
+    assert match.stages.prompts_generated.status == "completed"
+    assert match.stages.images_generated.status == "completed"
     assert match.last_run is not None
     assert match.last_run.status == "completed"
     assert match.last_run.usage_summary == {}
@@ -159,8 +166,8 @@ def test_document_dashboard_service_uses_legacy_slug_fallback(
     assert match.counts.ranked == 0
     assert match.counts.prompts_generated == 0
     assert match.counts.images_generated == 0
-    assert match.stages.extracted is True
-    assert match.stages.ranked is False
+    assert match.stages.extraction.status == "completed"
+    assert match.stages.ranking.status == "pending"
     assert match.last_run is not None
     assert match.last_run.id == run.id
     assert match.last_run.error_message == "Legacy pipeline error"

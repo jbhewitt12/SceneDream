@@ -48,6 +48,13 @@ const formatDateTime = (value: string | null | undefined) => {
   }).format(parsed)
 }
 
+const formatStageStatus = (status: string | null | undefined) => {
+  if (!status) {
+    return "pending"
+  }
+  return status.replaceAll("_", " ")
+}
+
 const toNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null
 
@@ -109,7 +116,27 @@ const statusColor = (status: string | null | undefined) => {
   return "blue"
 }
 
-const stageColor = (completed: boolean) => (completed ? "green" : "gray")
+const stageStatusColor = (status: string | null | undefined) => {
+  if (!status) {
+    return "gray"
+  }
+  if (status === "completed") {
+    return "green"
+  }
+  if (status === "running") {
+    return "blue"
+  }
+  if (status === "failed") {
+    return "red"
+  }
+  if (status === "stale") {
+    return "orange"
+  }
+  return "gray"
+}
+
+const isCompletedStage = (status: string | null | undefined) =>
+  status === "completed"
 
 const isTerminalRunStatus = (status: string | null | undefined) =>
   status === "completed" || status === "failed"
@@ -468,7 +495,13 @@ function DocumentCard({
     : null
   const hasActiveRun =
     activeRun !== undefined && !isTerminalRunStatus(activeRun.status)
-  const canLaunch = entry.file_exists || entry.stages.extracted
+  const extractionComplete = isCompletedStage(entry.stages.extraction.status)
+  const rankingComplete = isCompletedStage(entry.stages.ranking.status)
+  const canGenerateImages = extractionComplete && rankingComplete
+  const launchLabel = canGenerateImages
+    ? "Generate images for scenes"
+    : "Run pipeline"
+  const canLaunch = entry.file_exists || entry.counts.extracted > 0
 
   return (
     <Box
@@ -501,22 +534,24 @@ function DocumentCard({
           <StageBadge
             label="Extracted"
             count={entry.counts.extracted}
-            complete={entry.stages.extracted}
+            status={entry.stages.extraction.status}
+            error={entry.stages.extraction.error}
           />
           <StageBadge
             label="Ranked"
             count={entry.counts.ranked}
-            complete={entry.stages.ranked}
+            status={entry.stages.ranking.status}
+            error={entry.stages.ranking.error}
           />
           <StageBadge
             label="Prompts"
             count={entry.counts.prompts_generated}
-            complete={entry.stages.prompts_generated}
+            status={entry.stages.prompts_generated.status}
           />
           <StageBadge
             label="Images"
             count={entry.counts.images_generated}
-            complete={entry.stages.images_generated}
+            status={entry.stages.images_generated.status}
           />
         </Grid>
 
@@ -571,10 +606,16 @@ function DocumentCard({
                 gap={2}
               >
                 <FiPlay />
-                Run pipeline
+                {launchLabel}
               </Button>
             </Flex>
           </Grid>
+          {canGenerateImages ? (
+            <Text mt={2} fontSize="sm" color="fg.muted">
+              Generates images for the highest-ranked scenes that do not already
+              have images.
+            </Text>
+          ) : null}
           {!canLaunch ? (
             <Text mt={2} fontSize="sm" color="orange.300">
               Source file is missing and no extracted scenes exist yet.
@@ -661,20 +702,34 @@ function DocumentCard({
 function StageBadge({
   label,
   count,
-  complete,
+  status,
+  error,
 }: {
   label: string
   count: number
-  complete: boolean
+  status: string
+  error?: string | null
 }) {
   return (
     <Box borderWidth="1px" borderRadius="md" p={3}>
-      <HStack justify="space-between" align="center">
-        <Text fontSize="sm" color="fg.muted">
-          {label}
-        </Text>
-        <Badge colorScheme={stageColor(complete)}>{count}</Badge>
-      </HStack>
+      <Stack gap={1}>
+        <HStack justify="space-between" align="center">
+          <Text fontSize="sm" color="fg.muted">
+            {label}
+          </Text>
+          <Badge colorScheme={stageStatusColor(status)}>{count}</Badge>
+        </HStack>
+        <HStack justify="space-between" align="center">
+          <Text fontSize="xs" color="fg.subtle" textTransform="uppercase">
+            {formatStageStatus(status)}
+          </Text>
+          {error ? (
+            <Text fontSize="xs" color="red.300" maxW="160px" truncate>
+              {error}
+            </Text>
+          ) : null}
+        </HStack>
+      </Stack>
     </Box>
   )
 }

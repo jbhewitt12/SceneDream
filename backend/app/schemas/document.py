@@ -18,6 +18,12 @@ class DocumentCreate(BaseModel):
     source_type: str
     ingestion_state: str = "pending"
     ingestion_error: str | None = None
+    extraction_status: str = "pending"
+    extraction_completed_at: datetime | None = None
+    extraction_error: str | None = None
+    ranking_status: str = "pending"
+    ranking_completed_at: datetime | None = None
+    ranking_error: str | None = None
     source_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -31,6 +37,12 @@ class DocumentRead(BaseModel):
     source_type: str
     ingestion_state: str
     ingestion_error: str | None
+    extraction_status: str
+    extraction_completed_at: datetime | None
+    extraction_error: str | None
+    ranking_status: str
+    ranking_completed_at: datetime | None
+    ranking_error: str | None
     source_metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
@@ -54,13 +66,29 @@ class DocumentDashboardCounts(BaseModel):
     images_generated: int = 0
 
 
-class DocumentDashboardStages(BaseModel):
-    """Boolean completion flags for document pipeline stages."""
+class DocumentDashboardStageStatus(BaseModel):
+    """Explicit status payload for one pipeline stage."""
 
-    extracted: bool = False
-    ranked: bool = False
-    prompts_generated: bool = False
-    images_generated: bool = False
+    status: str = "pending"
+    completed_at: datetime | None = None
+    error: str | None = None
+
+
+class DocumentDashboardStages(BaseModel):
+    """Per-stage status metadata used by the dashboard."""
+
+    extraction: DocumentDashboardStageStatus = Field(
+        default_factory=DocumentDashboardStageStatus
+    )
+    ranking: DocumentDashboardStageStatus = Field(
+        default_factory=DocumentDashboardStageStatus
+    )
+    prompts_generated: DocumentDashboardStageStatus = Field(
+        default_factory=DocumentDashboardStageStatus
+    )
+    images_generated: DocumentDashboardStageStatus = Field(
+        default_factory=DocumentDashboardStageStatus
+    )
 
 
 class DocumentDashboardRunSummary(BaseModel):

@@ -14,6 +14,7 @@ from .document import (
     DocumentDashboardResponse,
     DocumentDashboardRunSummary,
     DocumentDashboardStages,
+    DocumentDashboardStageStatus,
     DocumentListResponse,
     DocumentRead,
 )
@@ -83,6 +84,7 @@ __all__ = [
     "DocumentDashboardEntry",
     "DocumentDashboardResponse",
     "DocumentDashboardRunSummary",
+    "DocumentDashboardStageStatus",
     "DocumentDashboardStages",
     "DocumentListResponse",
     "DocumentRead",

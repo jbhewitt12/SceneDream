@@ -30,6 +30,9 @@ def test_get_documents_dashboard_returns_pipeline_status(
             "source_path": relative_path,
             "source_type": "txt",
             "ingestion_state": "ingested",
+            "extraction_status": "completed",
+            "ranking_status": "failed",
+            "ranking_error": "Ranking failed for route test",
             "source_metadata": {"route_test": True},
         },
         commit=True,
@@ -72,7 +75,9 @@ def test_get_documents_dashboard_returns_pipeline_status(
         assert target is not None
         assert target["source_path"] == relative_path
         assert target["file_exists"] is True
-        assert target["stages"]["extracted"] is True
+        assert target["stages"]["extraction"]["status"] == "completed"
+        assert target["stages"]["ranking"]["status"] == "failed"
+        assert target["stages"]["ranking"]["error"] == "Ranking failed for route test"
         assert target["last_run"] is not None
         assert target["last_run"]["id"] == str(run.id)
         assert target["last_run"]["error_message"] == "Route-level failure"
