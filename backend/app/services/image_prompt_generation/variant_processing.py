@@ -18,24 +18,6 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-_BANNED_STYLE_TERMS = (
-    "photorealistic",
-    "photorealism",
-    "photo realistic",
-    "photo-realistic",
-    "photoreal",
-    "photo real",
-    "hyperrealistic",
-    "hyper-realistic",
-    "hyper realistic",
-    "ultra realistic",
-    "ultrarealistic",
-    "ultra-realistic",
-    "live-action",
-    "live action",
-)
-
-
 class VariantModel(BaseModel):
     """Validate the structure returned by the LLM."""
 
@@ -61,9 +43,7 @@ class VariantProcessor:
         self,
         *,
         allowed_aspect_ratios: Sequence[str],
-        banned_style_terms: Sequence[str] = _BANNED_STYLE_TERMS,
     ) -> None:
-        self._banned_style_terms = tuple(banned_style_terms)
         self._allowed_aspect_ratios = tuple(allowed_aspect_ratios)
         normalized_map = {
             value.replace(" ", "").lower(): value for value in allowed_aspect_ratios
@@ -180,19 +160,6 @@ class VariantProcessor:
 
     def _enforce_variant_constraints(self, variant: VariantModel) -> list[str]:
         issues: list[str] = []
-        prompt_lower = variant.prompt_text.lower()
-        for banned in self._banned_style_terms:
-            if banned in prompt_lower:
-                issues.append(
-                    f"prompt_text contains banned realism descriptor '{banned}'"
-                )
-        for tag in variant.style_tags or []:
-            tag_lower = tag.lower()
-            for banned in self._banned_style_terms:
-                if banned in tag_lower:
-                    issues.append(
-                        f"style tag '{tag}' includes banned realism descriptor '{banned}'"
-                    )
         if not isinstance(variant.attributes, dict):
             variant.attributes = {}
         attributes = variant.attributes

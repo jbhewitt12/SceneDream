@@ -25,7 +25,7 @@ class GptImagePromptStrategy(PromptStrategy):
 
     def get_creative_guidance(self) -> str:
         return (
-            "Transform the excerpt into elite GPT Image prompts that read like detailed concept art direction without leaning on photorealism. "
+            "Transform the excerpt into elite GPT Image prompts that read like detailed concept art direction. "
             "GPT Image 1.5 excels at parsing longer, richly layered prompts - leverage this capacity to create immersive, multi-sensory descriptions. "
             "Structure each prompt in clear layers: scene/environment first, then subject/action, followed by materials and details, then style/medium, technical direction (camera, lens, lighting), and finally explicit constraints. "
             "Let each variant amplify the scene's emotional core with concrete sensory cues - specific material textures, ambient motion, symbolic props, weather, and soundscapes - so the moment feels inhabitable. "
@@ -35,7 +35,7 @@ class GptImagePromptStrategy(PromptStrategy):
             "GPT Image 1.5 has strong world knowledge - include cultural and temporal markers that inform period-appropriate details automatically. "
             "Scale can be intimate or colossal; choose what the excerpt implies while steering the tone toward wonder, curiosity, or serene tension instead of fear. "
             "If people appear, portray them with agency or calm observation, avoiding language of harm or panic while still honoring the story's stakes. "
-            "End each prompt with explicit constraints stating what must NOT appear (no photorealism, no modern elements, etc.)."
+            "End each prompt with explicit constraints stating what must NOT appear (for example no modern elements or text overlays when they conflict with the scene)."
         )
 
     def get_cheatsheet_path(self) -> str | None:

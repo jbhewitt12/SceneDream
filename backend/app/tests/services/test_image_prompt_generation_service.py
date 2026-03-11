@@ -451,24 +451,23 @@ def test_sample_styles_respects_formula(monkeypatch: pytest.MonkeyPatch) -> None
     assert styles == ["A", "B", "C", "D", "E", "X", "Y"]
 
 
-def test_sample_styles_filters_blocked_terms(
+def test_sample_styles_keeps_realism_related_terms(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.services.image_prompt_generation.core.style_sampler import StyleSampler
 
-    # Create a custom StyleSampler with test styles including blocked terms
+    # Realism-related styles should pass through sampling unchanged.
     test_sampler = StyleSampler(
         recommended_styles=("Stylised", "Photorealistic ink", "Shared"),
-        other_styles=("Shared", "live-action still", "Safe Option"),
+        other_styles=("live-action still", "Safe Option"),
     )
     monkeypatch.setattr(random, "sample", lambda seq, k: list(seq)[:k])
     monkeypatch.setattr(random, "shuffle", lambda seq: None)
 
-    styles = test_sampler.sample(variants_count=2)
+    styles = test_sampler.sample(variants_count=4)
 
-    # "Photorealistic ink" and "live-action still" should be filtered
-    assert "Photorealistic ink" not in styles
-    assert "live-action still" not in styles
+    assert "Photorealistic ink" in styles
+    assert "live-action still" in styles
     assert "Stylised" in styles
 
 
@@ -490,6 +489,24 @@ def test_sample_styles_keeps_preferred_style_first(
     assert styles[0] == "Style C"
     assert "Style A" in styles
     assert "Style D" in styles
+
+
+def test_sample_styles_keeps_realism_preferred_style_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.image_prompt_generation.core.style_sampler import StyleSampler
+
+    sampler = StyleSampler(
+        recommended_styles=("Style A", "Style B"),
+        other_styles=("Style C",),
+        preferred_style="Photorealism",
+    )
+    monkeypatch.setattr(random, "sample", lambda seq, k: list(seq)[:k])
+    monkeypatch.setattr(random, "shuffle", lambda seq: None)
+
+    styles = sampler.sample(variants_count=2)
+
+    assert styles[0] == "Photorealism"
 
 
 def test_service_uses_art_style_repository_catalog(

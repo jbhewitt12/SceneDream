@@ -25,7 +25,7 @@ class DallePromptStrategy(PromptStrategy):
 
     def get_creative_guidance(self) -> str:
         return (
-            "Transform the excerpt into elite DALLE3 prompts that read like avant-garde concept art direction without leaning on photorealism. "
+            "Transform the excerpt into elite DALLE3 prompts that read like avant-garde concept art direction. "
             "Let each variant amplify the scene's emotional core with concrete sensory cues - textures, ambient motion, symbolic props, weather, and soundscapes - so the moment feels inhabitable. "
             "Scale can be intimate or colossal; choose what the excerpt implies while steering the tone toward wonder, curiosity, or serene tension instead of fear. "
             "If people appear, portray them with agency or calm observation, avoiding language of harm or panic while still honoring the story's stakes. "
@@ -51,7 +51,6 @@ class DallePromptStrategy(PromptStrategy):
             "- Capture the excerpt's emotional drivers and sensory anchors before drafting prompts.\n"
             "- Consult the curated Suggested Styles list above and pick unique candidates for each variant.\n"
             "- Explicitly weave the chosen medium or art era into prompt_text and style_tags for every variant.\n"
-            "- Keep every treatment proudly stylised—never use photorealistic, live-action, or cinematic realism terminology.\n"
             "- Bind palette, lighting, and composition decisions to narrative clues so the aesthetic choice feels earned."
         )
 

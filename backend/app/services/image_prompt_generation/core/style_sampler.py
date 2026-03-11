@@ -114,32 +114,18 @@ OTHER_STYLES: tuple[str, ...] = (
     "mandala art",
 )
 
-BLOCKED_STYLE_TERMS: tuple[str, ...] = (
-    "photorealism",
-    "photorealistic",
-    "hyper-realistic",
-    "hyper realistic",
-    "live-action",
-    "live action",
-    "cinematic realism",
-    "realistic render",
-)
-
-
 class StyleSampler:
-    """Sample styles for prompt generation, filtering banned terms."""
+    """Sample styles for prompt generation."""
 
     def __init__(
         self,
         *,
         recommended_styles: Sequence[str] = RECOMMENDED_STYLES,
         other_styles: Sequence[str] = OTHER_STYLES,
-        blocked_terms: Sequence[str] = BLOCKED_STYLE_TERMS,
         preferred_style: str | None = None,
     ) -> None:
         self._recommended_styles = tuple(recommended_styles)
         self._other_styles = tuple(other_styles)
-        self._blocked_terms = tuple(term.lower() for term in blocked_terms)
         self._preferred_style = preferred_style.strip() if preferred_style else None
 
     def sample(self, variants_count: int) -> list[str]:
@@ -155,32 +141,21 @@ class StyleSampler:
         recommended_choices = random.sample(self._recommended_styles, recommended_count)
         other_choices = random.sample(self._other_styles, other_count)
 
-        sampled: list[str] = []
-        for style in [*recommended_choices, *other_choices]:
-            if any(term in style.lower() for term in self._blocked_terms):
-                continue
-            sampled.append(style)
-
-        deduped = list(dict.fromkeys(sampled))
+        deduped = list(dict.fromkeys([*recommended_choices, *other_choices]))
         random.shuffle(deduped)
         if self._preferred_style:
             preferred = self._preferred_style
-            preferred_is_blocked = any(
-                term in preferred.lower() for term in self._blocked_terms
-            )
-            if not preferred_is_blocked:
-                if preferred in deduped:
-                    deduped = [
-                        preferred,
-                        *[style for style in deduped if style != preferred],
-                    ]
-                else:
-                    deduped = [preferred, *deduped]
+            if preferred in deduped:
+                deduped = [
+                    preferred,
+                    *[style for style in deduped if style != preferred],
+                ]
+            else:
+                deduped = [preferred, *deduped]
         return deduped
 
 
 __all__ = [
-    "BLOCKED_STYLE_TERMS",
     "OTHER_STYLES",
     "RECOMMENDED_STYLES",
     "StyleSampler",

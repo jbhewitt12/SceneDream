@@ -91,7 +91,7 @@ Replace generic quality modifiers with tangible material descriptions:
 When describing scenes, explicitly state what must NOT appear:
 - "No modern elements, no text overlays, no watermarks"
 - "Maintain the established color palette throughout"
-- "Preserve the stylised treatment—no photorealistic rendering"
+- "Preserve the chosen medium and visual intent throughout the composition"
 - Repeat critical constraints to prevent drift in complex prompts.
 
 ### Prompt Construction Boosters
