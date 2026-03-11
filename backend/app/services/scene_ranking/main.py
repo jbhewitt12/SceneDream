@@ -59,8 +59,8 @@ def _build_parser() -> argparse.ArgumentParser:
     rank.add_argument(
         "--limit",
         type=int,
-        default=25,
-        help="Maximum number of scenes to process (ignored when --scene-id is used).",
+        default=0,
+        help="Maximum number of scenes to process (0 = no limit; ignored when --scene-id is used).",
     )
     rank.add_argument(
         "--model-name",
