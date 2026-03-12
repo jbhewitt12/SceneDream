@@ -320,8 +320,8 @@ function SettingsPage() {
                 </Text>
                 <Box p={3} borderWidth="1px" borderRadius="md" bg="bg.subtle">
                   <Text fontSize="sm" color="fg.muted">
-                    We randomly choose styles from both lists and pass that mix
-                    to the prompt model so it can pick from a range of visual
+                    We randomly choose styles from both lists (more from recommended, less from other) and pass that mix
+                    to the LLM model that is creating the image prompts so it can pick from a range of visual
                     directions.
                   </Text>
                 </Box>
