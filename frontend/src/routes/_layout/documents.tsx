@@ -11,9 +11,6 @@ import {
   HStack,
   Heading,
   Input,
-  NativeSelectField,
-  NativeSelectIndicator,
-  NativeSelectRoot,
   Spinner,
   Stack,
   Text,
@@ -25,8 +22,15 @@ import { FiPlay, FiRefreshCcw, FiSearch } from "react-icons/fi"
 
 import { type DocumentDashboardEntry, DocumentsApi } from "@/api/documents"
 import { type PipelineRun, PipelineRunsApi } from "@/api/pipelineRuns"
-import { type ArtStyle, SettingsApi } from "@/api/settings"
+import { SettingsApi } from "@/api/settings"
+import { PromptArtStyleControl } from "@/components/Common/PromptArtStyleControl"
 import useCustomToast from "@/hooks/useCustomToast"
+import {
+  type PromptArtStyleSelection,
+  getPromptArtStyleSelectionFromSettings,
+  getPromptArtStyleTextForPayload,
+  getPromptArtStyleValidationMessage,
+} from "@/types/promptArtStyle"
 
 export const Route = createFileRoute("/_layout/documents")({
   component: DocumentsPage,
@@ -52,7 +56,7 @@ const formatStageStatus = (status: string | null | undefined) => {
   if (!status) {
     return "pending"
   }
-  return status.replaceAll("_", " ")
+  return status.replace(/_/g, " ")
 }
 
 const toNumber = (value: unknown): number | null =>
@@ -150,7 +154,9 @@ function DocumentsPage() {
   const [scenesPerRunByKey, setScenesPerRunByKey] = useState<
     Record<string, string>
   >({})
-  const [artStyleByKey, setArtStyleByKey] = useState<Record<string, string>>({})
+  const [artStyleSelectionByKey, setArtStyleSelectionByKey] = useState<
+    Record<string, PromptArtStyleSelection>
+  >({})
   const [launchingByKey, setLaunchingByKey] = useState<Record<string, boolean>>(
     {},
   )
@@ -176,36 +182,64 @@ function DocumentsPage() {
 
   const defaultScenesPerRun =
     settingsQuery.data?.settings.default_scenes_per_run ?? 5
-  const artStyles = settingsQuery.data?.art_styles ?? []
+  const defaultPromptArtStyleSelection = useMemo(
+    () => getPromptArtStyleSelectionFromSettings(settingsQuery.data?.settings),
+    [settingsQuery.data?.settings],
+  )
+  const artStyleCatalogCounts = useMemo(() => {
+    const styles = settingsQuery.data?.art_styles ?? []
+    return styles.reduce(
+      (counts, style) => {
+        if (style.is_recommended) {
+          counts.recommended += 1
+        } else {
+          counts.other += 1
+        }
+        return counts
+      },
+      { recommended: 0, other: 0 },
+    )
+  }, [settingsQuery.data?.art_styles])
+  const settingsDefaultsResolved = settingsQuery.status !== "pending"
 
   useEffect(() => {
     const entries = dashboardQuery.data?.data
-    if (!entries?.length) {
+    if (!entries?.length || !settingsDefaultsResolved) {
       return
     }
 
     setScenesPerRunByKey((previous) => {
+      let didChange = false
       const next = { ...previous }
       for (const entry of entries) {
         const key = toEntryKey(entry)
         if (!(key in next)) {
+          didChange = true
           next[key] = String(defaultScenesPerRun)
         }
       }
-      return next
+      return didChange ? next : previous
     })
 
-    setArtStyleByKey((previous) => {
+    setArtStyleSelectionByKey((previous) => {
+      let didChange = false
       const next = { ...previous }
       for (const entry of entries) {
         const key = toEntryKey(entry)
         if (!(key in next)) {
-          next[key] = ""
+          didChange = true
+          next[key] = { ...defaultPromptArtStyleSelection }
         }
       }
-      return next
+      return didChange ? next : previous
     })
-  }, [dashboardQuery.data?.data, defaultScenesPerRun, toEntryKey])
+  }, [
+    dashboardQuery.data?.data,
+    defaultPromptArtStyleSelection,
+    defaultScenesPerRun,
+    settingsDefaultsResolved,
+    toEntryKey,
+  ])
 
   useEffect(() => {
     const hasActiveRuns = Object.values(activeRunByKey).some(
@@ -299,9 +333,17 @@ function DocumentsPage() {
     const key = toEntryKey(entry)
     const scenesRaw = scenesPerRunByKey[key] ?? String(defaultScenesPerRun)
     const imagesForScenes = Number.parseInt(scenesRaw, 10)
+    const promptArtStyleSelection =
+      artStyleSelectionByKey[key] ?? defaultPromptArtStyleSelection
+    const promptArtStyleValidationMessage = getPromptArtStyleValidationMessage(
+      promptArtStyleSelection,
+    )
 
     if (!Number.isFinite(imagesForScenes) || imagesForScenes <= 0) {
       showErrorToast("Scenes per run must be a positive integer.")
+      return
+    }
+    if (promptArtStyleValidationMessage) {
       return
     }
 
@@ -311,13 +353,15 @@ function DocumentsPage() {
     }))
 
     try {
-      const selectedArtStyleId = artStyleByKey[key]
       const run = await PipelineRunsApi.start({
         document_id: entry.document_id ?? undefined,
         book_slug: entry.document_id ? undefined : entry.slug,
         book_path: entry.document_id ? undefined : entry.source_path,
         images_for_scenes: imagesForScenes,
-        art_style_id: selectedArtStyleId ? selectedArtStyleId : undefined,
+        prompt_art_style_mode: promptArtStyleSelection.promptArtStyleMode,
+        prompt_art_style_text: getPromptArtStyleTextForPayload(
+          promptArtStyleSelection,
+        ),
       })
 
       setActiveRunByKey((previous) => ({
@@ -434,8 +478,10 @@ function DocumentsPage() {
                 scenesPerRunValue={
                   scenesPerRunByKey[key] ?? String(defaultScenesPerRun)
                 }
-                artStyleOverrideValue={artStyleByKey[key] ?? ""}
-                artStyles={artStyles}
+                artStyleSelection={
+                  artStyleSelectionByKey[key] ?? defaultPromptArtStyleSelection
+                }
+                artStyleCatalogCounts={artStyleCatalogCounts}
                 launching={launchingByKey[key] === true}
                 onScenesPerRunChange={(value) =>
                   setScenesPerRunByKey((previous) => ({
@@ -443,10 +489,22 @@ function DocumentsPage() {
                     [key]: value,
                   }))
                 }
-                onArtStyleOverrideChange={(value) =>
-                  setArtStyleByKey((previous) => ({
+                onArtStyleModeChange={(promptArtStyleMode) =>
+                  setArtStyleSelectionByKey((previous) => ({
                     ...previous,
-                    [key]: value,
+                    [key]: {
+                      ...(previous[key] ?? defaultPromptArtStyleSelection),
+                      promptArtStyleMode,
+                    },
+                  }))
+                }
+                onArtStyleTextChange={(promptArtStyleText) =>
+                  setArtStyleSelectionByKey((previous) => ({
+                    ...previous,
+                    [key]: {
+                      ...(previous[key] ?? defaultPromptArtStyleSelection),
+                      promptArtStyleText,
+                    },
                   }))
                 }
                 onLaunch={() => handleLaunch(entry)}
@@ -463,7 +521,7 @@ type RunSummaryLike = {
   status: string
   current_stage: string | null
   error_message: string | null
-  usage_summary: Record<string, unknown>
+  usage_summary?: Record<string, unknown>
   completed_at: string | null
 }
 
@@ -471,21 +529,28 @@ function DocumentCard({
   entry,
   activeRun,
   scenesPerRunValue,
-  artStyleOverrideValue,
-  artStyles,
+  artStyleSelection,
+  artStyleCatalogCounts,
   launching,
   onScenesPerRunChange,
-  onArtStyleOverrideChange,
+  onArtStyleModeChange,
+  onArtStyleTextChange,
   onLaunch,
 }: {
   entry: DocumentDashboardEntry
   activeRun: PipelineRun | undefined
   scenesPerRunValue: string
-  artStyleOverrideValue: string
-  artStyles: ArtStyle[]
+  artStyleSelection: PromptArtStyleSelection
+  artStyleCatalogCounts: {
+    recommended: number
+    other: number
+  }
   launching: boolean
   onScenesPerRunChange: (value: string) => void
-  onArtStyleOverrideChange: (value: string) => void
+  onArtStyleModeChange: (
+    value: PromptArtStyleSelection["promptArtStyleMode"],
+  ) => void
+  onArtStyleTextChange: (value: string) => void
   onLaunch: () => void
 }) {
   const runSummary: RunSummaryLike | null =
@@ -502,6 +567,8 @@ function DocumentCard({
     ? "Generate images for scenes"
     : "Run pipeline"
   const canLaunch = entry.file_exists || entry.counts.extracted > 0
+  const artStyleValidationMessage =
+    getPromptArtStyleValidationMessage(artStyleSelection)
 
   return (
     <Box
@@ -579,32 +646,23 @@ function DocumentCard({
               />
             </Box>
             <Box>
-              <Text fontSize="sm" color="fg.muted" mb={1}>
-                Art style override
-              </Text>
-              <NativeSelectRoot w="full">
-                <NativeSelectField
-                  value={artStyleOverrideValue}
-                  onChange={(event) =>
-                    onArtStyleOverrideChange(event.target.value)
-                  }
-                >
-                  <option value="">Use global default</option>
-                  {artStyles.map((style) => (
-                    <option key={style.id} value={style.id}>
-                      {style.display_name}
-                    </option>
-                  ))}
-                </NativeSelectField>
-                <NativeSelectIndicator />
-              </NativeSelectRoot>
+              <PromptArtStyleControl
+                label="Art style"
+                selection={artStyleSelection}
+                recommendedCount={artStyleCatalogCounts.recommended}
+                otherCount={artStyleCatalogCounts.other}
+                randomMixManageCopy="Manage styles in Settings."
+                validationMessage={artStyleValidationMessage}
+                onModeChange={onArtStyleModeChange}
+                onTextChange={onArtStyleTextChange}
+              />
             </Box>
             <Flex align="flex-end">
               <Button
                 colorScheme="blue"
                 onClick={onLaunch}
                 loading={launching || hasActiveRun}
-                disabled={!canLaunch}
+                disabled={!canLaunch || artStyleValidationMessage !== null}
                 gap={2}
               >
                 <FiPlay />

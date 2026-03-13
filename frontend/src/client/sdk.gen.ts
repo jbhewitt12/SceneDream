@@ -806,7 +806,7 @@ export class SettingsService {
     
     /**
      * Update Settings
-     * Update global defaults for scenes-per-run and default art style.
+     * Update global defaults for scenes-per-run and prompt art style.
      * @param data The data for the request.
      * @param data.requestBody
      * @returns AppSettingsBundleResponse Successful Response

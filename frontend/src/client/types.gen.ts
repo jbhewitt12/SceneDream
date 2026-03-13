@@ -14,17 +14,21 @@ export type AppSettingsBundleResponse = {
 export type AppSettingsRead = {
     id: string;
     default_scenes_per_run: number;
-    default_art_style_id: (string | null);
+    default_prompt_art_style_mode: 'random_mix' | 'single_style';
+    default_prompt_art_style_text: (string | null);
     created_at: string;
     updated_at: string;
 };
+
+export type default_prompt_art_style_mode = 'random_mix' | 'single_style';
 
 /**
  * Patch payload for updating global defaults.
  */
 export type AppSettingsUpdateRequest = {
     default_scenes_per_run?: (number | null);
-    default_art_style_id?: (string | null);
+    default_prompt_art_style_mode?: ('random_mix' | 'single_style' | null);
+    default_prompt_art_style_text?: (string | null);
 };
 
 /**
@@ -463,7 +467,8 @@ export type PipelineRunStartRequest = {
     document_id?: (string | null);
     book_slug?: (string | null);
     book_path?: (string | null);
-    art_style_id?: (string | null);
+    prompt_art_style_mode?: ('random_mix' | 'single_style' | null);
+    prompt_art_style_text?: (string | null);
     prompts_per_scene?: (number | null);
     ignore_ranking_recommendations?: boolean;
     prompts_for_scenes?: (number | null);

@@ -8,9 +8,6 @@ import {
   Flex,
   Heading,
   Input,
-  NativeSelectField,
-  NativeSelectIndicator,
-  NativeSelectRoot,
   Spinner,
   Stack,
   Text,
@@ -21,7 +18,14 @@ import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
 
 import { SettingsApi } from "@/api/settings"
+import { PromptArtStyleControl } from "@/components/Common/PromptArtStyleControl"
 import useCustomToast from "@/hooks/useCustomToast"
+import {
+  type PromptArtStyleSelection,
+  getPromptArtStyleSelectionFromSettings,
+  getPromptArtStyleTextForPayload,
+  getPromptArtStyleValidationMessage,
+} from "@/types/promptArtStyle"
 
 export const Route = createFileRoute("/_layout/settings")({
   component: SettingsPage,
@@ -42,7 +46,10 @@ function SettingsPage() {
   const queryClient = useQueryClient()
   const { showErrorToast, showSuccessToast } = useCustomToast()
   const [scenesPerRun, setScenesPerRun] = useState<string>("")
-  const [defaultArtStyleId, setDefaultArtStyleId] = useState<string>("")
+  const [defaultPromptArtStyle, setDefaultPromptArtStyle] =
+    useState<PromptArtStyleSelection>(() =>
+      getPromptArtStyleSelectionFromSettings(undefined),
+    )
   const [recommendedStylesText, setRecommendedStylesText] = useState<string>("")
   const [otherStylesText, setOtherStylesText] = useState<string>("")
 
@@ -60,7 +67,9 @@ function SettingsPage() {
       return
     }
     setScenesPerRun(String(settingsQuery.data.settings.default_scenes_per_run))
-    setDefaultArtStyleId(settingsQuery.data.settings.default_art_style_id ?? "")
+    setDefaultPromptArtStyle(
+      getPromptArtStyleSelectionFromSettings(settingsQuery.data.settings),
+    )
   }, [settingsQuery.data])
 
   useEffect(() => {
@@ -149,6 +158,11 @@ function SettingsPage() {
     parsedStyleLists.recommendedDuplicates.length > 0 ||
     parsedStyleLists.otherDuplicates.length > 0 ||
     parsedStyleLists.crossListDuplicates.length > 0
+  const defaultPromptArtStyleValidationMessage =
+    getPromptArtStyleValidationMessage(defaultPromptArtStyle)
+  const savedDefaultPromptArtStyle = getPromptArtStyleSelectionFromSettings(
+    settingsQuery.data?.settings,
+  )
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -161,10 +175,16 @@ function SettingsPage() {
           "At least one style is required across Recommended and Other lists.",
         )
       }
+      if (defaultPromptArtStyleValidationMessage) {
+        throw new Error(defaultPromptArtStyleValidationMessage)
+      }
 
       const settingsResponse = await SettingsApi.update({
         default_scenes_per_run: parsedScenes,
-        default_art_style_id: defaultArtStyleId || null,
+        default_prompt_art_style_mode: defaultPromptArtStyle.promptArtStyleMode,
+        default_prompt_art_style_text: getPromptArtStyleTextForPayload(
+          defaultPromptArtStyle,
+        ),
       })
       const listsResponse = await SettingsApi.updateArtStyleLists({
         recommended_styles: parsedStyleLists.recommended,
@@ -177,6 +197,14 @@ function SettingsPage() {
       queryClient.setQueryData(
         ["settings", "art-style-lists"],
         payload.listsResponse,
+      )
+      setScenesPerRun(
+        String(payload.settingsResponse.settings.default_scenes_per_run),
+      )
+      setDefaultPromptArtStyle(
+        getPromptArtStyleSelectionFromSettings(
+          payload.settingsResponse.settings,
+        ),
       )
       setRecommendedStylesText(
         payload.listsResponse.recommended_styles.join("\n"),
@@ -197,7 +225,9 @@ function SettingsPage() {
       return
     }
     setScenesPerRun(String(settingsQuery.data.settings.default_scenes_per_run))
-    setDefaultArtStyleId(settingsQuery.data.settings.default_art_style_id ?? "")
+    setDefaultPromptArtStyle(
+      getPromptArtStyleSelectionFromSettings(settingsQuery.data.settings),
+    )
     setRecommendedStylesText(
       artStyleListsQuery.data.recommended_styles.join("\n"),
     )
@@ -209,8 +239,10 @@ function SettingsPage() {
     artStyleListsQuery.data !== undefined &&
     (scenesPerRun !==
       String(settingsQuery.data.settings.default_scenes_per_run) ||
-      defaultArtStyleId !==
-        (settingsQuery.data.settings.default_art_style_id ?? "") ||
+      defaultPromptArtStyle.promptArtStyleMode !==
+        savedDefaultPromptArtStyle.promptArtStyleMode ||
+      defaultPromptArtStyle.promptArtStyleText !==
+        savedDefaultPromptArtStyle.promptArtStyleText ||
       recommendedStylesText !==
         artStyleListsQuery.data.recommended_styles.join("\n") ||
       otherStylesText !== artStyleListsQuery.data.other_styles.join("\n"))
@@ -273,30 +305,29 @@ function SettingsPage() {
                 </Box>
 
                 <Box>
-                  <Text
-                    textTransform="uppercase"
-                    fontSize="xs"
-                    color="fg.subtle"
-                    mb={1}
-                  >
-                    Default art style
-                  </Text>
-                  <NativeSelectRoot w="full">
-                    <NativeSelectField
-                      value={defaultArtStyleId}
-                      onChange={(event) =>
-                        setDefaultArtStyleId(event.target.value)
-                      }
-                    >
-                      <option value="">No default</option>
-                      {settingsQuery.data.art_styles.map((style) => (
-                        <option key={style.id} value={style.id}>
-                          {style.display_name}
-                        </option>
-                      ))}
-                    </NativeSelectField>
-                    <NativeSelectIndicator />
-                  </NativeSelectRoot>
+                  <PromptArtStyleControl
+                    label="Default art style"
+                    selection={defaultPromptArtStyle}
+                    recommendedCount={parsedStyleLists.recommended.length}
+                    otherCount={parsedStyleLists.other.length}
+                    randomMixManageCopy="Manage styles below in Settings."
+                    validationMessage={defaultPromptArtStyleValidationMessage}
+                    onModeChange={(promptArtStyleMode) =>
+                      setDefaultPromptArtStyle((previous) => ({
+                        ...previous,
+                        promptArtStyleMode,
+                      }))
+                    }
+                    onTextChange={(promptArtStyleText) =>
+                      setDefaultPromptArtStyle((previous) => ({
+                        ...previous,
+                        promptArtStyleText,
+                      }))
+                    }
+                    labelColor="fg.subtle"
+                    labelFontSize="xs"
+                    labelTextTransform="uppercase"
+                  />
                 </Box>
 
                 <Text fontSize="sm" color="fg.muted">
@@ -320,8 +351,9 @@ function SettingsPage() {
                 </Text>
                 <Box p={3} borderWidth="1px" borderRadius="md" bg="bg.subtle">
                   <Text fontSize="sm" color="fg.muted">
-                    We randomly choose styles from both lists (more from recommended, less from other) and pass that mix
-                    to the LLM model that is creating the image prompts so it can pick from a range of visual
+                    Random Style Mix samples from both lists, weighted toward
+                    Recommended styles, and passes that mix into prompt
+                    generation so each run can explore a range of visual
                     directions.
                   </Text>
                 </Box>
@@ -395,7 +427,11 @@ function SettingsPage() {
                 colorScheme="blue"
                 onClick={() => saveMutation.mutate()}
                 loading={saveMutation.isPending}
-                disabled={!isDirty || hasEmptyCatalog}
+                disabled={
+                  !isDirty ||
+                  hasEmptyCatalog ||
+                  defaultPromptArtStyleValidationMessage !== null
+                }
               >
                 Save settings
               </Button>

@@ -2191,7 +2191,7 @@
           "settings"
         ],
         "summary": "Update Settings",
-        "description": "Update global defaults for scenes-per-run and default art style.",
+        "description": "Update global defaults for scenes-per-run and prompt art style.",
         "operationId": "settings-update_settings",
         "requestBody": {
           "content": {
@@ -2432,17 +2432,24 @@
             "type": "integer",
             "title": "Default Scenes Per Run"
           },
-          "default_art_style_id": {
+          "default_prompt_art_style_mode": {
+            "type": "string",
+            "enum": [
+              "random_mix",
+              "single_style"
+            ],
+            "title": "Default Prompt Art Style Mode"
+          },
+          "default_prompt_art_style_text": {
             "anyOf": [
               {
-                "type": "string",
-                "format": "uuid"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Default Art Style Id"
+            "title": "Default Prompt Art Style Text"
           },
           "created_at": {
             "type": "string",
@@ -2459,7 +2466,8 @@
         "required": [
           "id",
           "default_scenes_per_run",
-          "default_art_style_id",
+          "default_prompt_art_style_mode",
+          "default_prompt_art_style_text",
           "created_at",
           "updated_at"
         ],
@@ -2481,17 +2489,31 @@
             ],
             "title": "Default Scenes Per Run"
           },
-          "default_art_style_id": {
+          "default_prompt_art_style_mode": {
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid"
+                "enum": [
+                  "random_mix",
+                  "single_style"
+                ]
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Default Art Style Id"
+            "title": "Default Prompt Art Style Mode"
+          },
+          "default_prompt_art_style_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Prompt Art Style Text"
           }
         },
         "type": "object",
@@ -4324,17 +4346,31 @@
             ],
             "title": "Book Path"
           },
-          "art_style_id": {
+          "prompt_art_style_mode": {
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid"
+                "enum": [
+                  "random_mix",
+                  "single_style"
+                ]
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Art Style Id"
+            "title": "Prompt Art Style Mode"
+          },
+          "prompt_art_style_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Art Style Text"
           },
           "prompts_per_scene": {
             "anyOf": [
