@@ -5,8 +5,13 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.core.prompt_art_style import (
+    PromptArtStyleMode,
+    coerce_prompt_art_style_selection,
+    normalize_prompt_art_style_text,
+)
 from .art_style import ArtStyleRead
 
 
@@ -15,7 +20,8 @@ class AppSettingsRead(BaseModel):
 
     id: UUID
     default_scenes_per_run: int
-    default_art_style_id: UUID | None
+    default_prompt_art_style_mode: PromptArtStyleMode
+    default_prompt_art_style_text: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -26,7 +32,25 @@ class AppSettingsUpdateRequest(BaseModel):
     """Patch payload for updating global defaults."""
 
     default_scenes_per_run: int | None = Field(default=None, ge=1, le=100)
-    default_art_style_id: UUID | None = None
+    default_prompt_art_style_mode: PromptArtStyleMode | None = None
+    default_prompt_art_style_text: str | None = None
+
+    @field_validator("default_prompt_art_style_text")
+    @classmethod
+    def _normalize_prompt_art_style_text(cls, value: str | None) -> str | None:
+        return normalize_prompt_art_style_text(value)
+
+    @model_validator(mode="after")
+    def _validate_single_style_text(self) -> "AppSettingsUpdateRequest":
+        if self.default_prompt_art_style_mode is None:
+            return self
+        coerce_prompt_art_style_selection(
+            mode=self.default_prompt_art_style_mode,
+            text=self.default_prompt_art_style_text,
+            mode_field_name="default_prompt_art_style_mode",
+            text_field_name="default_prompt_art_style_text",
+        )
+        return self
 
 
 class AppSettingsBundleResponse(BaseModel):

@@ -10,27 +10,36 @@ def test_app_settings_repository_updates_global_defaults(db: Session) -> None:
     settings = repository.get_or_create_global(commit=True, refresh=True)
 
     original_scenes = settings.default_scenes_per_run
-    original_style_id = settings.default_art_style_id
+    original_mode = settings.default_prompt_art_style_mode
+    original_text = settings.default_prompt_art_style_text
 
     updated = repository.update(
         settings,
-        data={"default_scenes_per_run": 7},
+        data={
+            "default_scenes_per_run": 7,
+            "default_prompt_art_style_mode": "single_style",
+            "default_prompt_art_style_text": "Ink wash painting",
+        },
         commit=True,
         refresh=True,
     )
     assert updated.default_scenes_per_run == 7
+    assert updated.default_prompt_art_style_mode == "single_style"
+    assert updated.default_prompt_art_style_text == "Ink wash painting"
 
     restored = repository.update(
         settings,
         data={
             "default_scenes_per_run": original_scenes,
-            "default_art_style_id": original_style_id,
+            "default_prompt_art_style_mode": original_mode,
+            "default_prompt_art_style_text": original_text,
         },
         commit=True,
         refresh=True,
     )
     assert restored.default_scenes_per_run == original_scenes
-    assert restored.default_art_style_id == original_style_id
+    assert restored.default_prompt_art_style_mode == original_mode
+    assert restored.default_prompt_art_style_text == original_text
 
 
 def test_art_style_repository_list_active_filters_inactive_rows(db: Session) -> None:

@@ -6,7 +6,6 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Final
-from uuid import UUID
 
 from sqlmodel import Session
 
@@ -60,7 +59,6 @@ class ArtStyleCatalogService:
             )
 
         now = datetime.now(timezone.utc)
-        settings = self._settings_repo.get_or_create_global(commit=False, refresh=True)
 
         try:
             existing_by_slug = {
@@ -116,18 +114,6 @@ class ArtStyleCatalogService:
                 )
 
             active_styles = self._style_repo.list_active()
-            if not self._default_style_is_valid(settings.default_art_style_id, active_styles):
-                fallback = next(
-                    (style.id for style in active_styles if style.is_recommended),
-                    None,
-                )
-                self._settings_repo.update(
-                    settings,
-                    data={"default_art_style_id": fallback},
-                    commit=False,
-                    refresh=False,
-                )
-
             self._session.commit()
             return self._build_snapshot(active_styles, fallback_updated_at=now)
         except Exception:
@@ -155,15 +141,6 @@ class ArtStyleCatalogService:
             other_styles=other,
             updated_at=updated_at,
         )
-
-    @staticmethod
-    def _default_style_is_valid(
-        default_style_id: UUID | None,
-        active_styles: list[ArtStyle],
-    ) -> bool:
-        if default_style_id is None:
-            return True
-        return any(style.id == default_style_id for style in active_styles)
 
     def _dedupe_styles(
         self,

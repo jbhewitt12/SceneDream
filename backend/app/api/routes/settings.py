@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.api.deps import SessionDep
+from app.core.prompt_art_style import coerce_prompt_art_style_selection
 from app.repositories import AppSettingsRepository, ArtStyleRepository
 from app.schemas import (
     AppSettingsBundleResponse,
@@ -53,7 +54,7 @@ async def update_settings(
     session: SessionDep,
     update: AppSettingsUpdateRequest,
 ) -> AppSettingsBundleResponse:
-    """Update global defaults for scenes-per-run and default art style."""
+    """Update global defaults for scenes-per-run and prompt art style."""
 
     settings_repo = AppSettingsRepository(session)
     art_style_repo = ArtStyleRepository(session)
@@ -66,15 +67,32 @@ async def update_settings(
         if value is not None:
             payload["default_scenes_per_run"] = value
 
-    if "default_art_style_id" in update.model_fields_set:
-        style_id = update.default_art_style_id
-        if style_id is not None:
-            style = art_style_repo.get(style_id)
-            if style is None:
-                raise HTTPException(status_code=404, detail="Art style not found")
-            if not style.is_active:
-                raise HTTPException(status_code=400, detail="Art style is inactive")
-        payload["default_art_style_id"] = style_id
+    style_fields = {
+        "default_prompt_art_style_mode",
+        "default_prompt_art_style_text",
+    }
+    if update.model_fields_set & style_fields:
+        merged_mode = (
+            update.default_prompt_art_style_mode
+            if "default_prompt_art_style_mode" in update.model_fields_set
+            else settings.default_prompt_art_style_mode
+        )
+        merged_text = (
+            update.default_prompt_art_style_text
+            if "default_prompt_art_style_text" in update.model_fields_set
+            else settings.default_prompt_art_style_text
+        )
+        try:
+            resolved_mode, resolved_text = coerce_prompt_art_style_selection(
+                mode=merged_mode,
+                text=merged_text,
+                mode_field_name="default_prompt_art_style_mode",
+                text_field_name="default_prompt_art_style_text",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        payload["default_prompt_art_style_mode"] = resolved_mode
+        payload["default_prompt_art_style_text"] = resolved_text
 
     if payload:
         settings = settings_repo.update(

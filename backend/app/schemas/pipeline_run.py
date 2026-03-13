@@ -6,7 +6,13 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.core.prompt_art_style import (
+    PromptArtStyleMode,
+    coerce_prompt_art_style_selection,
+    normalize_prompt_art_style_text,
+)
 
 
 class PipelineRunCreate(BaseModel):
@@ -29,7 +35,8 @@ class PipelineRunStartRequest(BaseModel):
     document_id: UUID | None = None
     book_slug: str | None = None
     book_path: str | None = None
-    art_style_id: UUID | None = None
+    prompt_art_style_mode: PromptArtStyleMode | None = None
+    prompt_art_style_text: str | None = None
     prompts_per_scene: int | None = Field(default=None, ge=1)
     ignore_ranking_recommendations: bool = False
     prompts_for_scenes: int | None = Field(default=None, ge=1)
@@ -44,6 +51,21 @@ class PipelineRunStartRequest(BaseModel):
     poll_timeout: int = Field(default=3600, ge=1)
     poll_interval: int = Field(default=30, ge=1)
     dry_run: bool = False
+
+    @field_validator("prompt_art_style_text")
+    @classmethod
+    def _normalize_prompt_art_style_text(cls, value: str | None) -> str | None:
+        return normalize_prompt_art_style_text(value)
+
+    @model_validator(mode="after")
+    def _validate_single_style_text(self) -> "PipelineRunStartRequest":
+        if self.prompt_art_style_mode is None:
+            return self
+        coerce_prompt_art_style_selection(
+            mode=self.prompt_art_style_mode,
+            text=self.prompt_art_style_text,
+        )
+        return self
 
 
 class PipelineRunRead(BaseModel):

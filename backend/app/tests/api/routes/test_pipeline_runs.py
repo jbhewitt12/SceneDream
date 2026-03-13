@@ -14,7 +14,7 @@ from sqlmodel import Session
 
 import app.api.routes.pipeline_runs as pipeline_runs_routes
 from app.repositories import (
-    ArtStyleRepository,
+    AppSettingsRepository,
     DocumentRepository,
     PipelineRunRepository,
 )
@@ -252,7 +252,7 @@ def test_start_pipeline_run_rejects_missing_source_when_no_resume_data(
     )
 
 
-def test_start_pipeline_run_applies_art_style_override(
+def test_start_pipeline_run_applies_single_style_override(
     client: TestClient,
     db: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -281,21 +281,21 @@ def test_start_pipeline_run_applies_art_style_override(
         _capture_spawn,
     )
 
-    style_repo = ArtStyleRepository(db)
-    suffix = uuid4().hex[:8]
-    style = style_repo.create(
-        data={
-            "slug": f"test-pipeline-style-{suffix}",
-            "display_name": f"Pipeline Style {suffix}",
-            "is_recommended": True,
-            "is_active": True,
-            "sort_order": 1,
-        },
-        commit=True,
-        refresh=True,
-    )
+    settings_repo = AppSettingsRepository(db)
+    settings = settings_repo.get_or_create_global(commit=True, refresh=True)
+    original_mode = settings.default_prompt_art_style_mode
+    original_text = settings.default_prompt_art_style_text
 
     try:
+        settings_repo.update(
+            settings,
+            data={
+                "default_prompt_art_style_mode": "random_mix",
+                "default_prompt_art_style_text": None,
+            },
+            commit=True,
+            refresh=True,
+        )
         slug = f"test-book-{uuid4()}"
         response = client.post(
             "/api/v1/pipeline-runs",
@@ -303,25 +303,111 @@ def test_start_pipeline_run_applies_art_style_override(
                 "book_slug": slug,
                 "book_path": f"documents/{slug}.epub",
                 "images_for_scenes": 2,
-                "art_style_id": str(style.id),
+                "prompt_art_style_mode": "single_style",
+                "prompt_art_style_text": "Pipeline Style Override",
             },
         )
         assert response.status_code == 202
         payload = response.json()
-        assert (
-            payload["config_overrides"]["resolved_prompt_art_style"]
-            == style.display_name
+        assert payload["config_overrides"]["resolved_prompt_art_style_mode"] == (
+            "single_style"
+        )
+        assert payload["config_overrides"]["resolved_prompt_art_style_text"] == (
+            "Pipeline Style Override"
         )
 
         execute_mock.assert_called_once()
         args = execute_mock.call_args.kwargs["args"]
-        assert args.prompt_art_style == style.display_name
+        assert args.prompt_art_style_mode == "single_style"
+        assert args.prompt_art_style_text == "Pipeline Style Override"
     finally:
-        db.delete(style)
-        db.commit()
+        settings_repo.update(
+            settings,
+            data={
+                "default_prompt_art_style_mode": original_mode,
+                "default_prompt_art_style_text": original_text,
+            },
+            commit=True,
+            refresh=True,
+        )
 
 
-def test_start_pipeline_run_rejects_unknown_art_style(
+def test_start_pipeline_run_uses_settings_prompt_art_style_defaults(
+    client: TestClient,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        pipeline_runs_routes.PipelineRunStartService,
+        "_source_path_exists",
+        lambda _self, _source_path: True,
+    )
+
+    execute_mock = AsyncMock(name="_execute_pipeline_run")
+
+    def _capture_spawn(coro: object, *, task_name: str) -> MagicMock:  # noqa: ARG001
+        if asyncio.iscoroutine(coro):
+            coro.close()
+        return MagicMock()
+
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_execute_pipeline_run",
+        execute_mock,
+    )
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_spawn_background_task",
+        _capture_spawn,
+    )
+
+    settings_repo = AppSettingsRepository(db)
+    settings = settings_repo.get_or_create_global(commit=True, refresh=True)
+    original_mode = settings.default_prompt_art_style_mode
+    original_text = settings.default_prompt_art_style_text
+
+    try:
+        settings_repo.update(
+            settings,
+            data={
+                "default_prompt_art_style_mode": "single_style",
+                "default_prompt_art_style_text": "Settings Default Style",
+            },
+            commit=True,
+            refresh=True,
+        )
+
+        slug = f"test-book-{uuid4()}"
+        response = client.post(
+            "/api/v1/pipeline-runs",
+            json={
+                "book_slug": slug,
+                "book_path": f"documents/{slug}.epub",
+                "images_for_scenes": 1,
+            },
+        )
+
+        assert response.status_code == 202
+        payload = response.json()
+        assert payload["config_overrides"]["resolved_prompt_art_style_mode"] == (
+            "single_style"
+        )
+        assert payload["config_overrides"]["resolved_prompt_art_style_text"] == (
+            "Settings Default Style"
+        )
+    finally:
+        settings_repo.update(
+            settings,
+            data={
+                "default_prompt_art_style_mode": original_mode,
+                "default_prompt_art_style_text": original_text,
+            },
+            commit=True,
+            refresh=True,
+        )
+
+
+def test_start_pipeline_run_rejects_blank_single_style_text(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -338,15 +424,19 @@ def test_start_pipeline_run_rejects_unknown_art_style(
             "book_slug": slug,
             "book_path": f"documents/{slug}.epub",
             "images_for_scenes": 1,
-            "art_style_id": str(uuid4()),
+            "prompt_art_style_mode": "single_style",
+            "prompt_art_style_text": "   ",
         },
     )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Art style not found"
+    assert response.status_code == 422
+    assert (
+        "prompt_art_style_text is required"
+        in response.json()["detail"][0]["msg"]
+    )
 
 
-def test_start_pipeline_run_rejects_inactive_art_style(
+def test_start_pipeline_run_rejects_invalid_settings_single_style_defaults(
     client: TestClient,
     db: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -357,21 +447,21 @@ def test_start_pipeline_run_rejects_inactive_art_style(
         lambda _self, _source_path: True,
     )
 
-    style_repo = ArtStyleRepository(db)
-    suffix = uuid4().hex[:8]
-    style = style_repo.create(
-        data={
-            "slug": f"test-inactive-style-{suffix}",
-            "display_name": f"Inactive Style {suffix}",
-            "is_recommended": False,
-            "is_active": False,
-            "sort_order": 99,
-        },
-        commit=True,
-        refresh=True,
-    )
+    settings_repo = AppSettingsRepository(db)
+    settings = settings_repo.get_or_create_global(commit=True, refresh=True)
+    original_mode = settings.default_prompt_art_style_mode
+    original_text = settings.default_prompt_art_style_text
 
     try:
+        settings_repo.update(
+            settings,
+            data={
+                "default_prompt_art_style_mode": "single_style",
+                "default_prompt_art_style_text": None,
+            },
+            commit=True,
+            refresh=True,
+        )
         slug = f"test-book-{uuid4()}"
         response = client.post(
             "/api/v1/pipeline-runs",
@@ -379,14 +469,23 @@ def test_start_pipeline_run_rejects_inactive_art_style(
                 "book_slug": slug,
                 "book_path": f"documents/{slug}.epub",
                 "images_for_scenes": 1,
-                "art_style_id": str(style.id),
             },
         )
-        assert response.status_code == 400
-        assert response.json()["detail"] == "Art style is inactive"
+        assert response.status_code == 422
+        assert (
+            response.json()["detail"]
+            == "prompt_art_style_text is required when prompt_art_style_mode is single_style"
+        )
     finally:
-        db.delete(style)
-        db.commit()
+        settings_repo.update(
+            settings,
+            data={
+                "default_prompt_art_style_mode": original_mode,
+                "default_prompt_art_style_text": original_text,
+            },
+            commit=True,
+            refresh=True,
+        )
 
 
 def test_start_pipeline_run_requires_slug_or_document(
@@ -477,10 +576,11 @@ def test_execute_pipeline_run_records_usage_summary_on_success(
                 images_for_scenes=2,
                 prompts_for_scenes=None,
                 prompts_per_scene=None,
+                prompt_art_style_mode="single_style",
+                prompt_art_style_text="Watercolor",
                 skip_extraction=False,
                 skip_ranking=False,
                 skip_prompts=False,
-                prompt_art_style="Watercolor",
                 quality="standard",
                 style="vivid",
                 aspect_ratio="1:1",
@@ -499,6 +599,16 @@ def test_execute_pipeline_run_records_usage_summary_on_success(
     assert usage_summary["errors"]["code"] is None
     assert usage_summary["effective"]["config_overrides"] == {
         "resolved_images_for_scenes": 2
+    }
+    assert usage_summary["effective"]["prompt_generation"] == {
+        "model_vendor": "google",
+        "model_name": "gemini-3-pro-preview",
+        "backup_model_vendor": "openai",
+        "backup_model_name": "gpt-5-mini",
+        "prompt_version": "image-prompts-v3",
+        "target_provider": "gpt-image",
+        "prompt_art_style_mode": "single_style",
+        "prompt_art_style_text": "Watercolor",
     }
     assert "diagnostics" in usage_summary
     assert usage_summary["diagnostics"]["stage_durations_ms"] == {}
@@ -562,10 +672,11 @@ def test_execute_pipeline_run_records_stage_durations(
                 images_for_scenes=1,
                 prompts_for_scenes=None,
                 prompts_per_scene=None,
+                prompt_art_style_mode="random_mix",
+                prompt_art_style_text=None,
                 skip_extraction=False,
                 skip_ranking=False,
                 skip_prompts=False,
-                prompt_art_style=None,
                 quality="standard",
                 style="vivid",
                 aspect_ratio="1:1",
@@ -639,10 +750,11 @@ def test_execute_pipeline_run_records_usage_summary_on_failure(
                 images_for_scenes=1,
                 prompts_for_scenes=None,
                 prompts_per_scene=None,
+                prompt_art_style_mode="random_mix",
+                prompt_art_style_text=None,
                 skip_extraction=False,
                 skip_ranking=False,
                 skip_prompts=False,
-                prompt_art_style=None,
                 quality="standard",
                 style="vivid",
                 aspect_ratio="1:1",
@@ -701,10 +813,11 @@ def test_execute_pipeline_run_classifies_missing_source_failures(
                 images_for_scenes=1,
                 prompts_for_scenes=None,
                 prompts_per_scene=None,
+                prompt_art_style_mode="random_mix",
+                prompt_art_style_text=None,
                 skip_extraction=False,
                 skip_ranking=False,
                 skip_prompts=False,
-                prompt_art_style=None,
                 quality="standard",
                 style=None,
                 aspect_ratio=None,

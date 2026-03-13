@@ -15,8 +15,12 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
+from app.core.prompt_art_style import (
+    PROMPT_ART_STYLE_MODE_RANDOM_MIX,
+    PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
+    coerce_prompt_art_style_selection,
+)
 from app.repositories.app_settings import AppSettingsRepository
-from app.repositories.art_style import ArtStyleRepository
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
@@ -70,7 +74,6 @@ class ImagePromptGenerationService:
         self._scene_repo = SceneExtractionRepository(session)
         self._prompt_repo = ImagePromptRepository(session)
         self._ranking_repo = SceneRankingRepository(session)
-        self._art_style_repo = ArtStyleRepository(session)
         self._art_style_service = ArtStyleService(session)
         self._app_settings_repo = AppSettingsRepository(session)
         self._book_service = BookContentService()
@@ -79,12 +82,11 @@ class ImagePromptGenerationService:
 
     def _build_style_sampler(self) -> StyleSampler:
         """Build a style sampler using active DB catalog values."""
-        preferred_style = (
-            self._config.preferred_style or self._resolve_default_art_style_name()
-        )
+        mode, style_text = self._resolve_prompt_art_style_selection()
+        preferred_style = self._config.preferred_style
 
         recommended, other = self._art_style_service.get_sampling_distribution()
-        if not recommended and not other:
+        if mode == PROMPT_ART_STYLE_MODE_RANDOM_MIX and not recommended and not other:
             raise ImagePromptGenerationServiceError(
                 "Art style catalog is empty. Add at least one active style in Settings."
             )
@@ -93,24 +95,41 @@ class ImagePromptGenerationService:
             recommended_styles=tuple(recommended),
             other_styles=tuple(other),
             preferred_style=preferred_style,
+            fixed_style=(
+                style_text if mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE else None
+            ),
         )
 
-    def _resolve_default_art_style_name(self) -> str | None:
-        """Resolve the active default art-style display name from app settings."""
+    def _resolve_prompt_art_style_selection(self) -> tuple[str, str | None]:
+        """Resolve prompt art-style mode/text for this runtime."""
+        if not self._config.use_settings_prompt_art_style_defaults:
+            return (
+                self._config.prompt_art_style_mode,
+                self._config.prompt_art_style_text,
+            )
+
         try:
             settings = self._app_settings_repo.get_or_create_global(
                 commit=False, refresh=True
             )
         except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.warning("Unable to resolve default art style from settings: %s", exc)
-            return None
+            logger.warning(
+                "Unable to resolve prompt art style defaults from settings: %s",
+                exc,
+            )
+            return PROMPT_ART_STYLE_MODE_RANDOM_MIX, None
 
-        if settings.default_art_style_id is None:
-            return None
-        style = self._art_style_repo.get(settings.default_art_style_id)
-        if style is None or not style.is_active:
-            return None
-        return style.display_name
+        try:
+            return coerce_prompt_art_style_selection(
+                mode=settings.default_prompt_art_style_mode,
+                text=settings.default_prompt_art_style_text,
+            )
+        except ValueError as exc:  # pragma: no cover - defensive fallback
+            logger.warning(
+                "Invalid prompt art style defaults in settings; falling back to random_mix: %s",
+                exc,
+            )
+            return PROMPT_ART_STYLE_MODE_RANDOM_MIX, None
 
     def _get_variant_processor(self, target_provider: str) -> VariantProcessor:
         """Get a VariantProcessor configured with the provider's aspect ratios."""

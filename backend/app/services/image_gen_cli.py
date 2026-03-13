@@ -62,6 +62,11 @@ from uuid import uuid4
 from dotenv import load_dotenv
 from sqlmodel import Session
 
+from app.core.prompt_art_style import (
+    PROMPT_ART_STYLE_MODE_RANDOM_MIX,
+    PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
+    coerce_prompt_art_style_selection,
+)
 from app.core.db import engine
 from app.repositories.app_settings import AppSettingsRepository
 from app.repositories.generated_image import GeneratedImageRepository
@@ -190,6 +195,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip prompt generation (use existing prompts)",
     )
     _add_quality_args(run)
+    _add_prompt_art_style_args(run)
     _add_mode_args(run)
     _add_common_args(run)
 
@@ -258,6 +264,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Regenerate prompts even if they exist",
     )
+    _add_prompt_art_style_args(prompts)
     _add_common_args(prompts)
 
     # Images-only command
@@ -323,6 +330,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=3,
         help="Number of concurrent image generation tasks (default: 3)",
     )
+    _add_prompt_art_style_args(refresh)
     _add_common_args(refresh)
 
     # Backfill command - fill gaps for scenes without prompts/images
@@ -358,6 +366,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=3,
         help="Number of concurrent image generation tasks (default: 3)",
     )
+    _add_prompt_art_style_args(backfill)
     _add_common_args(backfill)
 
     return parser
@@ -392,6 +401,22 @@ def _add_quality_args(parser: argparse.ArgumentParser) -> None:
         "--aspect-ratio",
         choices=["1:1", "9:16", "16:9"],
         help="Image aspect ratio",
+    )
+
+
+def _add_prompt_art_style_args(parser: argparse.ArgumentParser) -> None:
+    """Add prompt art style mode/text arguments."""
+    parser.add_argument(
+        "--prompt-art-style-mode",
+        choices=[
+            PROMPT_ART_STYLE_MODE_RANDOM_MIX,
+            PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
+        ],
+        help="Prompt art style mode: random mix or one fixed style for all variants",
+    )
+    parser.add_argument(
+        "--prompt-art-style-text",
+        help="Required when --prompt-art-style-mode is single_style",
     )
 
 
@@ -446,6 +471,32 @@ def _resolve_default_scenes_per_run() -> int:
             exc,
         )
         return 5
+
+
+def _build_prompt_generation_config_kwargs(
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    """Build normalized prompt-generation style config from CLI args."""
+
+    raw_mode = getattr(args, "prompt_art_style_mode", None)
+    raw_text = getattr(args, "prompt_art_style_text", None)
+    if raw_mode is None and raw_text is None:
+        return {}
+
+    mode, text = coerce_prompt_art_style_selection(
+        mode=raw_mode,
+        text=raw_text,
+    )
+    config_kwargs: dict[str, object] = {
+        "prompt_art_style_mode": mode,
+        "prompt_art_style_text": text,
+        "use_settings_prompt_art_style_defaults": False,
+    }
+    if mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE and text is not None:
+        logger.info("Using fixed prompt art style for all variants: %s", text)
+    else:
+        logger.info("Using random prompt art style mix")
+    return config_kwargs
 
 
 def _filter_scenes_for_ranking(
@@ -905,7 +956,7 @@ async def _run_full_pipeline(
                 target_scenes = effective_prompts_for_scenes
 
                 # Determine config based on flags
-                config_kwargs = {}
+                config_kwargs = _build_prompt_generation_config_kwargs(args)
 
                 if (
                     hasattr(args, "prompts_per_scene")
@@ -934,11 +985,6 @@ async def _run_full_pipeline(
                     # Full auto mode
                     config_kwargs["use_ranking_recommendation"] = True
                     logger.info("Using ranking recommendations (fallback: 4 variants)")
-
-                prompt_art_style = getattr(args, "prompt_art_style", None)
-                if prompt_art_style:
-                    config_kwargs["preferred_style"] = prompt_art_style
-                    logger.info("Using prompt art style override: %s", prompt_art_style)
 
                 prompt_config = ImagePromptGenerationConfig(**config_kwargs)
                 prompt_service = ImagePromptGenerationService(
@@ -1218,7 +1264,12 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
             config_kwargs["use_ranking_recommendation"] = True
             logger.info("Using ranking recommendations (fallback: 4 variants)")
 
-        prompt_config = ImagePromptGenerationConfig(**config_kwargs)
+        prompt_config = ImagePromptGenerationConfig(
+            **{
+                **config_kwargs,
+                **_build_prompt_generation_config_kwargs(args),
+            }
+        )
         prompt_service = ImagePromptGenerationService(session, config=prompt_config)
 
         # Fetch a large batch of rankings to ensure we can find enough valid scenes
@@ -1407,7 +1458,12 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
         if args.ignore_ranking_recommendations:
             prompt_config_kwargs["use_ranking_recommendation"] = False
 
-        prompt_config = ImagePromptGenerationConfig(**prompt_config_kwargs)
+        prompt_config = ImagePromptGenerationConfig(
+            **{
+                **prompt_config_kwargs,
+                **_build_prompt_generation_config_kwargs(args),
+            }
+        )
         prompt_service = ImagePromptGenerationService(
             session,
             config=prompt_config,
@@ -1709,7 +1765,12 @@ async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
 
         prompt_service = ImagePromptGenerationService(
             session,
-            config=ImagePromptGenerationConfig(**prompt_config_kwargs),
+            config=ImagePromptGenerationConfig(
+                **{
+                    **prompt_config_kwargs,
+                    **_build_prompt_generation_config_kwargs(args),
+                }
+            ),
         )
 
         fetch_limit = max(args.top_scenes * 5, args.top_scenes)

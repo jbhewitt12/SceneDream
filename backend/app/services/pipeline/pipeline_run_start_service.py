@@ -8,8 +8,12 @@ from typing import Any
 
 from sqlmodel import Session
 
+from app.core.prompt_art_style import (
+    PROMPT_ART_STYLE_MODE_RANDOM_MIX,
+    coerce_prompt_art_style_selection,
+)
 from app.repositories import (
-    ArtStyleRepository,
+    AppSettingsRepository,
     DocumentRepository,
     PipelineRunRepository,
     SceneExtractionRepository,
@@ -41,7 +45,7 @@ class PipelineRunStartService:
 
     def __init__(self, session: Session) -> None:
         self._session = session
-        self._art_style_repo = ArtStyleRepository(session)
+        self._settings_repo = AppSettingsRepository(session)
         self._document_repo = DocumentRepository(session)
         self._run_repo = PipelineRunRepository(session)
         self._scene_repo = SceneExtractionRepository(session)
@@ -54,7 +58,6 @@ class PipelineRunStartService:
         resolved_document: Document | None = None
         resolved_book_slug = launch_request.book_slug
         resolved_book_path = launch_request.book_path
-        resolved_prompt_art_style: str | None = None
 
         if launch_request.document_id is not None:
             resolved_document = self._document_repo.get(launch_request.document_id)
@@ -67,14 +70,6 @@ class PipelineRunStartService:
 
         if resolved_document is None and resolved_book_slug:
             resolved_document = self._document_repo.get_by_slug(resolved_book_slug)
-
-        if launch_request.art_style_id is not None:
-            art_style = self._art_style_repo.get(launch_request.art_style_id)
-            if art_style is None:
-                raise PipelineValidationError("Art style not found", status_code=404)
-            if not art_style.is_active:
-                raise PipelineValidationError("Art style is inactive")
-            resolved_prompt_art_style = art_style.display_name
 
         if not resolved_book_slug:
             raise PipelineValidationError(
@@ -108,13 +103,19 @@ class PipelineRunStartService:
         if images_for_scenes is None:
             images_for_scenes = self._resolve_default_scenes_per_run()
 
+        (
+            resolved_prompt_art_style_mode,
+            resolved_prompt_art_style_text,
+        ) = self._resolve_prompt_art_style(launch_request)
+
         args = self._build_run_namespace(
             launch_request=launch_request,
             book_slug=resolved_book_slug,
             book_path=resolved_book_path,
             images_for_scenes=images_for_scenes,
             skip_extraction=should_skip_extraction,
-            prompt_art_style=resolved_prompt_art_style,
+            prompt_art_style_mode=resolved_prompt_art_style_mode,
+            prompt_art_style_text=resolved_prompt_art_style_text,
         )
 
         config_overrides = launch_request.model_dump(exclude_none=True, mode="json")
@@ -123,8 +124,12 @@ class PipelineRunStartService:
             config_overrides["resolved_book_path"] = resolved_book_path
         config_overrides["skip_extraction"] = should_skip_extraction
         config_overrides["resolved_images_for_scenes"] = images_for_scenes
-        if resolved_prompt_art_style is not None:
-            config_overrides["resolved_prompt_art_style"] = resolved_prompt_art_style
+        config_overrides["resolved_prompt_art_style_mode"] = (
+            resolved_prompt_art_style_mode
+        )
+        config_overrides["resolved_prompt_art_style_text"] = (
+            resolved_prompt_art_style_text
+        )
 
         run = self._run_repo.create(
             data={
@@ -152,7 +157,8 @@ class PipelineRunStartService:
         book_path: str | None,
         images_for_scenes: int,
         skip_extraction: bool,
-        prompt_art_style: str | None,
+        prompt_art_style_mode: str,
+        prompt_art_style_text: str | None,
     ) -> argparse.Namespace:
         return argparse.Namespace(
             command="run",
@@ -165,7 +171,8 @@ class PipelineRunStartService:
             skip_extraction=skip_extraction,
             skip_ranking=launch_request.skip_ranking,
             skip_prompts=launch_request.skip_prompts,
-            prompt_art_style=prompt_art_style,
+            prompt_art_style_mode=prompt_art_style_mode,
+            prompt_art_style_text=prompt_art_style_text,
             quality=launch_request.quality,
             style=launch_request.style,
             aspect_ratio=launch_request.aspect_ratio,
@@ -178,6 +185,35 @@ class PipelineRunStartService:
 
     def _resolve_default_scenes_per_run(self) -> int:
         return _resolve_default_scenes_per_run()
+
+    def _resolve_prompt_art_style(
+        self,
+        launch_request: PipelineRunStartRequest,
+    ) -> tuple[str, str | None]:
+        settings = self._settings_repo.get_global()
+        default_mode = (
+            settings.default_prompt_art_style_mode
+            if settings is not None
+            else PROMPT_ART_STYLE_MODE_RANDOM_MIX
+        )
+        default_text = (
+            settings.default_prompt_art_style_text if settings is not None else None
+        )
+
+        resolved_mode = launch_request.prompt_art_style_mode or default_mode
+        resolved_text = (
+            launch_request.prompt_art_style_text
+            if "prompt_art_style_text" in launch_request.model_fields_set
+            else default_text
+        )
+
+        try:
+            return coerce_prompt_art_style_selection(
+                mode=resolved_mode,
+                text=resolved_text,
+            )
+        except ValueError as exc:
+            raise PipelineValidationError(str(exc), status_code=422) from exc
 
     def _source_path_exists(self, source_path: str | None) -> bool:
         if not source_path:

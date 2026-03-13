@@ -1,5 +1,4 @@
 import re
-from uuid import UUID
 
 import pytest
 from sqlmodel import Session
@@ -18,7 +17,7 @@ def _slugify(value: str) -> str:
     return slug or "style"
 
 
-def _snapshot_state(db: Session) -> tuple[dict[str, list[str]], UUID | None]:
+def _snapshot_state(db: Session) -> tuple[dict[str, list[str]], dict[str, str | None]]:
     service = ArtStyleCatalogService(db)
     lists = service.get_style_lists()
     settings = AppSettingsRepository(db).get_or_create_global(commit=True, refresh=True)
@@ -27,7 +26,10 @@ def _snapshot_state(db: Session) -> tuple[dict[str, list[str]], UUID | None]:
             "recommended_styles": list(lists.recommended_styles),
             "other_styles": list(lists.other_styles),
         },
-        settings.default_art_style_id,
+        {
+            "default_prompt_art_style_mode": settings.default_prompt_art_style_mode,
+            "default_prompt_art_style_text": settings.default_prompt_art_style_text,
+        },
     )
 
 
@@ -36,7 +38,7 @@ def _restore_state(
     *,
     recommended_styles: list[str],
     other_styles: list[str],
-    default_art_style_id: UUID | None,
+    prompt_art_style_settings: dict[str, str | None],
 ) -> None:
     service = ArtStyleCatalogService(db)
     service.replace_style_lists(
@@ -47,14 +49,14 @@ def _restore_state(
     settings = settings_repo.get_or_create_global(commit=False, refresh=True)
     settings_repo.update(
         settings,
-        data={"default_art_style_id": default_art_style_id},
+        data=prompt_art_style_settings,
         commit=True,
         refresh=True,
     )
 
 
 def test_replace_style_lists_dedupes_reorders_and_deactivates_rows(db: Session) -> None:
-    snapshot, original_default = _snapshot_state(db)
+    snapshot, original_settings = _snapshot_state(db)
     target_to_deactivate = (
         snapshot["recommended_styles"][0]
         if snapshot["recommended_styles"]
@@ -117,36 +119,44 @@ def test_replace_style_lists_dedupes_reorders_and_deactivates_rows(db: Session) 
             db,
             recommended_styles=snapshot["recommended_styles"],
             other_styles=snapshot["other_styles"],
-            default_art_style_id=original_default,
+            prompt_art_style_settings=original_settings,
         )
 
 
-def test_replace_style_lists_resets_invalid_default_to_first_recommended(
+def test_replace_style_lists_preserves_prompt_art_style_settings(
     db: Session,
 ) -> None:
-    snapshot, original_default = _snapshot_state(db)
+    snapshot, original_settings = _snapshot_state(db)
     settings_repo = AppSettingsRepository(db)
     service = ArtStyleCatalogService(db)
-    style_repo = ArtStyleRepository(db)
 
     try:
+        settings = settings_repo.get_or_create_global(commit=False, refresh=True)
+        settings_repo.update(
+            settings,
+            data={
+                "default_prompt_art_style_mode": "single_style",
+                "default_prompt_art_style_text": "Graphite realism",
+            },
+            commit=True,
+            refresh=True,
+        )
+
         result = service.replace_style_lists(
             recommended_styles=["Fresh Default", "Second Choice"],
             other_styles=["Auxiliary Style"],
         )
 
         settings = settings_repo.get_or_create_global(commit=False, refresh=True)
-        assert settings.default_art_style_id is not None
-        default_style = style_repo.get(settings.default_art_style_id)
-        assert default_style is not None
-        assert default_style.display_name == "Fresh Default"
+        assert settings.default_prompt_art_style_mode == "single_style"
+        assert settings.default_prompt_art_style_text == "Graphite realism"
         assert result.recommended_styles[0] == "Fresh Default"
     finally:
         _restore_state(
             db,
             recommended_styles=snapshot["recommended_styles"],
             other_styles=snapshot["other_styles"],
-            default_art_style_id=original_default,
+            prompt_art_style_settings=original_settings,
         )
 
 

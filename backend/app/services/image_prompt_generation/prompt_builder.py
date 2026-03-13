@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from app.core.prompt_art_style import PROMPT_ART_STYLE_MODE_SINGLE_STYLE
 from models.scene_extraction import SceneExtraction
 
 from .core import CriticalConstraints, OutputSchemaBuilder, StyleSampler, ToneGuardrails
@@ -121,6 +122,7 @@ class PromptBuilder:
         # Assemble the prompt
         prompt = self._assemble_prompt(
             scene_excerpt=scene_excerpt,
+            config=config,
             metadata_block=metadata_block,
             context_text=context_text,
             cheatsheet=cheatsheet,
@@ -159,6 +161,7 @@ class PromptBuilder:
         self,
         *,
         scene_excerpt: str,
+        config: ImagePromptGenerationConfig,
         metadata_block: str,
         context_text: str,
         cheatsheet: str,
@@ -173,6 +176,30 @@ class PromptBuilder:
         aspect_ratio_display: str,
     ) -> str:
         """Assemble the complete prompt from all components."""
+        if (
+            config.prompt_art_style_mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE
+            and config.prompt_art_style_text is not None
+        ):
+            style_guidance = (
+                "## Required Art Style for This Request\n"
+                "Use this exact art style consistently across every variant. "
+                "Vary composition, emphasis, and camera language without changing the art style:\n"
+                f"{config.prompt_art_style_text}\n\n"
+            )
+            style_variation_requirement = (
+                "- Ensure each variant explores a different angle, subject emphasis, or composition while keeping the same art style.\n"
+            )
+        else:
+            style_guidance = (
+                "## Suggested Styles for This Request\n"
+                f"The following {len(styles)} styles have been curated for variety and quality. "
+                f"Select from this list when designing your {variants_count} variants, ensuring each variant uses a different style:\n"
+                f"{', '.join(styles)}\n\n"
+            )
+            style_variation_requirement = (
+                "- Ensure each variant explores a different angle, subject emphasis, or aesthetic; do not reuse the same style family or medium twice.\n"
+            )
+
         prompt_lines = [
             "You are an elite prompt engineer who converts novel scenes into world-class AI image prompts.",
             f"Your goal is to produce exactly {variants_count} distinct prompt variants that produce exceptional images.",
@@ -189,10 +216,7 @@ class PromptBuilder:
             f"{context_text}\n\n"
             "## Prompting Cheat Sheet\n"
             f"{cheatsheet}\n\n"
-            "## Suggested Styles for This Request\n"
-            f"The following {len(styles)} styles have been curated for variety and quality. "
-            f"Select from this list when designing your {variants_count} variants, ensuring each variant uses a different style:\n"
-            f"{', '.join(styles)}\n\n"
+            f"{style_guidance}"
             "## Creative Guidance\n"
             f"{guidance}\n\n"
             "## Style Variation Strategy\n"
@@ -209,7 +233,7 @@ class PromptBuilder:
             "- title can be null; prompt_text must be richly descriptive, self-contained, and free of character names or book-specific terminology.\n"
             "- style_tags must be a list of short descriptors (2-5 entries).\n"
             "- attributes must detail composition, camera, lens, lighting, palette, atmosphere, aspect_ratio, style_intent, and references (list of influences or movements).\n"
-            "- Ensure each variant explores a different angle, subject emphasis, or aesthetic; do not reuse the same style family or medium twice.\n"
+            f"{style_variation_requirement}"
             f"- attributes.aspect_ratio must match one of: {aspect_ratio_display} (no other ratios allowed).\n"
             "- Do not include notes, warnings, or additional keys.\n"
             f"- The expected object shape is similar to: {output_schema}.\n"

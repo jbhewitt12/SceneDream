@@ -35,7 +35,7 @@ def _configure_service(
     default_scenes_per_run: int = 5,
     document_by_id: SimpleNamespace | None = None,
     document_by_slug: SimpleNamespace | None = None,
-    art_style: SimpleNamespace | None = None,
+    settings: SimpleNamespace | None = None,
 ) -> tuple[PipelineRunStartService, dict[str, Any]]:
     service = PipelineRunStartService(db)
     captured: dict[str, Any] = {}
@@ -53,9 +53,9 @@ def _configure_service(
         lambda _book_slug: document_by_slug,
     )
     monkeypatch.setattr(
-        service._art_style_repo,
-        "get",
-        lambda _art_style_id: art_style,
+        service._settings_repo,
+        "get_global",
+        lambda: settings,
     )
     monkeypatch.setattr(
         service,
@@ -260,22 +260,19 @@ def test_resolve_pipeline_request_preserves_explicit_skip_extraction(
     assert resolution.config_overrides["skip_extraction"] is True
 
 
-def test_resolve_pipeline_request_applies_default_image_count_and_art_style(
+def test_resolve_pipeline_request_applies_default_image_count_and_prompt_art_style(
     db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    art_style_id = uuid4()
-    art_style = SimpleNamespace(
-        id=art_style_id,
-        display_name="Painterly Realism",
-        is_active=True,
-    )
     service, _ = _configure_service(
         db=db,
         monkeypatch=monkeypatch,
         source_path_exists=True,
         default_scenes_per_run=7,
-        art_style=art_style,
+        settings=SimpleNamespace(
+            default_prompt_art_style_mode="single_style",
+            default_prompt_art_style_text="Painterly Realism",
+        ),
     )
 
     resolution = service.resolve_pipeline_request(
@@ -283,20 +280,23 @@ def test_resolve_pipeline_request_applies_default_image_count_and_art_style(
             book_slug="styled-book",
             book_path="documents/styled-book.epub",
             images_for_scenes=None,
-            art_style_id=art_style_id,
         )
     )
 
     assert resolution.args.images_for_scenes == 7
-    assert resolution.args.prompt_art_style == art_style.display_name
+    assert resolution.args.prompt_art_style_mode == "single_style"
+    assert resolution.args.prompt_art_style_text == "Painterly Realism"
     assert resolution.config_overrides["resolved_images_for_scenes"] == 7
+    assert resolution.config_overrides["resolved_prompt_art_style_mode"] == (
+        "single_style"
+    )
     assert (
-        resolution.config_overrides["resolved_prompt_art_style"]
-        == art_style.display_name
+        resolution.config_overrides["resolved_prompt_art_style_text"]
+        == "Painterly Realism"
     )
 
 
-def test_resolve_pipeline_request_rejects_unknown_art_style(
+def test_resolve_pipeline_request_accepts_random_mix_override(
     db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -304,17 +304,26 @@ def test_resolve_pipeline_request_rejects_unknown_art_style(
         db=db,
         monkeypatch=monkeypatch,
         source_path_exists=True,
-        art_style=None,
+        settings=SimpleNamespace(
+            default_prompt_art_style_mode="single_style",
+            default_prompt_art_style_text="Settings Style",
+        ),
     )
 
-    with pytest.raises(PipelineValidationError) as exc_info:
-        service.resolve_pipeline_request(_build_request(art_style_id=uuid4()))
+    resolution = service.resolve_pipeline_request(
+        _build_request(
+            prompt_art_style_mode="random_mix",
+            prompt_art_style_text="Ignored override",
+        )
+    )
 
-    assert exc_info.value.detail == "Art style not found"
-    assert exc_info.value.status_code == 404
+    assert resolution.args.prompt_art_style_mode == "random_mix"
+    assert resolution.args.prompt_art_style_text is None
+    assert resolution.config_overrides["resolved_prompt_art_style_mode"] == "random_mix"
+    assert resolution.config_overrides["resolved_prompt_art_style_text"] is None
 
 
-def test_resolve_pipeline_request_rejects_inactive_art_style(
+def test_resolve_pipeline_request_falls_back_to_random_mix_without_settings(
     db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -322,11 +331,36 @@ def test_resolve_pipeline_request_rejects_inactive_art_style(
         db=db,
         monkeypatch=monkeypatch,
         source_path_exists=True,
-        art_style=SimpleNamespace(id=uuid4(), display_name="Inactive", is_active=False),
+        settings=None,
+    )
+
+    resolution = service.resolve_pipeline_request(_build_request())
+
+    assert resolution.args.prompt_art_style_mode == "random_mix"
+    assert resolution.args.prompt_art_style_text is None
+    assert resolution.config_overrides["resolved_prompt_art_style_mode"] == "random_mix"
+    assert resolution.config_overrides["resolved_prompt_art_style_text"] is None
+
+
+def test_resolve_pipeline_request_rejects_missing_single_style_text_after_resolution(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _ = _configure_service(
+        db=db,
+        monkeypatch=monkeypatch,
+        source_path_exists=True,
+        settings=SimpleNamespace(
+            default_prompt_art_style_mode="single_style",
+            default_prompt_art_style_text=None,
+        ),
     )
 
     with pytest.raises(PipelineValidationError) as exc_info:
-        service.resolve_pipeline_request(_build_request(art_style_id=uuid4()))
+        service.resolve_pipeline_request(_build_request())
 
-    assert exc_info.value.detail == "Art style is inactive"
-    assert exc_info.value.status_code == 400
+    assert (
+        exc_info.value.detail
+        == "prompt_art_style_text is required when prompt_art_style_mode is single_style"
+    )
+    assert exc_info.value.status_code == 422

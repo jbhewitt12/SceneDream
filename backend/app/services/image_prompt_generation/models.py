@@ -6,6 +6,12 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from app.core.prompt_art_style import (
+    PROMPT_ART_STYLE_MODE_RANDOM_MIX,
+    PromptArtStyleMode,
+    coerce_prompt_art_style_selection,
+    normalize_prompt_art_style_text,
+)
 from app.services.langchain.model_routing import LLMProvider
 
 DEFAULT_CHEATSHEET_PATH = (
@@ -26,6 +32,9 @@ class ImagePromptGenerationConfig:
     backup_model_vendor: LLMProvider = "openai"
     backup_model_name: str = "gpt-5-mini"
     prompt_version: str = "image-prompts-v3"
+    prompt_art_style_mode: PromptArtStyleMode = PROMPT_ART_STYLE_MODE_RANDOM_MIX
+    prompt_art_style_text: str | None = None
+    use_settings_prompt_art_style_defaults: bool = True
     preferred_style: str | None = None
     variants_count: int = 4
     use_ranking_recommendation: bool = True
@@ -47,6 +56,24 @@ class ImagePromptGenerationConfig:
     fail_on_error: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        self.prompt_art_style_text = normalize_prompt_art_style_text(
+            self.prompt_art_style_text
+        )
+        self.preferred_style = normalize_prompt_art_style_text(self.preferred_style)
+        if (
+            self.prompt_art_style_mode != PROMPT_ART_STYLE_MODE_RANDOM_MIX
+            or self.prompt_art_style_text is not None
+        ):
+            self.use_settings_prompt_art_style_defaults = False
+        (
+            self.prompt_art_style_mode,
+            self.prompt_art_style_text,
+        ) = coerce_prompt_art_style_selection(
+            mode=self.prompt_art_style_mode,
+            text=self.prompt_art_style_text,
+        )
+
     def copy_with(self, **overrides: Any) -> ImagePromptGenerationConfig:
         data: dict[str, Any] = {
             "model_vendor": self.model_vendor,
@@ -54,6 +81,11 @@ class ImagePromptGenerationConfig:
             "backup_model_vendor": self.backup_model_vendor,
             "backup_model_name": self.backup_model_name,
             "prompt_version": self.prompt_version,
+            "prompt_art_style_mode": self.prompt_art_style_mode,
+            "prompt_art_style_text": self.prompt_art_style_text,
+            "use_settings_prompt_art_style_defaults": (
+                self.use_settings_prompt_art_style_defaults
+            ),
             "preferred_style": self.preferred_style,
             "variants_count": self.variants_count,
             "use_ranking_recommendation": self.use_ranking_recommendation,

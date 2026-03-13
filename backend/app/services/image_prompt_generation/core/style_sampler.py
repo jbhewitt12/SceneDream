@@ -123,13 +123,18 @@ class StyleSampler:
         recommended_styles: Sequence[str] = RECOMMENDED_STYLES,
         other_styles: Sequence[str] = OTHER_STYLES,
         preferred_style: str | None = None,
+        fixed_style: str | None = None,
     ) -> None:
         self._recommended_styles = tuple(recommended_styles)
         self._other_styles = tuple(other_styles)
         self._preferred_style = preferred_style.strip() if preferred_style else None
+        self._fixed_style = fixed_style.strip() if fixed_style else None
 
     def sample(self, variants_count: int) -> list[str]:
         """Sample styles for the given number of variants."""
+        if self._fixed_style:
+            return [self._fixed_style]
+
         recommended_count = min(
             max(2, variants_count + 2),
             len(self._recommended_styles),

@@ -390,6 +390,8 @@ def _build_usage_summary(
             "images_for_scenes": getattr(args, "images_for_scenes", None),
             "prompts_for_scenes": getattr(args, "prompts_for_scenes", None),
             "prompts_per_scene": getattr(args, "prompts_per_scene", None),
+            "prompt_art_style_mode": getattr(args, "prompt_art_style_mode", None),
+            "prompt_art_style_text": getattr(args, "prompt_art_style_text", None),
             "skip_extraction": getattr(args, "skip_extraction", None),
             "skip_ranking": getattr(args, "skip_ranking", None),
             "skip_prompts": getattr(args, "skip_prompts", None),
@@ -407,7 +409,8 @@ def _build_usage_summary(
                 "backup_model_name": prompt_defaults.backup_model_name,
                 "prompt_version": prompt_defaults.prompt_version,
                 "target_provider": prompt_defaults.target_provider,
-                "preferred_style": getattr(args, "prompt_art_style", None),
+                "prompt_art_style_mode": getattr(args, "prompt_art_style_mode", None),
+                "prompt_art_style_text": getattr(args, "prompt_art_style_text", None),
             },
             "image_generation": {
                 "provider": image_defaults.provider,

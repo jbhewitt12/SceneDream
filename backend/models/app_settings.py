@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timezone
+import uuid
 
 from sqlalchemy import Column, DateTime, UniqueConstraint
 from sqlmodel import Field, SQLModel
@@ -31,11 +31,15 @@ class AppSettings(SQLModel, table=True):
         index=True,
     )
     default_scenes_per_run: int = Field(default=5, ge=1, le=100, nullable=False)
-    default_art_style_id: uuid.UUID | None = Field(
+    default_prompt_art_style_mode: str = Field(
+        default="random_mix",
+        max_length=32,
+        nullable=False,
+    )
+    default_prompt_art_style_text: str | None = Field(
         default=None,
-        foreign_key="art_styles.id",
+        max_length=255,
         nullable=True,
-        index=True,
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),

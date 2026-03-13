@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 from fastapi.testclient import TestClient
 
 
@@ -28,6 +26,8 @@ def test_get_settings_returns_defaults(client: TestClient) -> None:
     assert "settings" in payload
     assert "art_styles" in payload
     assert payload["settings"]["default_scenes_per_run"] >= 1
+    assert payload["settings"]["default_prompt_art_style_mode"] == "random_mix"
+    assert payload["settings"]["default_prompt_art_style_text"] is None
     assert len(payload["art_styles"]) > 0
 
 
@@ -37,39 +37,81 @@ def test_update_settings_persists_values(client: TestClient) -> None:
     initial_payload = initial.json()
 
     original_scenes = initial_payload["settings"]["default_scenes_per_run"]
-    original_style_id = initial_payload["settings"]["default_art_style_id"]
-    art_styles = initial_payload["art_styles"]
-    target_style_id = art_styles[0]["id"]
+    original_mode = initial_payload["settings"]["default_prompt_art_style_mode"]
+    original_text = initial_payload["settings"]["default_prompt_art_style_text"]
 
     try:
         response = client.patch(
             "/api/v1/settings",
             json={
                 "default_scenes_per_run": 8,
-                "default_art_style_id": target_style_id,
+                "default_prompt_art_style_mode": "single_style",
+                "default_prompt_art_style_text": "Painterly realism",
             },
         )
         assert response.status_code == 200
         payload = response.json()
         assert payload["settings"]["default_scenes_per_run"] == 8
-        assert payload["settings"]["default_art_style_id"] == target_style_id
+        assert payload["settings"]["default_prompt_art_style_mode"] == "single_style"
+        assert (
+            payload["settings"]["default_prompt_art_style_text"]
+            == "Painterly realism"
+        )
     finally:
         client.patch(
             "/api/v1/settings",
             json={
                 "default_scenes_per_run": original_scenes,
-                "default_art_style_id": original_style_id,
+                "default_prompt_art_style_mode": original_mode,
+                "default_prompt_art_style_text": original_text,
             },
         )
 
 
-def test_update_settings_rejects_unknown_art_style(client: TestClient) -> None:
+def test_update_settings_accepts_random_mix_and_clears_text(client: TestClient) -> None:
+    original = client.get("/api/v1/settings")
+    assert original.status_code == 200
+    original_settings = original.json()["settings"]
+
+    try:
+        response = client.patch(
+            "/api/v1/settings",
+            json={
+                "default_prompt_art_style_mode": "random_mix",
+                "default_prompt_art_style_text": "Should be ignored",
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["settings"]["default_prompt_art_style_mode"] == "random_mix"
+        assert payload["settings"]["default_prompt_art_style_text"] is None
+    finally:
+        client.patch(
+            "/api/v1/settings",
+            json={
+                "default_prompt_art_style_mode": original_settings[
+                    "default_prompt_art_style_mode"
+                ],
+                "default_prompt_art_style_text": original_settings[
+                    "default_prompt_art_style_text"
+                ],
+            },
+        )
+
+
+def test_update_settings_rejects_blank_single_style_text(client: TestClient) -> None:
     response = client.patch(
         "/api/v1/settings",
-        json={"default_art_style_id": str(uuid4())},
+        json={
+            "default_prompt_art_style_mode": "single_style",
+            "default_prompt_art_style_text": "   ",
+        },
     )
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Art style not found"
+    assert response.status_code == 422
+    assert (
+        "default_prompt_art_style_text is required"
+        in response.json()["detail"][0]["msg"]
+    )
 
 
 def test_get_art_style_lists_returns_split_lists(client: TestClient) -> None:
@@ -143,7 +185,12 @@ def test_put_art_style_lists_persists_order_and_updates_settings(
             "/api/v1/settings",
             json={
                 "default_scenes_per_run": original_settings["default_scenes_per_run"],
-                "default_art_style_id": original_settings["default_art_style_id"],
+                "default_prompt_art_style_mode": original_settings[
+                    "default_prompt_art_style_mode"
+                ],
+                "default_prompt_art_style_text": original_settings[
+                    "default_prompt_art_style_text"
+                ],
             },
         )
 
