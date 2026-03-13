@@ -146,6 +146,47 @@ def _extract_book_with_session(
         return stats
 
 
+def _count_prompt_ready_scenes_without_images(
+    *,
+    ranking_repo: SceneRankingRepository,
+    prompt_repo: ImagePromptRepository,
+    image_repo: GeneratedImageRepository,
+    book_slug: str,
+    target_scenes: int,
+) -> tuple[int, int]:
+    """Count unique ranked scenes that are ready for image generation."""
+
+    fetch_limit = max(target_scenes * 50, 100)
+    rankings = ranking_repo.list_top_rankings_for_book(
+        book_slug=book_slug,
+        limit=fetch_limit,
+        include_scene=True,
+    )
+
+    ready_scenes = 0
+    scenes_missing_prompts = 0
+    seen_scene_ids: set[object] = set()
+
+    for ranking in rankings:
+        scene_id = ranking.scene_extraction_id
+        if scene_id in seen_scene_ids:
+            continue
+        seen_scene_ids.add(scene_id)
+
+        if image_repo.list_for_scene(scene_id, limit=1):
+            continue
+
+        if prompt_repo.has_any_for_scene(scene_id):
+            ready_scenes += 1
+        else:
+            scenes_missing_prompts += 1
+
+        if ready_scenes >= target_scenes:
+            break
+
+    return ready_scenes, scenes_missing_prompts
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Orchestrate the complete image generation pipeline"
@@ -862,41 +903,33 @@ async def _run_full_pipeline(
         with Session(engine) as session:
             ranking_repo = SceneRankingRepository(session)
             prompt_repo = ImagePromptRepository(session)
-
-            # Determine limit based on --prompts-for-scenes parameter
-            limit = (
+            image_repo = GeneratedImageRepository(session)
+            target_scenes = (
                 effective_prompts_for_scenes if effective_prompts_for_scenes else 100
             )
 
-            rankings = ranking_repo.list_top_rankings_for_book(
-                book_slug=book_slug,
-                limit=limit,
-                include_scene=True,
+            ready_scenes, scenes_missing_prompts = (
+                _count_prompt_ready_scenes_without_images(
+                    ranking_repo=ranking_repo,
+                    prompt_repo=prompt_repo,
+                    image_repo=image_repo,
+                    book_slug=book_slug,
+                    target_scenes=target_scenes,
+                )
             )
 
-            if rankings:
-                # Check if all target scenes already have prompts
-                scenes_needing_prompts = 0
-                for ranking in rankings:
-                    if ranking.scene_extraction:
-                        existing_prompts = prompt_repo.has_any_for_scene(
-                            ranking.scene_extraction.id
-                        )
-                        if not existing_prompts:
-                            scenes_needing_prompts += 1
-
-                if scenes_needing_prompts == 0:
-                    logger.info(
-                        "Auto-detected prompts for all %d target scenes - skipping prompt generation",
-                        len(rankings),
-                    )
-                    skip_prompts = True
-                elif scenes_needing_prompts < len(rankings):
-                    logger.info(
-                        "Found partial prompts (%d/%d scenes need prompts)",
-                        scenes_needing_prompts,
-                        len(rankings),
-                    )
+            if ready_scenes >= target_scenes:
+                logger.info(
+                    "Auto-detected %d prompt-ready scene(s) without images - skipping prompt generation",
+                    ready_scenes,
+                )
+                skip_prompts = True
+            elif ready_scenes > 0 or scenes_missing_prompts > 0:
+                logger.info(
+                    "Prompt auto-detect found %d prompt-ready scene(s) without images and %d scene(s) still needing prompts",
+                    ready_scenes,
+                    scenes_missing_prompts,
+                )
 
     # Step 3: Generate prompts (if not skipped)
     if not skip_prompts:

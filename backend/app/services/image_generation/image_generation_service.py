@@ -486,8 +486,8 @@ class ImageGenerationService:
         # - scenes with existing images
         # - scenes with content warnings
         # - scenes without prompts
-        # We'll fetch 10x the requested amount to have a good buffer
-        fetch_limit = top_scenes_count * 10
+        # - duplicate ranking rows for the same scene
+        fetch_limit = max(top_scenes_count * 50, 100)
 
         logger.info(
             "Fetching top %d rankings for book '%s' (will filter to %d scenes with prompts and no images)",
@@ -512,6 +512,7 @@ class ImageGenerationService:
         # Iterate through rankings and collect prompts until we have enough scenes
         prompts: list[ImagePrompt] = []
         scenes_with_prompts_added = 0
+        seen_scene_ids: set[UUID] = set()
 
         for ranking in rankings:
             # Check if we've collected prompts for enough scenes
@@ -523,6 +524,9 @@ class ImageGenerationService:
                 break
 
             scene_id = ranking.scene_extraction_id
+            if scene_id in seen_scene_ids:
+                continue
+            seen_scene_ids.add(scene_id)
 
             # Check for content warnings first
             if (

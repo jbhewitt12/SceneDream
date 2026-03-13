@@ -184,6 +184,80 @@ async def test_generate_for_selection_filters_by_book(
     assert result_ids == []
 
 
+async def test_fetch_prompts_for_top_scenes_skips_duplicate_rankings(
+    db: Session,
+    scene_factory: Callable[..., SceneExtraction],
+    prompt_factory: Callable[..., ImagePrompt],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Duplicate ranking rows should not block later prompt-ready scenes."""
+    book_slug = f"test-book-{uuid4()}"
+    scene_with_image = scene_factory(book_slug=book_slug, chapter_number=1)
+    prompt_with_image = prompt_factory(scene_with_image, variant_index=0)
+
+    image_repo = GeneratedImageRepository(db)
+    image_repo.create(
+        data={
+            "scene_extraction_id": scene_with_image.id,
+            "image_prompt_id": prompt_with_image.id,
+            "book_slug": scene_with_image.book_slug,
+            "chapter_number": scene_with_image.chapter_number,
+            "variant_index": 0,
+            "provider": "openai_gpt_image",
+            "model": "gpt-image-1.5",
+            "size": "1024x1024",
+            "quality": "standard",
+            "style": "vivid",
+            "aspect_ratio": "1:1",
+            "response_format": "b64_json",
+            "storage_path": f"img/generated/{scene_with_image.book_slug}/chapter-{scene_with_image.chapter_number}",
+            "file_name": f"scene-{scene_with_image.scene_number}-v0.png",
+        },
+        commit=True,
+    )
+
+    scene_without_prompts = scene_factory(book_slug=book_slug, chapter_number=2)
+    scene_prompt_ready = scene_factory(book_slug=book_slug, chapter_number=3)
+    prompt_ready = prompt_factory(scene_prompt_ready, variant_index=0)
+
+    rankings = [
+        SimpleNamespace(
+            scene_extraction_id=scene_with_image.id,
+            overall_priority=9.5,
+            warnings=[],
+        ),
+        SimpleNamespace(
+            scene_extraction_id=scene_with_image.id,
+            overall_priority=9.4,
+            warnings=[],
+        ),
+        SimpleNamespace(
+            scene_extraction_id=scene_without_prompts.id,
+            overall_priority=9.3,
+            warnings=[],
+        ),
+        SimpleNamespace(
+            scene_extraction_id=scene_prompt_ready.id,
+            overall_priority=9.2,
+            warnings=[],
+        ),
+    ]
+
+    service = ImageGenerationService(db, api_key="test-key")
+    monkeypatch.setattr(
+        service._ranking_repo,
+        "list_top_rankings_for_book",
+        lambda **_kwargs: rankings,
+    )
+
+    prompts = await service._fetch_prompts_for_top_scenes(
+        book_slug=book_slug,
+        top_scenes_count=1,
+    )
+
+    assert [prompt.id for prompt in prompts] == [prompt_ready.id]
+
+
 async def test_generate_for_selection_handles_errors(
     db: Session,
     scene_factory: Callable[..., SceneExtraction],
