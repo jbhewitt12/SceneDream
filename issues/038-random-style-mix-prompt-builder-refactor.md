@@ -61,7 +61,9 @@ Introduce a style-plan abstraction and make prompt construction mode-aware:
 - Update `backend/app/services/image_prompt_generation/models.py`:
   - replace `preferred_style` with explicit prompt art style mode/text fields
 - Update config copying and normalization logic accordingly.
-- Update `ImagePromptGenerationService` to resolve effective prompt art style mode/text from runtime config and settings.
+- Update `ImagePromptGenerationService` to consume the resolved prompt art style mode/text from runtime config.
+- Do not re-resolve launched-run style mode/text from app settings inside prompt generation.
+- If standalone CLI entrypoints need a fallback for direct prompt-generation invocation, resolve that before constructing the runtime config so the service still receives a fully resolved mode/text pair.
 
 **Verification**:
 - [ ] Config can represent `random_mix`
@@ -158,4 +160,5 @@ Introduce a style-plan abstraction and make prompt construction mode-aware:
 - [ ] `single_style` generates multiple variants that keep one art style consistent
 - [ ] Prompt text and provider strategy text no longer contradict the selected style mode
 - [ ] Prompt-generation metadata clearly records how style selection worked for a run
+- [ ] Launched runs use the prompt art style mode/text already resolved upstream rather than re-reading Settings during prompt generation
 - [ ] `cd backend && uv run pytest` passes

@@ -51,11 +51,15 @@ When `Random Style Mix` is selected, show high-clarity helper copy explaining th
   - mode selection first
   - conditional text input second
 - The `Default art style` control in Settings defaults to `Random Style Mix`.
-- Documents dashboard cards initialize from the saved default mode/text from Settings.
-- Maximum-clarity helper copy should be visible when `Random Style Mix` is selected:
+- Documents dashboard cards initialize from the saved default mode/text from Settings once on page load; later Settings refetches do not overwrite existing per-card state in the same session.
+- When `Random Style Mix` is selected, show a helper block directly under the control with:
   - `Randomly samples from the art styles in Settings, weighted toward Recommended styles.`
-- Add a second line or adjacent helper to point users to Settings:
-  - `Manage the style lists in Settings.`
+  - a current catalog count line in the form `Current catalog: <recommended count> recommended, <other count> other.`
+  - `Manage styles in Settings.`
+- When `Single art style` is selected, reveal a text input with:
+  - label `Custom art style`
+  - placeholder `e.g. ukiyo-e woodblock, watercolor illustration, gritty graphite sketch`
+  - helper text `This style will be used for every scene in this run.`
 - Do not add a new frontend E2E test suite; manual browser verification belongs in a separate issue.
 
 ## Implementation Plan
@@ -83,9 +87,15 @@ When `Random Style Mix` is selected, show high-clarity helper copy explaining th
 - Update `Default art style` in `frontend/src/routes/_layout/settings.tsx` to render:
   - `Random Style Mix`
   - `Single art style`
-- Show a text input only when `Single art style` is selected.
+- When `Random Style Mix` is selected, show a helper block under the control that:
+  - explains the weighted sampling behavior
+  - shows the current recommended/other catalog counts from Settings data
+  - points users to the art-style lists configured below on the same page
+- Show a text input only when `Single art style` is selected, with:
+  - label `Custom art style`
+  - placeholder `e.g. ukiyo-e woodblock, watercolor illustration, gritty graphite sketch`
+  - helper text `This style will be used for every scene in this run.`
 - Default the control to `Random Style Mix`.
-- Add helper copy explaining that `Random Style Mix` uses the style lists configured below on the same page.
 - Preserve existing save/reset behavior and dirty-state logic.
 
 **Verification**:
@@ -101,11 +111,16 @@ When `Random Style Mix` is selected, show high-clarity helper copy explaining th
 - Render the same two options:
   - `Random Style Mix`
   - `Single art style`
-- When `Random Style Mix` is selected, show helper copy:
+- When `Random Style Mix` is selected, show helper copy directly under the control:
   - `Randomly samples from the art styles in Settings, weighted toward Recommended styles.`
-  - `Manage the style lists in Settings.`
-- When `Single art style` is selected, show a text input with placeholder examples.
+  - `Current catalog: <recommended count> recommended, <other count> other.`
+  - `Manage styles in Settings.`
+- When `Single art style` is selected, show a text input with:
+  - label `Custom art style`
+  - placeholder `e.g. ukiyo-e woodblock, watercolor illustration, gritty graphite sketch`
+  - helper text `This style will be used for every scene in this run.`
 - Initialize each card from the saved Settings default mode/text.
+- Seed each card from Settings only when the card state is first created on page load; do not live-sync untouched cards from later Settings refetches in the same session.
 - Allow users to switch modes per document card without losing previously typed custom text on that card.
 
 **Verification**:
@@ -121,10 +136,12 @@ When `Random Style Mix` is selected, show high-clarity helper copy explaining th
 - When mode is `random_mix`, send mode and omit/clear style text.
 - When mode is `single_style`, send mode and trimmed style text.
 - Add client-side validation to prevent blank submissions in `single_style` mode.
+- Show immediate inline validation when `Single art style` is selected and the input is blank, rather than waiting until submit.
 
 **Verification**:
 - [ ] Network payload matches the selected mode
 - [ ] Blank custom style cannot be launched
+- [ ] Blank `Single art style` shows inline validation before launch
 
 ### Phase 5: Rename user-facing copy consistently
 **Goal**: eliminate ambiguous terminology.
@@ -161,7 +178,9 @@ When `Random Style Mix` is selected, show high-clarity helper copy explaining th
 - [ ] Settings `Pipeline Defaults` supports `Random Style Mix` and `Single art style`
 - [ ] Documents dashboard launch UI supports `Random Style Mix` and `Single art style`
 - [ ] `Random Style Mix` is the user-facing name everywhere in the frontend
-- [ ] Random mix helper text clearly explains that styles come from Settings
+- [ ] Random mix helper text clearly explains weighted sampling, shows current catalog counts, and points users to Settings
+- [ ] `single_style` mode exposes `Custom art style` with the agreed placeholder and helper text
 - [ ] Documents dashboard defaults are sourced from saved Settings mode/text
 - [ ] `single_style` mode exposes a text input and prevents blank launches
+- [ ] `single_style` mode shows immediate inline validation when selected with a blank input
 - [ ] `cd frontend && npm run lint` passes

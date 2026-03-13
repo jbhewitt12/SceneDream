@@ -22,6 +22,7 @@ Promote prompt art style choice to a first-class mode everywhere in the backend:
 - add settings fields for default prompt art style mode and text
 - add pipeline launch request fields for prompt art style mode and text
 - resolve the effective mode/text once in `PipelineRunStartService`
+- pass the resolved mode/text through the full runtime handoff into CLI/runtime config
 - persist resolved values into pipeline run config/usage metadata
 - deprecate the old UUID-based default/override path
 
@@ -54,6 +55,7 @@ Promote prompt art style choice to a first-class mode everywhere in the backend:
 - Use the user-facing name `Random Style Mix` everywhere in frontend copy, but keep snake_case enum values in the API.
 - Settings default to `random_mix`.
 - Do not migrate existing `default_art_style_id` rows into `single_style`; that would silently change behavior.
+- Data migration for backward compatibility is acceptable if needed to preserve an existing install during the transition, but legacy API/runtime logic should be removed once the migration is complete.
 - The canonical backend fields should be:
   - `default_prompt_art_style_mode`
   - `default_prompt_art_style_text`
@@ -72,7 +74,7 @@ Promote prompt art style choice to a first-class mode everywhere in the backend:
 - Add Alembic migration to `app_settings`:
   - add `default_prompt_art_style_mode` with default `random_mix`
   - add `default_prompt_art_style_text` nullable
-- Leave `default_art_style_id` in place only as a temporary compatibility field if needed during rollout.
+- If preserving existing local data requires a compatibility step, migrate/backfill the data first and then remove legacy columns/logic in the same issue rather than leaving a long-lived compatibility path behind.
 - Backfill all existing rows to:
   - `default_prompt_art_style_mode = "random_mix"`
   - `default_prompt_art_style_text = NULL`
@@ -110,7 +112,8 @@ Promote prompt art style choice to a first-class mode everywhere in the backend:
   - request override
   - app settings default
   - hard fallback to `random_mix`
-- Pass the resolved values into the CLI namespace.
+- Pass the resolved values into the CLI namespace as explicit mode/text fields, not as a single derived style string.
+- Update the runtime handoff so the resolved mode/text reaches prompt-generation config without being recomputed later.
 - Persist the resolved values into `config_overrides`.
 - Update `usage_summary` generation in `backend/app/api/routes/pipeline_runs.py` to record:
   - `prompt_art_style_mode`
@@ -131,11 +134,14 @@ Promote prompt art style choice to a first-class mode everywhere in the backend:
   - `resolved_prompt_art_style_mode`
   - `resolved_prompt_art_style_text`
 - Audit any remaining references to `default_art_style_id` and `art_style_id`.
-- Keep compatibility shims only if needed to avoid breaking the transition in a partial rollout branch.
+- Remove old public API fields and runtime logic once the data migration path is complete.
+- If a temporary DB compatibility step is unavoidable during implementation, finish by deleting the obsolete column/logic before closing this issue.
 
 **Verification**:
 - [ ] No live pipeline path depends on `art_style_id`
 - [ ] No settings save path depends on `default_art_style_id`
+- [ ] No prompt-generation runtime path has to re-read settings to discover the effective mode/text for a launched run
+- [ ] Legacy compatibility logic introduced only for migration is removed before the issue is considered complete
 
 ## Files to Modify
 | File | Action |
@@ -148,6 +154,7 @@ Promote prompt art style choice to a first-class mode everywhere in the backend:
 | `backend/app/api/routes/settings.py` | Modify |
 | `backend/app/services/pipeline/pipeline_run_start_service.py` | Modify |
 | `backend/app/api/routes/pipeline_runs.py` | Modify |
+| `backend/app/services/image_gen_cli.py` | Modify |
 | `frontend/src/client/types.gen.ts` | Regenerate later |
 
 ## Testing Strategy
@@ -163,6 +170,8 @@ Promote prompt art style choice to a first-class mode everywhere in the backend:
 - [ ] Settings API defaults to `random_mix`
 - [ ] Settings API supports `single_style` with free-text input
 - [ ] Pipeline launch API supports prompt art style mode/text overrides
+- [ ] Resolved prompt art style mode/text are passed through the runtime handoff without later re-resolution from settings
 - [ ] Pipeline run resolution stores resolved mode/text in run metadata
 - [ ] No existing install is silently converted from sampled behavior into fixed single-style behavior
+- [ ] Any temporary backward-compatibility migration path is completed and obsolete logic is removed before merge
 - [ ] `cd backend && uv run pytest` passes

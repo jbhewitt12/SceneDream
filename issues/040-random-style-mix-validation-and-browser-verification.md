@@ -64,9 +64,11 @@ Run a combined automated and manual validation pass after implementation is comp
 **Tasks**:
 - Regenerate frontend client types if required.
 - Run frontend lint/static checks.
+- Run a frontend build so TypeScript and generated-client contract drift is caught, not just Biome formatting/lint issues.
 
 **Verification**:
 - [ ] `cd frontend && npm run lint` passes
+- [ ] `cd frontend && npm run build` passes
 
 ### Phase 3: Manual Settings validation with Agent Browser
 **Goal**: prove that Settings correctly persists and explains both modes.
@@ -78,11 +80,14 @@ Run a combined automated and manual validation pass after implementation is comp
   - `Random Style Mix` is available and clearly named
   - `Single art style` reveals a text input
   - helper copy explains that `Random Style Mix` samples from Settings art styles
+  - helper copy includes the current catalog count line
+  - `Single art style` shows the `Custom art style` label, agreed placeholder text, and agreed helper text
 - Save Settings once with:
   - `Random Style Mix`
 - Save Settings again with:
   - `Single art style`
   - a non-empty art style string
+- Confirm blank `Single art style` shows inline validation before save is allowed.
 - Reload the page after each save and confirm persistence.
 - Capture screenshots of:
   - `Random Style Mix` selected in Settings
@@ -103,6 +108,9 @@ Run a combined automated and manual validation pass after implementation is comp
   - shows `Random Style Mix` terminology
   - shows maximum-clarity helper text for `Random Style Mix`
   - reveals a text input for `Single art style`
+  - shows the current catalog count line for `Random Style Mix`
+  - shows the `Custom art style` label, agreed placeholder text, and agreed helper text for `Single art style`
+- Confirm blank `Single art style` shows inline validation before launch is allowed.
 - Capture screenshots of:
   - dashboard card with `Random Style Mix`
   - dashboard card with `Single art style`
@@ -141,6 +149,7 @@ Run a combined automated and manual validation pass after implementation is comp
   - `cd backend && uv run pytest`
 - Frontend:
   - `cd frontend && npm run lint`
+  - `cd frontend && npm run build`
 - Manual browser verification:
   - use the Agent Browser skill
   - capture screenshots of both Settings states and both dashboard launch states
@@ -149,8 +158,10 @@ Run a combined automated and manual validation pass after implementation is comp
 ## Acceptance Criteria
 - [ ] `cd backend && uv run pytest` passes
 - [ ] `cd frontend && npm run lint` passes
+- [ ] `cd frontend && npm run build` passes
 - [ ] Agent Browser validation confirms Settings supports and persists both modes
 - [ ] Agent Browser validation confirms Documents dashboard reflects saved defaults and mode-specific controls
+- [ ] Agent Browser validation confirms the random-mix helper block includes the catalog count line and the single-style control includes the agreed label, placeholder, helper text, and inline blank-state validation
 - [ ] A completed book is used to launch one-scene image generation with `Random Style Mix`
 - [ ] A completed book is used to launch one-scene image generation with `Single art style`
 - [ ] Screenshots are captured for both Settings states and both dashboard launch states
