@@ -58,6 +58,19 @@ def test_update_settings_persists_values(client: TestClient) -> None:
         assert (
             payload["settings"]["default_prompt_art_style_text"] == "Painterly realism"
         )
+
+        round_trip = client.get("/api/v1/settings")
+        assert round_trip.status_code == 200
+        round_trip_payload = round_trip.json()
+        assert round_trip_payload["settings"]["default_scenes_per_run"] == 8
+        assert (
+            round_trip_payload["settings"]["default_prompt_art_style_mode"]
+            == "single_style"
+        )
+        assert (
+            round_trip_payload["settings"]["default_prompt_art_style_text"]
+            == "Painterly realism"
+        )
     finally:
         client.patch(
             "/api/v1/settings",
@@ -86,6 +99,15 @@ def test_update_settings_accepts_random_mix_and_clears_text(client: TestClient) 
         payload = response.json()
         assert payload["settings"]["default_prompt_art_style_mode"] == "random_mix"
         assert payload["settings"]["default_prompt_art_style_text"] is None
+
+        round_trip = client.get("/api/v1/settings")
+        assert round_trip.status_code == 200
+        round_trip_payload = round_trip.json()
+        assert (
+            round_trip_payload["settings"]["default_prompt_art_style_mode"]
+            == "random_mix"
+        )
+        assert round_trip_payload["settings"]["default_prompt_art_style_text"] is None
     finally:
         client.patch(
             "/api/v1/settings",

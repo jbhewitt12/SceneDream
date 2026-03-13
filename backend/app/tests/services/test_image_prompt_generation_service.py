@@ -240,6 +240,12 @@ def test_generate_for_scene_dry_run_returns_previews(
     preview = results[0]
     assert "prompt" in preview.raw_response
     assert preview.raw_response["service"]["prompt_art_style_mode"] == "random_mix"
+    assert preview.raw_response["service"]["prompt_art_style_text"] is None
+    assert preview.raw_response["service"]["prompt_art_style"]["mode"] == "random_mix"
+    assert preview.raw_response["service"]["prompt_art_style"]["style_text"] is None
+    assert preview.raw_response["service"]["prompt_art_style"]["sampled_styles"] == (
+        preview.raw_response["service"]["sampled_styles"]
+    )
     repository = ImagePromptRepository(db)
     assert repository.list_for_scene(scene.id) == []
 
