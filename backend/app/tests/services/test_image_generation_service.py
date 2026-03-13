@@ -13,6 +13,7 @@ from sqlmodel import Session
 import app.services.image_generation.image_generation_service as image_generation_service_module
 from app.repositories import GeneratedImageRepository
 from app.services.image_generation import dalle_image_api
+from app.services.image_generation.base_provider import GeneratedImageResult
 from app.services.image_generation.image_generation_service import (
     ImageFileNotFoundError,
     ImageFileWriteError,
@@ -20,6 +21,7 @@ from app.services.image_generation.image_generation_service import (
     ImageGenerationService,
     ImageNotFoundError,
     _default_project_root_from_path,
+    build_generated_image_file_name,
     derive_style_from_tags,
     map_aspect_ratio_to_size,
 )
@@ -74,6 +76,50 @@ def test_default_project_root_detects_local_layout() -> None:
 def test_default_project_root_detects_container_layout() -> None:
     source_file = Path("/app/app/services/image_generation/image_generation_service.py")
     assert _default_project_root_from_path(source_file) == Path("/app")
+
+
+def test_build_generated_image_file_name_changes_with_prompt_and_config() -> None:
+    prompt_id = uuid4()
+
+    base_name = build_generated_image_file_name(
+        scene_number=7,
+        variant_index=3,
+        prompt_id=prompt_id,
+        provider="openai_gpt_image",
+        model="gpt-image-1.5",
+        size="1024x1024",
+        quality="standard",
+        style="vivid",
+        aspect_ratio="1:1",
+        response_format="b64_json",
+    )
+    different_prompt_name = build_generated_image_file_name(
+        scene_number=7,
+        variant_index=3,
+        prompt_id=uuid4(),
+        provider="openai_gpt_image",
+        model="gpt-image-1.5",
+        size="1024x1024",
+        quality="standard",
+        style="vivid",
+        aspect_ratio="1:1",
+        response_format="b64_json",
+    )
+    different_config_name = build_generated_image_file_name(
+        scene_number=7,
+        variant_index=3,
+        prompt_id=prompt_id,
+        provider="openai_gpt_image",
+        model="gpt-image-1.5",
+        size="1024x1024",
+        quality="hd",
+        style="vivid",
+        aspect_ratio="1:1",
+        response_format="b64_json",
+    )
+
+    assert base_name != different_prompt_name
+    assert base_name != different_config_name
 
 
 async def test_generate_for_selection_dry_run(
@@ -317,6 +363,73 @@ async def test_generate_for_selection_filters_by_chapter_range(
     )
 
     assert result_ids == []
+
+
+async def test_generate_for_selection_does_not_overwrite_same_scene_variant_files(
+    db: Session,
+    scene_factory: Callable[..., SceneExtraction],
+    prompt_factory: Callable[..., ImagePrompt],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    """Different prompt versions for one scene variant must retain separate files."""
+
+    scene = scene_factory(scene_number=32)
+    prompt_one = prompt_factory(
+        scene,
+        prompt_version="test-v1",
+        variant_index=3,
+        title="Sudden Realization",
+        prompt_text="first prompt variant",
+    )
+    prompt_two = prompt_factory(
+        scene,
+        prompt_version="test-v2",
+        variant_index=3,
+        title="The Linear Dawn",
+        prompt_text="second prompt variant",
+    )
+
+    monkeypatch.setattr(image_generation_service_module, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        image_generation_service_module,
+        "_GENERATED_IMAGES_ROOT",
+        (tmp_path / "img").resolve(),
+    )
+
+    provider = image_generation_service_module.ProviderRegistry.get("openai_gpt_image")
+    assert provider is not None
+
+    async def fake_generate_image(prompt: str, **_: object) -> GeneratedImageResult:
+        return GeneratedImageResult(image_data=f"image:{prompt}".encode("utf-8"))
+
+    monkeypatch.setattr(provider, "generate_image", fake_generate_image)
+
+    service = ImageGenerationService(
+        db,
+        config=ImageGenerationConfig(storage_base="img/generated"),
+        api_key="test-key",
+    )
+
+    generated_ids = await service.generate_for_selection(
+        prompt_ids=[prompt_one.id, prompt_two.id],
+        provider="openai_gpt_image",
+        model="gpt-image-1.5",
+    )
+
+    assert len(generated_ids) == 2
+
+    image_repo = GeneratedImageRepository(db)
+    image_one = image_repo.list_for_prompt(prompt_one.id)[0]
+    image_two = image_repo.list_for_prompt(prompt_two.id)[0]
+
+    assert image_one.file_name != image_two.file_name
+
+    file_one = tmp_path / image_one.storage_path / image_one.file_name
+    file_two = tmp_path / image_two.storage_path / image_two.file_name
+
+    assert file_one.read_bytes() == b"image:first prompt variant"
+    assert file_two.read_bytes() == b"image:second prompt variant"
 
 
 def test_resolve_image_file_falls_back_to_legacy_root(

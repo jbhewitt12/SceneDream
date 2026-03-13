@@ -248,6 +248,37 @@ def compute_file_checksum(file_path: Path) -> str:
     return sha256_hash.hexdigest()
 
 
+def build_generated_image_file_name(
+    *,
+    scene_number: int,
+    variant_index: int,
+    prompt_id: UUID,
+    provider: str,
+    model: str,
+    size: str,
+    quality: str,
+    style: str,
+    aspect_ratio: str | None,
+    response_format: str,
+) -> str:
+    """Build a stable filename that is unique to the prompt/configuration."""
+
+    identity = "|".join(
+        [
+            str(prompt_id),
+            provider,
+            model,
+            size,
+            quality,
+            style,
+            aspect_ratio or "",
+            response_format,
+        ]
+    )
+    suffix = hashlib.sha1(identity.encode("utf-8")).hexdigest()[:12]
+    return f"scene-{scene_number}-v{variant_index}-{str(prompt_id)[:8]}-{suffix}.png"
+
+
 class ImageGenerationService:
     """Generate images from prompts using DALL·E 3 with idempotency and concurrency control."""
 
@@ -642,7 +673,18 @@ class ImageGenerationService:
 
             # Build storage path and filename
             storage_path = f"{config.storage_base}/{scene.book_slug}/chapter-{scene.chapter_number}"
-            file_name = f"scene-{scene.scene_number}-v{variant_index}.png"
+            file_name = build_generated_image_file_name(
+                scene_number=scene.scene_number,
+                variant_index=variant_index,
+                prompt_id=prompt.id,
+                provider=config.provider,
+                model=config.model,
+                size=size,
+                quality=config.quality,
+                style=style,
+                aspect_ratio=aspect_ratio,
+                response_format=config.response_format,
+            )
 
             # Check for idempotency
             existing = self._image_repo.find_existing_by_params(
@@ -962,4 +1004,5 @@ __all__ = [
     "map_aspect_ratio_to_size",
     "derive_style_from_tags",
     "compute_file_checksum",
+    "build_generated_image_file_name",
 ]
