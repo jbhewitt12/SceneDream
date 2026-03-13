@@ -310,12 +310,51 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(
                     "paragraphs_before": 3,
                     "paragraphs_after": 1,
                 },
-                "raw_response": {"response": []},
+                "raw_response": {
+                    "response": [],
+                    "service": {
+                        "prompt_art_style_mode": "random_mix",
+                        "prompt_art_style_text": None,
+                        "target_provider": "gpt-image",
+                    },
+                },
                 "temperature": 0.4,
                 "max_output_tokens": 8192,
                 "llm_request_id": None,
                 "execution_time_ms": 100,
-            }
+            },
+            {
+                "scene_extraction_id": scene.id,
+                "model_vendor": "google",
+                "model_name": "gemini-2.5-flash",
+                "prompt_version": config.prompt_version,
+                "target_provider": config.target_provider,
+                "variant_index": 1,
+                "title": "Existing Two",
+                "prompt_text": "Existing prompt two",
+                "negative_prompt": None,
+                "style_tags": ["legacy"],
+                "attributes": {"camera": "dslr"},
+                "notes": None,
+                "context_window": {
+                    "chapter_number": scene.chapter_number,
+                    "paragraph_span": [1, 3],
+                    "paragraphs_before": 3,
+                    "paragraphs_after": 1,
+                },
+                "raw_response": {
+                    "response": [],
+                    "service": {
+                        "prompt_art_style_mode": "random_mix",
+                        "prompt_art_style_text": None,
+                        "target_provider": config.target_provider,
+                    },
+                },
+                "temperature": 0.4,
+                "max_output_tokens": 8192,
+                "llm_request_id": None,
+                "execution_time_ms": 100,
+            },
         ],
         commit=True,
     )
@@ -331,6 +370,113 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(
     results = asyncio.run(service.generate_for_scene(scene))
 
     assert results == existing
+    repository.delete_for_scene(scene.id, commit=True)
+
+
+def test_generate_for_scene_replaces_existing_when_style_selection_changes(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene = scene_factory()
+    repository = ImagePromptRepository(db)
+    config = ImagePromptGenerationConfig(
+        variants_count=2,
+        allow_overwrite=False,
+        model_name="gemini-2.5-flash",
+        prompt_art_style_mode=PROMPT_ART_STYLE_MODE_RANDOM_MIX,
+    )
+    existing = repository.bulk_create(
+        [
+            {
+                "scene_extraction_id": scene.id,
+                "model_vendor": "google",
+                "model_name": "gemini-2.5-flash",
+                "prompt_version": config.prompt_version,
+                "target_provider": config.target_provider,
+                "variant_index": 0,
+                "title": "Existing",
+                "prompt_text": "Existing prompt",
+                "negative_prompt": None,
+                "style_tags": ["legacy"],
+                "attributes": {"camera": "dslr"},
+                "notes": None,
+                "context_window": {
+                    "chapter_number": scene.chapter_number,
+                    "paragraph_span": [1, 3],
+                    "paragraphs_before": 3,
+                    "paragraphs_after": 1,
+                },
+                "raw_response": {
+                    "response": [],
+                    "service": {
+                        "prompt_art_style_mode": "single_style",
+                        "prompt_art_style_text": "Graphite realism",
+                        "target_provider": config.target_provider,
+                    },
+                },
+                "temperature": 0.4,
+                "max_output_tokens": 8192,
+                "llm_request_id": None,
+                "execution_time_ms": 100,
+            },
+            {
+                "scene_extraction_id": scene.id,
+                "model_vendor": "google",
+                "model_name": "gemini-2.5-flash",
+                "prompt_version": config.prompt_version,
+                "target_provider": config.target_provider,
+                "variant_index": 1,
+                "title": "Existing Two",
+                "prompt_text": "Existing prompt two",
+                "negative_prompt": None,
+                "style_tags": ["legacy"],
+                "attributes": {"camera": "dslr"},
+                "notes": None,
+                "context_window": {
+                    "chapter_number": scene.chapter_number,
+                    "paragraph_span": [1, 3],
+                    "paragraphs_before": 3,
+                    "paragraphs_after": 1,
+                },
+                "raw_response": {
+                    "response": [],
+                    "service": {
+                        "prompt_art_style_mode": "single_style",
+                        "prompt_art_style_text": "Graphite realism",
+                        "target_provider": config.target_provider,
+                    },
+                },
+                "temperature": 0.4,
+                "max_output_tokens": 8192,
+                "llm_request_id": None,
+                "execution_time_ms": 100,
+            },
+        ],
+        commit=True,
+    )
+
+    service = ImagePromptGenerationService(db, config=config)
+    _patch_context(service, monkeypatch)
+
+    async def fake_json_output(**_: object) -> list[dict[str, object]]:
+        return _variants()
+
+    monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
+
+    results = asyncio.run(service.generate_for_scene(scene))
+
+    assert len(results) == 2
+    assert [prompt.id for prompt in results] != [prompt.id for prompt in existing]
+
+    stored = repository.list_for_scene(
+        scene.id,
+        model_name=config.model_name,
+        prompt_version=config.prompt_version,
+    )
+    assert len(stored) == 2
+    assert all(
+        prompt.raw_response["service"]["prompt_art_style_mode"] == "random_mix"
+        for prompt in stored
+    )
     repository.delete_for_scene(scene.id, commit=True)
 
 

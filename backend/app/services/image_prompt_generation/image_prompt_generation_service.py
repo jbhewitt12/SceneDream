@@ -19,6 +19,7 @@ from app.core.prompt_art_style import (
     PROMPT_ART_STYLE_MODE_RANDOM_MIX,
     PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
     PromptArtStyleMode,
+    normalize_prompt_art_style_text,
 )
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
@@ -180,12 +181,19 @@ class ImagePromptGenerationService:
         else:
             variant_indices = list(range(config.variants_count))
 
+        existing: list[ImagePrompt] = []
         if not config.allow_overwrite:
             existing = self._prompt_repo.get_latest_set_for_scene(
                 target_scene.id, config.model_name, config.prompt_version
             )
             if existing:
-                return existing
+                if self._existing_prompt_set_matches_config(existing, config):
+                    return existing
+                logger.info(
+                    "Regenerating prompt set for scene %s because the stored prompts "
+                    "do not match the requested art-style selection or target provider.",
+                    target_scene.id,
+                )
 
         context_window, context_text = self._context_builder.build_scene_context(
             target_scene, config
@@ -217,6 +225,7 @@ class ImagePromptGenerationService:
             "max_output_tokens": config.max_output_tokens,
             "variants_count": config.variants_count,
             "prompt_hash": prompt_hash,
+            "target_provider": config.target_provider,
             "context_window": dict(context_window),
             "cheatsheet_path": config.include_cheatsheet_path,
             "prompt_art_style": style_plan.to_metadata(),
@@ -282,7 +291,11 @@ class ImagePromptGenerationService:
                 previews.append(preview)
             return previews
 
-        if config.allow_overwrite:
+        should_replace_existing = config.allow_overwrite or (
+            not config.dry_run and not config.allow_overwrite and bool(existing)
+        )
+
+        if should_replace_existing:
             deleted = self._prompt_repo.delete_for_scene(
                 target_scene.id,
                 prompt_version=config.prompt_version,
@@ -319,7 +332,9 @@ class ImagePromptGenerationService:
                     config.model_name,
                     config.prompt_version,
                 )
-                if existing_prompts:
+                if existing_prompts and self._existing_prompt_set_matches_config(
+                    existing_prompts, config
+                ):
                     return existing_prompts
             raise
         await self._run_metadata_generation(
@@ -854,6 +869,48 @@ class ImagePromptGenerationService:
             target_provider=config.target_provider,
         )
         return prompt, list(style_plan.sampled_styles)
+
+    def _existing_prompt_set_matches_config(
+        self,
+        prompts: Sequence[ImagePrompt],
+        config: ImagePromptGenerationConfig,
+    ) -> bool:
+        """Return True when stored prompts are safe to reuse for the requested config."""
+
+        if len(prompts) != config.variants_count:
+            return False
+
+        expected_style_text = normalize_prompt_art_style_text(
+            config.prompt_art_style_text
+        )
+
+        for prompt in prompts:
+            service_payload = (
+                prompt.raw_response.get("service")
+                if isinstance(prompt.raw_response, dict)
+                else None
+            )
+            if not isinstance(service_payload, dict):
+                return False
+
+            stored_mode = service_payload.get("prompt_art_style_mode")
+            stored_text = normalize_prompt_art_style_text(
+                service_payload.get("prompt_art_style_text")
+                if isinstance(service_payload.get("prompt_art_style_text"), str)
+                else None
+            )
+            stored_provider = prompt.target_provider or service_payload.get(
+                "target_provider"
+            )
+
+            if stored_mode != config.prompt_art_style_mode:
+                return False
+            if stored_text != expected_style_text:
+                return False
+            if stored_provider != config.target_provider:
+                return False
+
+        return True
 
     def _build_remix_prompt(
         self,
