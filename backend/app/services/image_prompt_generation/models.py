@@ -31,7 +31,7 @@ class ImagePromptGenerationConfig:
     model_name: str = "gemini-3-pro-preview"
     backup_model_vendor: LLMProvider = "openai"
     backup_model_name: str = "gpt-5-mini"
-    prompt_version: str = "image-prompts-v3"
+    prompt_version: str = "image-prompts-v4"
     prompt_art_style_mode: PromptArtStyleMode = cast(
         PromptArtStyleMode, PROMPT_ART_STYLE_MODE_RANDOM_MIX
     )

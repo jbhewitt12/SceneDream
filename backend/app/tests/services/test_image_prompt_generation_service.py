@@ -788,6 +788,10 @@ def test_render_prompt_template_includes_suggested_styles(
         "Other B",
     ]
     assert "Suggested Styles for This Request" in prompt
+    assert (
+        "Explicitly weave the chosen medium or art era into prompt_text and style_tags"
+        in prompt
+    )
     for style in sampled_styles:
         assert style in prompt
 
@@ -894,6 +898,17 @@ def test_gpt_image_strategy_returns_mode_specific_style_guidance() -> None:
     assert "pick unique candidates for each variant" in random_mix_guidance
     assert "Use the fixed art style for every variant" in single_style_guidance
     assert "pick unique candidates for each variant" not in single_style_guidance
+
+
+def test_gpt_image_strategy_creative_guidance_preserves_style_anchoring() -> None:
+    strategy = GptImagePromptStrategy()
+
+    guidance = strategy.get_creative_guidance()
+    random_mix_guidance = strategy.get_style_strategy(PROMPT_ART_STYLE_MODE_RANDOM_MIX)
+
+    assert "clear central subject" in guidance
+    assert "composition, perspective, palette" in guidance
+    assert "Explicitly weave the chosen medium or art era into prompt_text and style_tags" in random_mix_guidance
 
 
 @pytest.mark.skipif(not EXCESSION_EPUB.exists(), reason="Test EPUB not available")

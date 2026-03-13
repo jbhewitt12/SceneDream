@@ -652,7 +652,7 @@ def test_execute_pipeline_run_records_usage_summary_on_success(
         "model_name": "gemini-3-pro-preview",
         "backup_model_vendor": "openai",
         "backup_model_name": "gpt-5-mini",
-        "prompt_version": "image-prompts-v3",
+        "prompt_version": "image-prompts-v4",
         "target_provider": "gpt-image",
         "prompt_art_style_mode": "single_style",
         "prompt_art_style_text": "Watercolor",

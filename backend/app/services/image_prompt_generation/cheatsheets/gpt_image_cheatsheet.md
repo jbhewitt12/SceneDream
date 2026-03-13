@@ -4,7 +4,7 @@ GPT Image 1.5 (gpt-image-1) offers enhanced prompt understanding with support fo
 
 ### Core Formula
 
-Background/scene context + subject/focal moment + key details and materials + stylised medium or technique + lighting with sources + composition/camera direction + palette and sensory signatures + emotional undertones + explicit constraints
+Background/scene context + subject/focal moment + key details and materials + stylised medium or technique + lighting with sources + composition/camera direction + palette and sensory signatures + emotional undertones
 
 ### Structured Prompt Organization
 
@@ -15,7 +15,6 @@ GPT Image 1.5 parses complex prompts best when organized in predictable layers:
 3. **Details/Materials** - Add textures, props, and secondary elements
 4. **Style/Medium** - Specify artistic technique and visual treatment
 5. **Technical Direction** - Camera, lens, lighting, composition
-6. **Constraints** - State what must NOT appear or change
 
 For complex requests, use short labeled sections or line breaks rather than one dense paragraph.
 
@@ -86,14 +85,6 @@ Replace generic quality modifiers with tangible material descriptions:
 - **Wonder**: impossible scale juxtapositions, bioluminescent elements, floating particles, ethereal glow.
 - **Intimacy**: tight framing, warm color temperature, soft focus edges, personal scale props.
 
-### Invariant Preservation
-
-When describing scenes, explicitly state what must NOT appear:
-- "No modern elements, no text overlays, no watermarks"
-- "Maintain the established color palette throughout"
-- "Preserve the chosen medium and visual intent throughout the composition"
-- Repeat critical constraints to prevent drift in complex prompts.
-
 ### Prompt Construction Boosters
 
 - Fuse medium and story artifact ("loom-woven star charts," "holographic tidepool schematics").
@@ -104,4 +95,4 @@ When describing scenes, explicitly state what must NOT appear:
 
 ### Example Spark Prompt
 
-Kinetic light sculpture vision of twin airships gliding above a turquoise canyon at golden hour. Their rigging woven with luminous glyphs that pulse in slow rhythm, each glyph casting faint prismatic shadows on the brass hulls. Dusk backlight streaming through canyon walls of striated red sandstone, long amber shadows stretching across the canyon floor where a winding river catches the last light. Foreground silhouette of wind-bent juniper trees framing the scene. 16:9 wide sweep composition with slight upward tilt, 24mm lens perspective. Palette of teal atmospheric vapor, amber-gold highlights, deep violet canyon depths, and copper metallic accents. No modern elements, no text.
+Kinetic light sculpture vision of twin airships gliding above a turquoise canyon at golden hour. Their rigging woven with luminous glyphs that pulse in slow rhythm, each glyph casting faint prismatic shadows on the brass hulls. Dusk backlight streaming through canyon walls of striated red sandstone, long amber shadows stretching across the canyon floor where a winding river catches the last light. Foreground silhouette of wind-bent juniper trees framing the scene. 16:9 wide sweep composition with slight upward tilt, 24mm lens perspective. Palette of teal atmospheric vapor, amber-gold highlights, deep violet canyon depths, and copper metallic accents.
