@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from app.core.prompt_art_style import (
+    PROMPT_ART_STYLE_MODE_RANDOM_MIX,
+    PromptArtStyleMode,
+)
+
 from .base import PromptStrategy
 from .registry import PromptStrategyRegistry
 
@@ -46,12 +51,20 @@ class DallePromptStrategy(PromptStrategy):
             "- Maintain neutral-to-positive emotional valence, avoiding words that signal harm, panic, or cruelty while still capturing momentum or quiet tension."
         )
 
-    def get_style_strategy(self) -> str:
+    def get_style_strategy(self, mode: PromptArtStyleMode) -> str:
+        if mode == PROMPT_ART_STYLE_MODE_RANDOM_MIX:
+            return (
+                "- Capture the excerpt's emotional drivers and sensory anchors before drafting prompts.\n"
+                "- Consult the curated Suggested Styles list above and pick unique candidates for each variant.\n"
+                "- Explicitly weave the chosen medium or art era into prompt_text and style_tags for every variant.\n"
+                "- Bind palette, lighting, and composition decisions to narrative clues so the aesthetic choice feels earned."
+            )
+
         return (
             "- Capture the excerpt's emotional drivers and sensory anchors before drafting prompts.\n"
-            "- Consult the curated Suggested Styles list above and pick unique candidates for each variant.\n"
-            "- Explicitly weave the chosen medium or art era into prompt_text and style_tags for every variant.\n"
-            "- Bind palette, lighting, and composition decisions to narrative clues so the aesthetic choice feels earned."
+            "- Keep the fixed art style consistent across every variant and express it clearly in prompt_text and style_tags.\n"
+            "- Vary composition, camera placement, crop, lighting, and focal emphasis to create distinct variants without changing style family or medium.\n"
+            "- Bind palette and visual treatment to narrative clues so the shared style still feels specific to each moment."
         )
 
     def get_model_constraints(self) -> str:

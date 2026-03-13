@@ -62,12 +62,12 @@ from uuid import uuid4
 from dotenv import load_dotenv
 from sqlmodel import Session
 
+from app.core.db import engine
 from app.core.prompt_art_style import (
     PROMPT_ART_STYLE_MODE_RANDOM_MIX,
     PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
     coerce_prompt_art_style_selection,
 )
-from app.core.db import engine
 from app.repositories.app_settings import AppSettingsRepository
 from app.repositories.generated_image import GeneratedImageRepository
 from app.repositories.image_prompt import ImagePromptRepository
@@ -475,7 +475,7 @@ def _resolve_default_scenes_per_run() -> int:
 
 def _build_prompt_generation_config_kwargs(
     args: argparse.Namespace,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Build normalized prompt-generation style config from CLI args."""
 
     raw_mode = getattr(args, "prompt_art_style_mode", None)
@@ -487,10 +487,9 @@ def _build_prompt_generation_config_kwargs(
         mode=raw_mode,
         text=raw_text,
     )
-    config_kwargs: dict[str, object] = {
+    config_kwargs: dict[str, Any] = {
         "prompt_art_style_mode": mode,
         "prompt_art_style_text": text,
-        "use_settings_prompt_art_style_defaults": False,
     }
     if mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE and text is not None:
         logger.info("Using fixed prompt art style for all variants: %s", text)

@@ -7,12 +7,22 @@ from uuid import uuid4
 import pytest
 from sqlmodel import Session
 
+from app.core.prompt_art_style import (
+    PROMPT_ART_STYLE_MODE_RANDOM_MIX,
+    PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
+)
 from app.repositories import ImagePromptRepository
 from app.services.image_prompt_generation import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationService,
     ImagePromptGenerationServiceError,
     ImagePromptPreview,
+)
+from app.services.image_prompt_generation.strategies.dalle_strategy import (
+    DallePromptStrategy,
+)
+from app.services.image_prompt_generation.strategies.gpt_image_strategy import (
+    GptImagePromptStrategy,
 )
 from app.services.langchain import gemini_api, openai_api
 from models.image_prompt import ImagePrompt
@@ -203,6 +213,7 @@ def test_generate_for_scene_creates_prompts(
     assert first.context_window["paragraph_span"] == [5, 6]
     assert "prompt" not in first.raw_response
     assert first.raw_response["service"]["prompt_hash"]
+    assert first.raw_response["service"]["prompt_art_style_mode"] == "random_mix"
     # Check that sampled_styles contains expected styles (order may vary due to shuffle)
     sampled_styles = first.raw_response["service"]["sampled_styles"]
     assert len(sampled_styles) >= 4
@@ -228,6 +239,7 @@ def test_generate_for_scene_dry_run_returns_previews(
     assert all(isinstance(item, ImagePromptPreview) for item in results)
     preview = results[0]
     assert "prompt" in preview.raw_response
+    assert preview.raw_response["service"]["prompt_art_style_mode"] == "random_mix"
     repository = ImagePromptRepository(db)
     assert repository.list_for_scene(scene.id) == []
 
@@ -471,107 +483,71 @@ def test_sample_styles_keeps_realism_related_terms(
     assert "Stylised" in styles
 
 
-def test_sample_styles_keeps_preferred_style_first(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.services.image_prompt_generation.core.style_sampler import StyleSampler
+def test_config_defaults_to_random_mix_mode() -> None:
+    config = ImagePromptGenerationConfig()
 
-    sampler = StyleSampler(
-        recommended_styles=("Style A", "Style B", "Style C"),
-        other_styles=("Style D",),
-        preferred_style="Style C",
+    assert config.prompt_art_style_mode == PROMPT_ART_STYLE_MODE_RANDOM_MIX
+    assert config.prompt_art_style_text is None
+
+
+def test_config_preserves_single_style_text() -> None:
+    config = ImagePromptGenerationConfig(
+        prompt_art_style_mode=PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
+        prompt_art_style_text="Painterly realism",
     )
-    monkeypatch.setattr(random, "sample", lambda seq, k: list(seq)[:k])
-    monkeypatch.setattr(random, "shuffle", lambda seq: None)
 
-    styles = sampler.sample(variants_count=2)
-
-    assert styles[0] == "Style C"
-    assert "Style A" in styles
-    assert "Style D" in styles
+    assert config.prompt_art_style_mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE
+    assert config.prompt_art_style_text == "Painterly realism"
 
 
-def test_sample_styles_keeps_realism_preferred_style_first(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.services.image_prompt_generation.core.style_sampler import StyleSampler
-
-    sampler = StyleSampler(
-        recommended_styles=("Style A", "Style B"),
-        other_styles=("Style C",),
-        preferred_style="Photorealism",
-    )
-    monkeypatch.setattr(random, "sample", lambda seq, k: list(seq)[:k])
-    monkeypatch.setattr(random, "shuffle", lambda seq: None)
-
-    styles = sampler.sample(variants_count=2)
-
-    assert styles[0] == "Photorealism"
-
-
-def test_service_uses_single_style_setting_for_fixed_style_mode(
-    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from types import SimpleNamespace
-
-    scene_factory()
-
-    monkeypatch.setattr(
-        "app.services.art_style.art_style_service.ArtStyleService.get_sampling_distribution",
-        lambda self: (["DB Style A", "DB Style B"], ["DB Style C"]),
-    )
-    monkeypatch.setattr(
-        "app.repositories.app_settings.AppSettingsRepository.get_or_create_global",
-        lambda self, commit=False, refresh=True: SimpleNamespace(
-            default_prompt_art_style_mode="single_style",
-            default_prompt_art_style_text="DB Style B",
-        ),
-    )
-    monkeypatch.setattr(random, "sample", lambda seq, k: list(seq)[:k])
-    monkeypatch.setattr(random, "shuffle", lambda seq: None)
-
-    service = ImagePromptGenerationService(db)
-    _patch_context(service, monkeypatch)
-
-    sampled_styles = service._sample_styles(variants_count=2)
-
-    assert sampled_styles == ["DB Style B"]
-
-
-def test_service_prefers_runtime_single_style_override_over_default_setting(
+def test_service_resolves_random_mix_style_plan(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     scene_factory()
-
-    monkeypatch.setattr(
-        "app.services.art_style.art_style_service.ArtStyleService.get_sampling_distribution",
-        lambda self: (["DB Style A", "DB Style B"], ["DB Style C"]),
+    service = ImagePromptGenerationService(
+        db,
+        config=ImagePromptGenerationConfig(variants_count=2),
     )
     monkeypatch.setattr(
-        "app.repositories.app_settings.AppSettingsRepository.get_or_create_global",
-        lambda self, commit=False, refresh=True: SimpleNamespace(
-            default_prompt_art_style_mode="single_style",
-            default_prompt_art_style_text="Default DB Style",
-        ),
+        service._prompt_builder,
+        "sample_styles",
+        lambda variants_count: ["Style A", "Style B", "Style C"],
     )
-    monkeypatch.setattr(random, "sample", lambda seq, k: list(seq)[:k])
-    monkeypatch.setattr(random, "shuffle", lambda seq: None)
 
+    plan = service._resolve_prompt_art_style_plan(config=service._config)
+
+    assert plan.mode == PROMPT_ART_STYLE_MODE_RANDOM_MIX
+    assert plan.style_text is None
+    assert plan.sampled_styles == ["Style A", "Style B", "Style C"]
+
+
+def test_service_resolves_single_style_plan_without_sampling(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene_factory()
     service = ImagePromptGenerationService(
         db,
         config=ImagePromptGenerationConfig(
-            prompt_art_style_mode="single_style",
+            prompt_art_style_mode=PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
             prompt_art_style_text="Runtime Override Style",
         ),
     )
-    _patch_context(service, monkeypatch)
+    monkeypatch.setattr(
+        service._prompt_builder,
+        "sample_styles",
+        lambda variants_count: pytest.fail(
+            "sample_styles should not run for single_style"
+        ),
+    )
 
-    sampled_styles = service._sample_styles(variants_count=2)
+    plan = service._resolve_prompt_art_style_plan(config=service._config)
 
-    assert sampled_styles == ["Runtime Override Style"]
+    assert plan.mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE
+    assert plan.style_text == "Runtime Override Style"
+    assert plan.sampled_styles == []
 
 
-def test_service_raises_when_style_catalog_is_empty(
+def test_service_raises_when_random_mix_style_catalog_is_empty(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     scene_factory()
@@ -579,12 +555,36 @@ def test_service_raises_when_style_catalog_is_empty(
         "app.services.art_style.art_style_service.ArtStyleService.get_sampling_distribution",
         lambda self: ([], []),
     )
+    service = ImagePromptGenerationService(db)
 
     with pytest.raises(
         ImagePromptGenerationServiceError,
         match="Art style catalog is empty",
     ):
-        ImagePromptGenerationService(db)
+        service._resolve_prompt_art_style_plan(config=service._config)
+
+
+def test_service_allows_single_style_with_empty_catalog(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene_factory()
+    monkeypatch.setattr(
+        "app.services.art_style.art_style_service.ArtStyleService.get_sampling_distribution",
+        lambda self: ([], []),
+    )
+    service = ImagePromptGenerationService(
+        db,
+        config=ImagePromptGenerationConfig(
+            prompt_art_style_mode=PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
+            prompt_art_style_text="Graphite realism",
+        ),
+    )
+
+    plan = service._resolve_prompt_art_style_plan(config=service._config)
+
+    assert plan.mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE
+    assert plan.style_text == "Graphite realism"
+    assert plan.sampled_styles == []
 
 
 def test_render_prompt_template_includes_suggested_styles(
@@ -638,6 +638,110 @@ def test_render_prompt_template_includes_suggested_styles(
     assert "Suggested Styles for This Request" in prompt
     for style in sampled_styles:
         assert style in prompt
+
+
+def test_render_prompt_template_uses_fixed_style_section_for_single_style(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene = scene_factory()
+    service = ImagePromptGenerationService(
+        db,
+        config=ImagePromptGenerationConfig(
+            variants_count=3,
+            prompt_art_style_mode=PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
+            prompt_art_style_text="Painterly realism",
+        ),
+    )
+    _patch_context(service, monkeypatch)
+    monkeypatch.setattr(
+        service._prompt_builder,
+        "sample_styles",
+        lambda variants_count: pytest.fail(
+            "sample_styles should not run for single_style"
+        ),
+    )
+
+    prompt, resolved_config, _, _, sampled_styles = service.render_prompt_template(
+        scene
+    )
+
+    assert resolved_config.prompt_art_style_mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE
+    assert resolved_config.prompt_art_style_text == "Painterly realism"
+    assert sampled_styles == []
+    assert "Fixed Art Style for This Request" in prompt
+    assert "Painterly realism" in prompt
+    assert "Suggested Styles for This Request" not in prompt
+    assert "do not reuse the same style family or medium twice" not in prompt
+    assert "keeping the same art style across the full set" in prompt
+
+
+def test_generate_for_scene_dry_run_single_style_records_mode_specific_metadata(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene = scene_factory()
+    config = ImagePromptGenerationConfig(
+        dry_run=True,
+        variants_count=2,
+        prompt_art_style_mode=PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
+        prompt_art_style_text="Painterly realism",
+    )
+    service = ImagePromptGenerationService(db, config=config)
+    _patch_context(service, monkeypatch)
+    monkeypatch.setattr(
+        service._prompt_builder,
+        "sample_styles",
+        lambda variants_count: pytest.fail(
+            "sample_styles should not run for single_style"
+        ),
+    )
+
+    async def fake_json_output(**_: object) -> list[dict[str, object]]:
+        return _variants()
+
+    monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
+
+    results = asyncio.run(service.generate_for_scene(scene))
+
+    assert all(isinstance(item, ImagePromptPreview) for item in results)
+    preview = results[0]
+    assert preview.raw_response["service"]["prompt_art_style_mode"] == "single_style"
+    assert (
+        preview.raw_response["service"]["prompt_art_style_text"] == "Painterly realism"
+    )
+    assert preview.raw_response["service"]["prompt_art_style"] == {
+        "mode": "single_style",
+        "style_text": "Painterly realism",
+    }
+    assert "sampled_styles" not in preview.raw_response["service"]
+    assert "Fixed Art Style for This Request" in preview.raw_response["prompt"]
+
+
+def test_dalle_strategy_returns_mode_specific_style_guidance() -> None:
+    strategy = DallePromptStrategy()
+
+    random_mix_guidance = strategy.get_style_strategy(PROMPT_ART_STYLE_MODE_RANDOM_MIX)
+    single_style_guidance = strategy.get_style_strategy(
+        PROMPT_ART_STYLE_MODE_SINGLE_STYLE
+    )
+
+    assert "pick unique candidates for each variant" in random_mix_guidance
+    assert "Keep the fixed art style consistent across every variant" in (
+        single_style_guidance
+    )
+    assert "pick unique candidates for each variant" not in single_style_guidance
+
+
+def test_gpt_image_strategy_returns_mode_specific_style_guidance() -> None:
+    strategy = GptImagePromptStrategy()
+
+    random_mix_guidance = strategy.get_style_strategy(PROMPT_ART_STYLE_MODE_RANDOM_MIX)
+    single_style_guidance = strategy.get_style_strategy(
+        PROMPT_ART_STYLE_MODE_SINGLE_STYLE
+    )
+
+    assert "pick unique candidates for each variant" in random_mix_guidance
+    assert "Use the fixed art style for every variant" in single_style_guidance
+    assert "pick unique candidates for each variant" not in single_style_guidance
 
 
 @pytest.mark.skipif(not EXCESSION_EPUB.exists(), reason="Test EPUB not available")

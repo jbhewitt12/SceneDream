@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from app.core.prompt_art_style import PromptArtStyleMode
+
 
 class PromptStrategy(ABC):
     """Abstract base class that all prompt generation strategies must implement."""
@@ -43,7 +45,7 @@ class PromptStrategy(ABC):
         ...
 
     @abstractmethod
-    def get_style_strategy(self) -> str:
+    def get_style_strategy(self, mode: PromptArtStyleMode) -> str:
         """Return the style variation strategy text."""
         ...
 

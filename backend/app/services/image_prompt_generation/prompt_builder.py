@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from app.core.prompt_art_style import PROMPT_ART_STYLE_MODE_SINGLE_STYLE
 from models.scene_extraction import SceneExtraction
 
 from .core import CriticalConstraints, OutputSchemaBuilder, StyleSampler, ToneGuardrails
-from .models import ImagePromptGenerationConfig, ImagePromptGenerationServiceError
+from .models import (
+    ImagePromptGenerationConfig,
+    ImagePromptGenerationServiceError,
+    PromptArtStylePlan,
+)
 from .strategies import PromptStrategyRegistry
 
 logger = logging.getLogger(__name__)
@@ -45,9 +48,9 @@ class PromptBuilder:
         config: ImagePromptGenerationConfig,
         context_text: str,
         context_window: Mapping[str, Any],
-        sampled_styles: Sequence[str] | None = None,
+        style_plan: PromptArtStylePlan,
         target_provider: str,
-    ) -> tuple[str, list[str]]:
+    ) -> str:
         """
         Build the complete prompt for LLM submission.
 
@@ -56,23 +59,17 @@ class PromptBuilder:
             config: Generation configuration
             context_text: Surrounding context paragraphs
             context_window: Context window metadata
-            sampled_styles: Pre-sampled styles (optional)
+            style_plan: Resolved prompt art style plan
             target_provider: The target image provider name
 
         Returns:
-            Tuple of (prompt_text, sampled_styles)
+            Complete prompt text
 
         Raises:
             ImagePromptGenerationServiceError: If scene is missing required data
             PromptStrategyNotFoundError: If no strategy for target_provider
         """
         strategy = PromptStrategyRegistry.get(target_provider)
-
-        styles = list(sampled_styles) if sampled_styles is not None else None
-        if styles is None or not styles:
-            styles = self.sample_styles(config.variants_count)
-        if not styles:
-            raise ImagePromptGenerationServiceError("No styles available to sample")
 
         scene_excerpt = scene.raw.strip()
         if not scene_excerpt:
@@ -97,7 +94,7 @@ class PromptBuilder:
             guidance += book_guidance
 
         # Get style strategy
-        style_strategy = strategy.get_style_strategy()
+        style_strategy = strategy.get_style_strategy(style_plan.mode)
 
         # Create constraints using strategy's aspect ratios (strategy is the source of truth)
         constraints = CriticalConstraints(
@@ -126,7 +123,7 @@ class PromptBuilder:
             metadata_block=metadata_block,
             context_text=context_text,
             cheatsheet=cheatsheet,
-            styles=styles,
+            style_plan=style_plan,
             guidance=guidance,
             style_strategy=style_strategy,
             quality_objectives=quality_objectives,
@@ -137,7 +134,7 @@ class PromptBuilder:
             aspect_ratio_display=aspect_ratio_display,
         )
 
-        return prompt, styles
+        return prompt
 
     def _build_metadata_block(
         self,
@@ -165,7 +162,7 @@ class PromptBuilder:
         metadata_block: str,
         context_text: str,
         cheatsheet: str,
-        styles: list[str],
+        style_plan: PromptArtStylePlan,
         guidance: str,
         style_strategy: str,
         quality_objectives: str,
@@ -176,29 +173,16 @@ class PromptBuilder:
         aspect_ratio_display: str,
     ) -> str:
         """Assemble the complete prompt from all components."""
-        if (
-            config.prompt_art_style_mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE
-            and config.prompt_art_style_text is not None
-        ):
-            style_guidance = (
-                "## Required Art Style for This Request\n"
-                "Use this exact art style consistently across every variant. "
-                "Vary composition, emphasis, and camera language without changing the art style:\n"
-                f"{config.prompt_art_style_text}\n\n"
-            )
-            style_variation_requirement = (
-                "- Ensure each variant explores a different angle, subject emphasis, or composition while keeping the same art style.\n"
-            )
-        else:
-            style_guidance = (
-                "## Suggested Styles for This Request\n"
-                f"The following {len(styles)} styles have been curated for variety and quality. "
-                f"Select from this list when designing your {variants_count} variants, ensuring each variant uses a different style:\n"
-                f"{', '.join(styles)}\n\n"
-            )
-            style_variation_requirement = (
-                "- Ensure each variant explores a different angle, subject emphasis, or aesthetic; do not reuse the same style family or medium twice.\n"
-            )
+        style_guidance = self._build_style_section(
+            style_plan=style_plan,
+            variants_count=variants_count,
+        )
+        output_requirements = self._build_output_requirements(
+            style_plan=style_plan,
+            output_schema=output_schema,
+            variants_count=variants_count,
+            aspect_ratio_display=aspect_ratio_display,
+        )
 
         prompt_lines = [
             "You are an elite prompt engineer who converts novel scenes into world-class AI image prompts.",
@@ -228,6 +212,55 @@ class PromptBuilder:
             "## Tone Guardrails\n"
             f"{tone_guardrails}\n\n"
             "## Output Requirements\n"
+            f"{output_requirements}"
+        )
+        return prompt
+
+    def _build_style_section(
+        self,
+        *,
+        style_plan: PromptArtStylePlan,
+        variants_count: int,
+    ) -> str:
+        """Build the mode-aware style section."""
+
+        if style_plan.sampled_styles:
+            return (
+                "## Suggested Styles for This Request\n"
+                f"The following {len(style_plan.sampled_styles)} styles have been curated for variety and quality. "
+                f"Select from this list when designing your {variants_count} variants, ensuring each variant uses a different style:\n"
+                f"{', '.join(style_plan.sampled_styles)}\n\n"
+            )
+
+        if style_plan.style_text is None:
+            raise ImagePromptGenerationServiceError(
+                "single_style mode requires style text"
+            )
+
+        return (
+            "## Fixed Art Style for This Request\n"
+            "Use this exact art style consistently across every variant. "
+            "Vary angle, composition, lighting, framing, and emotional emphasis without changing the core style:\n"
+            f"{style_plan.style_text}\n\n"
+        )
+
+    def _build_output_requirements(
+        self,
+        *,
+        style_plan: PromptArtStylePlan,
+        output_schema: str,
+        variants_count: int,
+        aspect_ratio_display: str,
+    ) -> str:
+        """Build mode-aware output requirements."""
+
+        style_variation_requirement = (
+            "- Ensure each variant explores a different angle, subject emphasis, or aesthetic; do not reuse the same style family or medium twice.\n"
+            if style_plan.sampled_styles
+            else "- Ensure each variant explores a different angle, composition, lighting setup, or emotional emphasis while keeping the same art style across the full set.\n"
+        )
+
+        return (
             f"- Return ONLY strict JSON (no markdown) representing an array of {variants_count} objects.\n"
             "- Each array element must contain the keys: title, prompt_text, style_tags, attributes.\n"
             "- title can be null; prompt_text must be richly descriptive, self-contained, and free of character names or book-specific terminology.\n"
@@ -239,7 +272,6 @@ class PromptBuilder:
             f"- The expected object shape is similar to: {output_schema}.\n"
             "- Never include copyrighted text beyond the provided excerpts."
         )
-        return prompt
 
     def _load_cheatsheet(self, path_str: str) -> str:
         """Load and cache cheatsheet text."""

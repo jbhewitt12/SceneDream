@@ -430,10 +430,7 @@ def test_start_pipeline_run_rejects_blank_single_style_text(
     )
 
     assert response.status_code == 422
-    assert (
-        "prompt_art_style_text is required"
-        in response.json()["detail"][0]["msg"]
-    )
+    assert "prompt_art_style_text is required" in response.json()["detail"][0]["msg"]
 
 
 def test_start_pipeline_run_rejects_invalid_settings_single_style_defaults(

@@ -9,7 +9,7 @@ import logging
 import time
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -18,9 +18,8 @@ from sqlmodel import Session
 from app.core.prompt_art_style import (
     PROMPT_ART_STYLE_MODE_RANDOM_MIX,
     PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
-    coerce_prompt_art_style_selection,
+    PromptArtStyleMode,
 )
-from app.repositories.app_settings import AppSettingsRepository
 from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
@@ -41,6 +40,7 @@ from .models import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationServiceError,
     ImagePromptPreview,
+    PromptArtStylePlan,
 )
 from .prompt_builder import PromptBuilder
 from .strategies import PromptStrategyRegistry
@@ -75,61 +75,40 @@ class ImagePromptGenerationService:
         self._prompt_repo = ImagePromptRepository(session)
         self._ranking_repo = SceneRankingRepository(session)
         self._art_style_service = ArtStyleService(session)
-        self._app_settings_repo = AppSettingsRepository(session)
         self._book_service = BookContentService()
         self._context_builder = SceneContextBuilder(self._book_service)
         self._prompt_builder = PromptBuilder(style_sampler=self._build_style_sampler())
 
     def _build_style_sampler(self) -> StyleSampler:
         """Build a style sampler using active DB catalog values."""
-        mode, style_text = self._resolve_prompt_art_style_selection()
-        preferred_style = self._config.preferred_style
-
         recommended, other = self._art_style_service.get_sampling_distribution()
-        if mode == PROMPT_ART_STYLE_MODE_RANDOM_MIX and not recommended and not other:
-            raise ImagePromptGenerationServiceError(
-                "Art style catalog is empty. Add at least one active style in Settings."
-            )
-
         return StyleSampler(
             recommended_styles=tuple(recommended),
             other_styles=tuple(other),
-            preferred_style=preferred_style,
-            fixed_style=(
-                style_text if mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE else None
-            ),
         )
 
-    def _resolve_prompt_art_style_selection(self) -> tuple[str, str | None]:
-        """Resolve prompt art-style mode/text for this runtime."""
-        if not self._config.use_settings_prompt_art_style_defaults:
-            return (
-                self._config.prompt_art_style_mode,
-                self._config.prompt_art_style_text,
+    def _resolve_prompt_art_style_plan(
+        self,
+        *,
+        config: ImagePromptGenerationConfig,
+    ) -> PromptArtStylePlan:
+        """Resolve prompt art-style behavior for prompt assembly."""
+
+        if config.prompt_art_style_mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE:
+            return PromptArtStylePlan(
+                mode=config.prompt_art_style_mode,
+                style_text=config.prompt_art_style_text,
             )
 
-        try:
-            settings = self._app_settings_repo.get_or_create_global(
-                commit=False, refresh=True
+        sampled_styles = self._prompt_builder.sample_styles(config.variants_count)
+        if not sampled_styles:
+            raise ImagePromptGenerationServiceError(
+                "Art style catalog is empty. Add at least one active style in Settings."
             )
-        except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.warning(
-                "Unable to resolve prompt art style defaults from settings: %s",
-                exc,
-            )
-            return PROMPT_ART_STYLE_MODE_RANDOM_MIX, None
-
-        try:
-            return coerce_prompt_art_style_selection(
-                mode=settings.default_prompt_art_style_mode,
-                text=settings.default_prompt_art_style_text,
-            )
-        except ValueError as exc:  # pragma: no cover - defensive fallback
-            logger.warning(
-                "Invalid prompt art style defaults in settings; falling back to random_mix: %s",
-                exc,
-            )
-            return PROMPT_ART_STYLE_MODE_RANDOM_MIX, None
+        return PromptArtStylePlan(
+            mode=cast(PromptArtStyleMode, PROMPT_ART_STYLE_MODE_RANDOM_MIX),
+            sampled_styles=sampled_styles,
+        )
 
     def _get_variant_processor(self, target_provider: str) -> VariantProcessor:
         """Get a VariantProcessor configured with the provider's aspect ratios."""
@@ -211,13 +190,13 @@ class ImagePromptGenerationService:
         context_window, context_text = self._context_builder.build_scene_context(
             target_scene, config
         )
-        sampled_styles = self._sample_styles(config.variants_count)
+        style_plan = self._resolve_prompt_art_style_plan(config=config)
         prompt, sampled_styles = self._build_prompt(
             scene=target_scene,
             config=config,
             context_text=context_text,
             context_window=context_window,
-            sampled_styles=sampled_styles,
+            style_plan=style_plan,
         )
         raw_payload, llm_request_id, execution_time_ms = await self._invoke_llm(
             prompt=prompt,
@@ -240,8 +219,12 @@ class ImagePromptGenerationService:
             "prompt_hash": prompt_hash,
             "context_window": dict(context_window),
             "cheatsheet_path": config.include_cheatsheet_path,
-            "sampled_styles": sampled_styles,
+            "prompt_art_style": style_plan.to_metadata(),
+            "prompt_art_style_mode": style_plan.mode,
+            "prompt_art_style_text": style_plan.style_text,
         }
+        if sampled_styles:
+            service_payload["sampled_styles"] = sampled_styles
         if config.metadata:
             service_payload["run_metadata"] = dict(config.metadata)
         raw_bundle = {
@@ -394,13 +377,13 @@ class ImagePromptGenerationService:
         context_window, context_text = self._context_builder.build_scene_context(
             target_scene, resolved_config
         )
-        sampled_styles = self._sample_styles(resolved_config.variants_count)
+        style_plan = self._resolve_prompt_art_style_plan(config=resolved_config)
         prompt, sampled_styles = self._build_prompt(
             scene=target_scene,
             config=resolved_config,
             context_text=context_text,
             context_window=context_window,
-            sampled_styles=sampled_styles,
+            style_plan=style_plan,
         )
         return prompt, resolved_config, context_window, context_text, sampled_styles
 
@@ -853,10 +836,6 @@ class ImagePromptGenerationService:
             metadata=metadata,
         )
 
-    def _sample_styles(self, variants_count: int) -> list[str]:
-        """Sample recommended and other styles for this request."""
-        return self._prompt_builder.sample_styles(variants_count)
-
     def _build_prompt(
         self,
         *,
@@ -864,16 +843,17 @@ class ImagePromptGenerationService:
         config: ImagePromptGenerationConfig,
         context_text: str,
         context_window: Mapping[str, Any],
-        sampled_styles: Sequence[str] | None = None,
+        style_plan: PromptArtStylePlan,
     ) -> tuple[str, list[str]]:
-        return self._prompt_builder.build_prompt(
+        prompt = self._prompt_builder.build_prompt(
             scene=scene,
             config=config,
             context_text=context_text,
             context_window=context_window,
-            sampled_styles=sampled_styles,
+            style_plan=style_plan,
             target_provider=config.target_provider,
         )
+        return prompt, list(style_plan.sampled_styles)
 
     def _build_remix_prompt(
         self,

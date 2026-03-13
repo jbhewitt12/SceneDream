@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from app.core.prompt_art_style import (
+    PROMPT_ART_STYLE_MODE_RANDOM_MIX,
+    PromptArtStyleMode,
+)
+
 from .base import PromptStrategy
 from .registry import PromptStrategyRegistry
 
@@ -52,12 +57,20 @@ class GptImagePromptStrategy(PromptStrategy):
             "- Maintain neutral-to-positive emotional valence, avoiding words that signal harm, panic, or cruelty while still capturing momentum or quiet tension."
         )
 
-    def get_style_strategy(self) -> str:
+    def get_style_strategy(self, mode: PromptArtStyleMode) -> str:
+        if mode == PROMPT_ART_STYLE_MODE_RANDOM_MIX:
+            return (
+                "- Consult the curated Suggested Styles list above and pick unique candidates for each variant.\n"
+                "- Explicitly weave the chosen medium or art era into prompt_text and style_tags, describing how it manifests (brush strokes, color blending, line weight, surface treatment).\n"
+                "- Bind palette, lighting, and composition decisions to narrative clues so the aesthetic choice feels earned.\n"
+                "- Include artist or movement references that reinforce the technique and palette logic (e.g., 'Moebius-inspired line work', 'Miyazaki-esque environmental detail')."
+            )
+
         return (
-            "- Consult the curated Suggested Styles list above and pick unique candidates for each variant.\n"
-            "- Explicitly weave the chosen medium or art era into prompt_text and style_tags, describing how it manifests (brush strokes, color blending, line weight, surface treatment).\n"
-            "- Bind palette, lighting, and composition decisions to narrative clues so the aesthetic choice feels earned.\n"
-            "- Include artist or movement references that reinforce the technique and palette logic (e.g., 'Moebius-inspired line work', 'Miyazaki-esque environmental detail')."
+            "- Use the fixed art style for every variant and describe how it manifests in materials, line work, color blending, or surface treatment.\n"
+            "- Vary framing, subject emphasis, lens choice, lighting direction, and spatial relationships so the variants feel complementary without changing style family.\n"
+            "- Bind palette, lighting, and composition decisions to narrative clues so the shared style still feels earned.\n"
+            "- Include artist or movement references only when they reinforce the same fixed style rather than introducing a new one."
         )
 
     def get_model_constraints(self) -> str:

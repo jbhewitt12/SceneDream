@@ -1,10 +1,12 @@
+from typing import cast
+
 from fastapi.testclient import TestClient
 
 
 def _snapshot_style_lists(client: TestClient) -> dict[str, object]:
     response = client.get("/api/v1/settings/art-style-lists")
     assert response.status_code == 200
-    return response.json()
+    return cast(dict[str, object], response.json())
 
 
 def _restore_style_lists(client: TestClient, snapshot: dict[str, object]) -> None:
@@ -54,8 +56,7 @@ def test_update_settings_persists_values(client: TestClient) -> None:
         assert payload["settings"]["default_scenes_per_run"] == 8
         assert payload["settings"]["default_prompt_art_style_mode"] == "single_style"
         assert (
-            payload["settings"]["default_prompt_art_style_text"]
-            == "Painterly realism"
+            payload["settings"]["default_prompt_art_style_text"] == "Painterly realism"
         )
     finally:
         client.patch(
@@ -165,7 +166,9 @@ def test_put_art_style_lists_persists_order_and_updates_settings(
 
         lists_response = client.get("/api/v1/settings/art-style-lists")
         assert lists_response.status_code == 200
-        assert lists_response.json()["recommended_styles"] == payload["recommended_styles"]
+        assert (
+            lists_response.json()["recommended_styles"] == payload["recommended_styles"]
+        )
         assert lists_response.json()["other_styles"] == payload["other_styles"]
 
         settings_response = client.get("/api/v1/settings")

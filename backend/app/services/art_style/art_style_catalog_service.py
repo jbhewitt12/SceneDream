@@ -50,7 +50,8 @@ class ArtStyleCatalogService:
         """Replace active catalog entries from line-oriented settings payloads."""
         normalized_recommended = self._dedupe_styles(recommended_styles)
         normalized_other = self._dedupe_styles(
-            other_styles, blocked_slugs={self._slugify(value) for value in normalized_recommended}
+            other_styles,
+            blocked_slugs={self._slugify(value) for value in normalized_recommended},
         )
 
         if not normalized_recommended and not normalized_other:

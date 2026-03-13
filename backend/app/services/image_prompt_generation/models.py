@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from app.core.prompt_art_style import (
@@ -32,10 +32,10 @@ class ImagePromptGenerationConfig:
     backup_model_vendor: LLMProvider = "openai"
     backup_model_name: str = "gpt-5-mini"
     prompt_version: str = "image-prompts-v3"
-    prompt_art_style_mode: PromptArtStyleMode = PROMPT_ART_STYLE_MODE_RANDOM_MIX
+    prompt_art_style_mode: PromptArtStyleMode = cast(
+        PromptArtStyleMode, PROMPT_ART_STYLE_MODE_RANDOM_MIX
+    )
     prompt_art_style_text: str | None = None
-    use_settings_prompt_art_style_defaults: bool = True
-    preferred_style: str | None = None
     variants_count: int = 4
     use_ranking_recommendation: bool = True
     temperature: float = 0.4
@@ -60,19 +60,14 @@ class ImagePromptGenerationConfig:
         self.prompt_art_style_text = normalize_prompt_art_style_text(
             self.prompt_art_style_text
         )
-        self.preferred_style = normalize_prompt_art_style_text(self.preferred_style)
-        if (
-            self.prompt_art_style_mode != PROMPT_ART_STYLE_MODE_RANDOM_MIX
-            or self.prompt_art_style_text is not None
-        ):
-            self.use_settings_prompt_art_style_defaults = False
         (
-            self.prompt_art_style_mode,
+            resolved_mode,
             self.prompt_art_style_text,
         ) = coerce_prompt_art_style_selection(
             mode=self.prompt_art_style_mode,
             text=self.prompt_art_style_text,
         )
+        self.prompt_art_style_mode = cast(PromptArtStyleMode, resolved_mode)
 
     def copy_with(self, **overrides: Any) -> ImagePromptGenerationConfig:
         data: dict[str, Any] = {
@@ -83,10 +78,6 @@ class ImagePromptGenerationConfig:
             "prompt_version": self.prompt_version,
             "prompt_art_style_mode": self.prompt_art_style_mode,
             "prompt_art_style_text": self.prompt_art_style_text,
-            "use_settings_prompt_art_style_defaults": (
-                self.use_settings_prompt_art_style_defaults
-            ),
-            "preferred_style": self.preferred_style,
             "variants_count": self.variants_count,
             "use_ranking_recommendation": self.use_ranking_recommendation,
             "temperature": self.temperature,
@@ -120,6 +111,40 @@ class ImagePromptGenerationConfig:
 
 
 @dataclass(slots=True)
+class PromptArtStylePlan:
+    """Resolved prompt art-style behavior for a single generation request."""
+
+    mode: PromptArtStyleMode
+    style_text: str | None = None
+    sampled_styles: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.style_text = normalize_prompt_art_style_text(self.style_text)
+        self.sampled_styles = list(self.sampled_styles)
+        (
+            resolved_mode,
+            self.style_text,
+        ) = coerce_prompt_art_style_selection(
+            mode=self.mode,
+            text=self.style_text,
+        )
+        self.mode = cast(PromptArtStyleMode, resolved_mode)
+        if self.mode != PROMPT_ART_STYLE_MODE_RANDOM_MIX:
+            self.sampled_styles = []
+
+    def to_metadata(self) -> dict[str, Any]:
+        """Return a serializable metadata payload for persistence and previews."""
+
+        payload: dict[str, Any] = {
+            "mode": self.mode,
+            "style_text": self.style_text,
+        }
+        if self.sampled_styles:
+            payload["sampled_styles"] = list(self.sampled_styles)
+        return payload
+
+
+@dataclass(slots=True)
 class ImagePromptPreview:
     """In-memory preview of generated image prompt variants."""
 
@@ -146,4 +171,5 @@ __all__ = [
     "ImagePromptGenerationConfig",
     "ImagePromptGenerationServiceError",
     "ImagePromptPreview",
+    "PromptArtStylePlan",
 ]

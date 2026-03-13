@@ -18,6 +18,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+
 class VariantModel(BaseModel):
     """Validate the structure returned by the LLM."""
 

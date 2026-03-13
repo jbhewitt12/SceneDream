@@ -12,6 +12,7 @@ from app.core.prompt_art_style import (
     coerce_prompt_art_style_selection,
     normalize_prompt_art_style_text,
 )
+
 from .art_style import ArtStyleRead
 
 
@@ -41,7 +42,7 @@ class AppSettingsUpdateRequest(BaseModel):
         return normalize_prompt_art_style_text(value)
 
     @model_validator(mode="after")
-    def _validate_single_style_text(self) -> "AppSettingsUpdateRequest":
+    def _validate_single_style_text(self) -> AppSettingsUpdateRequest:
         if self.default_prompt_art_style_mode is None:
             return self
         coerce_prompt_art_style_selection(

@@ -58,7 +58,7 @@ class PipelineRunStartRequest(BaseModel):
         return normalize_prompt_art_style_text(value)
 
     @model_validator(mode="after")
-    def _validate_single_style_text(self) -> "PipelineRunStartRequest":
+    def _validate_single_style_text(self) -> PipelineRunStartRequest:
         if self.prompt_art_style_mode is None:
             return self
         coerce_prompt_art_style_selection(
