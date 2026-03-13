@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
@@ -36,6 +37,7 @@ def _configure_service(
     document_by_id: SimpleNamespace | None = None,
     document_by_slug: SimpleNamespace | None = None,
     settings: SimpleNamespace | None = None,
+    sync_document_hook: Callable[..., object] | None = None,
 ) -> tuple[PipelineRunStartService, dict[str, Any]]:
     service = PipelineRunStartService(db)
     captured: dict[str, Any] = {}
@@ -68,6 +70,20 @@ def _configure_service(
         lambda: default_scenes_per_run,
     )
 
+    def _noop_sync_document(
+        *,
+        document: object,
+        preserve_failed_stages: set[str] | None = None,
+    ) -> object:
+        del preserve_failed_stages
+        return document
+
+    monkeypatch.setattr(
+        service._document_stage_status_service,
+        "sync_document",
+        sync_document_hook or _noop_sync_document,
+    )
+
     def _capture_run_create(
         *,
         data: dict[str, object],
@@ -92,6 +108,8 @@ def test_resolve_pipeline_request_uses_document_id_defaults(
         id=document_id,
         slug="doc-id-book",
         source_path="documents/doc-id-book.epub",
+        extraction_status="pending",
+        ranking_status="pending",
     )
     service, captured = _configure_service(
         db=db,
@@ -137,6 +155,8 @@ def test_resolve_pipeline_request_resolves_document_by_slug(
         id=uuid4(),
         slug="slug-only-book",
         source_path="documents/slug-only-book.epub",
+        extraction_status="pending",
+        ranking_status="pending",
     )
     service, captured = _configure_service(
         db=db,
@@ -198,6 +218,87 @@ def test_resolve_pipeline_request_allows_resume_when_source_missing(
     assert resolution.args.book_path is None
     assert resolution.config_overrides["skip_extraction"] is True
     assert "resolved_book_path" not in resolution.config_overrides
+
+
+def test_resolve_pipeline_request_syncs_document_before_skip_resolution(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document_id = uuid4()
+    document = SimpleNamespace(
+        id=document_id,
+        slug="synced-book",
+        source_path="documents/synced-book.epub",
+        extraction_status="pending",
+        ranking_status="pending",
+    )
+
+    def _sync_document(
+        *,
+        document: SimpleNamespace,
+        preserve_failed_stages: set[str] | None = None,
+    ) -> SimpleNamespace:
+        del preserve_failed_stages
+        document.extraction_status = "completed"
+        document.ranking_status = "completed"
+        return document
+
+    service, _ = _configure_service(
+        db=db,
+        monkeypatch=monkeypatch,
+        source_path_exists=True,
+        document_by_id=document,
+        sync_document_hook=_sync_document,
+    )
+
+    resolution = service.resolve_pipeline_request(
+        _build_request(document_id=document_id, book_slug=None, book_path=None)
+    )
+
+    assert resolution.args.skip_extraction is True
+    assert resolution.args.skip_ranking is True
+    assert resolution.config_overrides["skip_extraction"] is True
+    assert resolution.config_overrides["skip_ranking"] is True
+
+
+def test_resolve_pipeline_request_syncs_completed_extraction_without_skipping_ranking(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document_id = uuid4()
+    document = SimpleNamespace(
+        id=document_id,
+        slug="synced-extraction-only-book",
+        source_path="documents/synced-extraction-only-book.epub",
+        extraction_status="pending",
+        ranking_status="pending",
+    )
+
+    def _sync_document(
+        *,
+        document: SimpleNamespace,
+        preserve_failed_stages: set[str] | None = None,
+    ) -> SimpleNamespace:
+        del preserve_failed_stages
+        document.extraction_status = "completed"
+        return document
+
+    service, _ = _configure_service(
+        db=db,
+        monkeypatch=monkeypatch,
+        source_path_exists=True,
+        document_by_id=document,
+        sync_document_hook=_sync_document,
+    )
+
+    resolution = service.resolve_pipeline_request(
+        _build_request(document_id=document_id, book_slug=None, book_path=None)
+    )
+
+    assert resolution.args.skip_extraction is True
+    assert resolution.args.skip_ranking is False
+    assert resolution.config_overrides["skip_extraction"] is True
+    assert resolution.config_overrides["skip_ranking"] is False
 
 
 def test_resolve_pipeline_request_rejects_missing_source_without_resume_data(

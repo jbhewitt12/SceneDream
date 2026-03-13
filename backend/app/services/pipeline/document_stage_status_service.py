@@ -167,6 +167,16 @@ class DocumentStageStatusService:
             refresh=False,
         )
 
+    def sync_all_documents(self) -> int:
+        """Recompute extraction/ranking statuses for every document."""
+
+        statement = select(Document).order_by(Document.created_at.asc())
+        documents = list(self._session.exec(statement))
+        for document in documents:
+            self.sync_document(document=document)
+        self._session.commit()
+        return len(documents)
+
     def _list_document_scenes(self, document_id: object) -> list[SceneExtraction]:
         statement = select(SceneExtraction).where(
             SceneExtraction.document_id == document_id

@@ -126,3 +126,9 @@ class DocumentDashboardResponse(BaseModel):
 
     data: list[DocumentDashboardEntry]
     total: int
+
+
+class DocumentStageSyncResponse(BaseModel):
+    """Response payload for bulk document stage synchronization."""
+
+    synced: int

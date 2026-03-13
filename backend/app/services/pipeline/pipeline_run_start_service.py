@@ -24,6 +24,10 @@ from app.services.image_gen_cli import _resolve_default_scenes_per_run
 from models.document import Document
 from models.pipeline_run import PipelineRun
 
+from .document_stage_status_service import (
+    STAGE_STATUS_COMPLETED,
+    DocumentStageStatusService,
+)
 from .exceptions import (
     DocumentNotFoundError,
     PipelineValidationError,
@@ -49,6 +53,7 @@ class PipelineRunStartService:
         self._document_repo = DocumentRepository(session)
         self._run_repo = PipelineRunRepository(session)
         self._scene_repo = SceneExtractionRepository(session)
+        self._document_stage_status_service = DocumentStageStatusService(session)
         self._book_service = BookContentService()
 
     def resolve_pipeline_request(
@@ -71,12 +76,23 @@ class PipelineRunStartService:
         if resolved_document is None and resolved_book_slug:
             resolved_document = self._document_repo.get_by_slug(resolved_book_slug)
 
+        if resolved_document is not None:
+            self._document_stage_status_service.sync_document(document=resolved_document)
+            self._session.flush()
+
         if not resolved_book_slug:
             raise PipelineValidationError(
                 "book_slug is required when document_id is not provided"
             )
 
         should_skip_extraction = launch_request.skip_extraction
+        should_skip_ranking = launch_request.skip_ranking
+        if resolved_document is not None:
+            if resolved_document.extraction_status == STAGE_STATUS_COMPLETED:
+                should_skip_extraction = True
+            if resolved_document.ranking_status == STAGE_STATUS_COMPLETED:
+                should_skip_ranking = True
+
         has_existing_extractions = bool(
             self._scene_repo.list_for_book(resolved_book_slug)
         )
@@ -85,7 +101,7 @@ class PipelineRunStartService:
         # Skipping ranking without reusing the existing extracted scenes is
         # internally inconsistent for prompt/image-only launches.
         if (
-            launch_request.skip_ranking
+            should_skip_ranking
             and not should_skip_extraction
             and has_existing_extractions
         ):
@@ -123,6 +139,7 @@ class PipelineRunStartService:
             book_path=resolved_book_path,
             images_for_scenes=images_for_scenes,
             skip_extraction=should_skip_extraction,
+            skip_ranking=should_skip_ranking,
             prompt_art_style_mode=resolved_prompt_art_style_mode,
             prompt_art_style_text=resolved_prompt_art_style_text,
         )
@@ -132,6 +149,7 @@ class PipelineRunStartService:
         if resolved_book_path is not None:
             config_overrides["resolved_book_path"] = resolved_book_path
         config_overrides["skip_extraction"] = should_skip_extraction
+        config_overrides["skip_ranking"] = should_skip_ranking
         config_overrides["resolved_images_for_scenes"] = images_for_scenes
         config_overrides["resolved_prompt_art_style_mode"] = (
             resolved_prompt_art_style_mode
@@ -166,6 +184,7 @@ class PipelineRunStartService:
         book_path: str | None,
         images_for_scenes: int,
         skip_extraction: bool,
+        skip_ranking: bool,
         prompt_art_style_mode: str,
         prompt_art_style_text: str | None,
     ) -> argparse.Namespace:
@@ -178,7 +197,7 @@ class PipelineRunStartService:
             prompts_for_scenes=launch_request.prompts_for_scenes,
             images_for_scenes=images_for_scenes,
             skip_extraction=skip_extraction,
-            skip_ranking=launch_request.skip_ranking,
+            skip_ranking=skip_ranking,
             skip_prompts=launch_request.skip_prompts,
             prompt_art_style_mode=prompt_art_style_mode,
             prompt_art_style_text=prompt_art_style_text,

@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -5,16 +6,22 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
+from sqlmodel import Session
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 
 import sentry_sdk
 from app.api.main import api_router
 from app.core.config import settings
+from app.core.db import engine
 from app.services.image_generation.batch_scheduler import (
     start_batch_scheduler,
     stop_batch_scheduler,
 )
+from app.services.pipeline import DocumentStageStatusService
 from app.services.social_posting.scheduler import start_scheduler, stop_scheduler
+
+logger = logging.getLogger(__name__)
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -25,10 +32,22 @@ if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
     sentry_sdk.init(dsn=str(settings.SENTRY_DSN), enable_tracing=True)
 
 
+def _sync_document_stage_statuses_on_startup() -> int:
+    with Session(engine) as session:
+        return DocumentStageStatusService(session).sync_all_documents()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application lifespan events."""
     # Startup
+    try:
+        synced = await run_in_threadpool(_sync_document_stage_statuses_on_startup)
+    except Exception:
+        logger.exception("Failed to synchronize document stage statuses on startup")
+    else:
+        logger.info("Synchronized document stage statuses on startup: synced=%d", synced)
+
     await start_scheduler()
     await start_batch_scheduler()
     yield

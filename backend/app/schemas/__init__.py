@@ -19,6 +19,7 @@ from .document import (
     DocumentDashboardStageStatus,
     DocumentListResponse,
     DocumentRead,
+    DocumentStageSyncResponse,
 )
 from .generated_asset import (
     GeneratedAssetCreate,
@@ -92,6 +93,7 @@ __all__ = [
     "DocumentDashboardStages",
     "DocumentListResponse",
     "DocumentRead",
+    "DocumentStageSyncResponse",
     "GeneratedAssetCreate",
     "GeneratedAssetListResponse",
     "GeneratedAssetRead",
