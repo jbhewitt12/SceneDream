@@ -15,6 +15,7 @@ from app.services.scene_extraction.scene_extraction import (
     SceneExtractor,
 )
 from models.document import Document
+from models.pipeline_run import PipelineRun
 from models.scene_extraction import SceneExtraction
 
 DocumentStageName = Literal["extraction", "ranking"]
@@ -189,11 +190,37 @@ class DocumentStageStatusService:
         document: Document,
         scenes: list[SceneExtraction],
     ) -> str:
+        if self._has_completed_extraction_run(document=document):
+            return STAGE_STATUS_COMPLETED
         if not scenes:
             return STAGE_STATUS_PENDING
         if self._is_extraction_complete(document=document, scenes=scenes):
             return STAGE_STATUS_COMPLETED
         return STAGE_STATUS_PENDING
+
+    def _has_completed_extraction_run(self, *, document: Document) -> bool:
+        statement = (
+            select(PipelineRun)
+            .where(
+                (
+                    (PipelineRun.document_id == document.id)
+                    | (PipelineRun.book_slug == document.slug)
+                )
+                & (PipelineRun.status == STAGE_STATUS_COMPLETED)
+            )
+            .order_by(
+                PipelineRun.completed_at.desc(),
+                PipelineRun.created_at.desc(),
+            )
+        )
+        for run in self._session.exec(statement):
+            requested = run.usage_summary.get("requested", {})
+            skip_extraction = requested.get("skip_extraction")
+            if skip_extraction is None:
+                skip_extraction = run.config_overrides.get("skip_extraction")
+            if skip_extraction is False:
+                return True
+        return False
 
     def _compute_ranking_status(self, *, scenes: list[SceneExtraction]) -> str:
         if not scenes:

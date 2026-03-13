@@ -3,9 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
+import pytest
 from sqlmodel import Session
 
-from app.repositories import DocumentRepository, SceneRankingRepository
+from app.repositories import (
+    DocumentRepository,
+    PipelineRunRepository,
+    SceneRankingRepository,
+)
 from app.services.pipeline import DocumentStageStatusService
 
 
@@ -406,6 +411,112 @@ def test_sync_all_documents_preserves_existing_completed_timestamps(
     assert document.ranking_status == "completed"
     assert document.extraction_completed_at == existing_completed_at
     assert document.ranking_completed_at == existing_completed_at
+
+    db.delete(document)
+    db.commit()
+
+
+def test_sync_document_marks_extraction_completed_from_successful_pipeline_run(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    scene_factory,
+) -> None:
+    document_repo = DocumentRepository(db)
+    run_repo = PipelineRunRepository(db)
+
+    slug = f"test-book-stage-run-fallback-{uuid4()}"
+    document = document_repo.create(
+        data={
+            "slug": slug,
+            "source_path": f"documents/{slug}.epub",
+            "source_type": "epub",
+            "ingestion_state": "ingested",
+            "source_metadata": {},
+        },
+        commit=True,
+    )
+    scene_factory(
+        book_slug=slug,
+        source_book_path=document.source_path,
+        document_id=document.id,
+        chapter_number=1,
+        scene_number=1,
+        chunk_index=0,
+    )
+    run_repo.create(
+        data={
+            "document_id": document.id,
+            "book_slug": slug,
+            "status": "completed",
+            "current_stage": "completed",
+            "config_overrides": {"skip_extraction": False},
+            "usage_summary": {"requested": {"skip_extraction": False}},
+        },
+        commit=True,
+    )
+
+    service = DocumentStageStatusService(db)
+    monkeypatch.setattr(service, "_is_extraction_complete", lambda **_: False)
+
+    service.sync_document(document=document)
+    db.commit()
+    db.refresh(document)
+
+    assert document.extraction_status == "completed"
+    assert document.extraction_completed_at is not None
+
+    db.delete(document)
+    db.commit()
+
+
+def test_sync_document_does_not_use_image_only_runs_for_extraction_completion(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    scene_factory,
+) -> None:
+    document_repo = DocumentRepository(db)
+    run_repo = PipelineRunRepository(db)
+
+    slug = f"test-book-stage-run-skip-{uuid4()}"
+    document = document_repo.create(
+        data={
+            "slug": slug,
+            "source_path": f"documents/{slug}.epub",
+            "source_type": "epub",
+            "ingestion_state": "ingested",
+            "source_metadata": {},
+        },
+        commit=True,
+    )
+    scene_factory(
+        book_slug=slug,
+        source_book_path=document.source_path,
+        document_id=document.id,
+        chapter_number=1,
+        scene_number=1,
+        chunk_index=0,
+    )
+    run_repo.create(
+        data={
+            "document_id": document.id,
+            "book_slug": slug,
+            "status": "completed",
+            "current_stage": "completed",
+            "config_overrides": {"skip_extraction": True},
+            "usage_summary": {"requested": {"skip_extraction": True}},
+        },
+        commit=True,
+    )
+
+    service = DocumentStageStatusService(db)
+    monkeypatch.setattr(service, "_is_extraction_complete", lambda **_: False)
+
+    service.sync_document(document=document)
+    db.commit()
+    db.refresh(document)
+
+    assert document.extraction_status == "pending"
+    assert document.extraction_completed_at is None
 
     db.delete(document)
     db.commit()
