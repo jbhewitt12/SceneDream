@@ -260,6 +260,26 @@ def test_resolve_pipeline_request_preserves_explicit_skip_extraction(
     assert resolution.config_overrides["skip_extraction"] is True
 
 
+def test_resolve_pipeline_request_aligns_skip_extraction_with_skip_ranking(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _ = _configure_service(
+        db=db,
+        monkeypatch=monkeypatch,
+        source_path_exists=True,
+        existing_extractions=[object()],
+    )
+
+    resolution = service.resolve_pipeline_request(
+        _build_request(skip_extraction=False, skip_ranking=True)
+    )
+
+    assert resolution.args.skip_extraction is True
+    assert resolution.args.skip_ranking is True
+    assert resolution.config_overrides["skip_extraction"] is True
+
+
 def test_resolve_pipeline_request_applies_default_image_count_and_prompt_art_style(
     db: Session,
     monkeypatch: pytest.MonkeyPatch,

@@ -24,11 +24,14 @@ import { type DocumentDashboardEntry, DocumentsApi } from "@/api/documents"
 import { type PipelineRun, PipelineRunsApi } from "@/api/pipelineRuns"
 import { SettingsApi } from "@/api/settings"
 import { PromptArtStyleControl } from "@/components/Common/PromptArtStyleControl"
+import {
+  buildPipelineRunStartPayload,
+  shouldLaunchImageGenerationOnly,
+} from "@/features/documents/documentsLaunch"
 import useCustomToast from "@/hooks/useCustomToast"
 import {
   type PromptArtStyleSelection,
   getPromptArtStyleSelectionFromSettings,
-  getPromptArtStyleTextForPayload,
   getPromptArtStyleValidationMessage,
 } from "@/types/promptArtStyle"
 
@@ -138,9 +141,6 @@ const stageStatusColor = (status: string | null | undefined) => {
   }
   return "gray"
 }
-
-const isCompletedStage = (status: string | null | undefined) =>
-  status === "completed"
 
 const isTerminalRunStatus = (status: string | null | undefined) =>
   status === "completed" || status === "failed"
@@ -353,16 +353,13 @@ function DocumentsPage() {
     }))
 
     try {
-      const run = await PipelineRunsApi.start({
-        document_id: entry.document_id ?? undefined,
-        book_slug: entry.document_id ? undefined : entry.slug,
-        book_path: entry.document_id ? undefined : entry.source_path,
-        images_for_scenes: imagesForScenes,
-        prompt_art_style_mode: promptArtStyleSelection.promptArtStyleMode,
-        prompt_art_style_text: getPromptArtStyleTextForPayload(
+      const run = await PipelineRunsApi.start(
+        buildPipelineRunStartPayload({
+          entry,
+          imagesForScenes,
           promptArtStyleSelection,
-        ),
-      })
+        }),
+      )
 
       setActiveRunByKey((previous) => ({
         ...previous,
@@ -560,9 +557,7 @@ function DocumentCard({
     : null
   const hasActiveRun =
     activeRun !== undefined && !isTerminalRunStatus(activeRun.status)
-  const extractionComplete = isCompletedStage(entry.stages.extraction.status)
-  const rankingComplete = isCompletedStage(entry.stages.ranking.status)
-  const canGenerateImages = extractionComplete && rankingComplete
+  const canGenerateImages = shouldLaunchImageGenerationOnly(entry)
   const launchLabel = canGenerateImages
     ? "Generate images for scenes"
     : "Run pipeline"

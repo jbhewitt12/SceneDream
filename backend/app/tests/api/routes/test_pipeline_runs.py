@@ -233,6 +233,56 @@ def test_start_pipeline_run_allows_resume_when_source_path_missing(
     assert args.book_path is None
 
 
+def test_start_pipeline_run_preserves_image_generation_skip_flags(
+    client: TestClient,
+    pipeline_document: Document,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        pipeline_runs_routes.PipelineRunStartService,
+        "_source_path_exists",
+        lambda _self, _source_path: True,
+    )
+
+    execute_mock = AsyncMock(name="_execute_pipeline_run")
+
+    def _capture_spawn(coro: object, *, task_name: str) -> MagicMock:  # noqa: ARG001
+        if asyncio.iscoroutine(coro):
+            coro.close()
+        return MagicMock()
+
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_execute_pipeline_run",
+        execute_mock,
+    )
+    monkeypatch.setattr(
+        pipeline_runs_routes,
+        "_spawn_background_task",
+        _capture_spawn,
+    )
+
+    response = client.post(
+        "/api/v1/pipeline-runs",
+        json={
+            "document_id": str(pipeline_document.id),
+            "images_for_scenes": 1,
+            "skip_extraction": True,
+            "skip_ranking": True,
+        },
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["config_overrides"]["skip_extraction"] is True
+    assert payload["config_overrides"]["skip_ranking"] is True
+
+    execute_mock.assert_called_once()
+    args = execute_mock.call_args.kwargs["args"]
+    assert args.skip_extraction is True
+    assert args.skip_ranking is True
+
+
 def test_start_pipeline_run_rejects_missing_source_when_no_resume_data(
     client: TestClient,
     pipeline_document: Document,

@@ -82,6 +82,15 @@ class PipelineRunStartService:
         )
         source_path_exists = self._source_path_exists(resolved_book_path)
 
+        # Skipping ranking without reusing the existing extracted scenes is
+        # internally inconsistent for prompt/image-only launches.
+        if (
+            launch_request.skip_ranking
+            and not should_skip_extraction
+            and has_existing_extractions
+        ):
+            should_skip_extraction = True
+
         if not should_skip_extraction:
             if source_path_exists:
                 pass
