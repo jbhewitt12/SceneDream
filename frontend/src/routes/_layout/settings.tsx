@@ -163,59 +163,92 @@ function SettingsPage() {
   const savedDefaultPromptArtStyle = getPromptArtStyleSelectionFromSettings(
     settingsQuery.data?.settings,
   )
+  const parsedScenesPerRun = Number.parseInt(scenesPerRun, 10)
+  const scenesPerRunValidationMessage =
+    scenesPerRun.length > 0 &&
+    (!Number.isFinite(parsedScenesPerRun) || parsedScenesPerRun <= 0)
+      ? "Scenes per run must be a positive integer."
+      : null
+  const pipelineDefaultsDirty =
+    settingsQuery.data !== undefined &&
+    (scenesPerRun !==
+      String(settingsQuery.data.settings.default_scenes_per_run) ||
+      defaultPromptArtStyle.promptArtStyleMode !==
+        savedDefaultPromptArtStyle.promptArtStyleMode ||
+      defaultPromptArtStyle.promptArtStyleText !==
+        savedDefaultPromptArtStyle.promptArtStyleText)
+  const artStyleListsDirty =
+    artStyleListsQuery.data !== undefined &&
+    (recommendedStylesText !==
+      artStyleListsQuery.data.recommended_styles.join("\n") ||
+      otherStylesText !== artStyleListsQuery.data.other_styles.join("\n"))
 
-  const saveMutation = useMutation({
+  const savePipelineDefaultsMutation = useMutation({
     mutationFn: async () => {
-      const parsedScenes = Number.parseInt(scenesPerRun, 10)
-      if (!Number.isFinite(parsedScenes) || parsedScenes <= 0) {
-        throw new Error("Scenes per run must be a positive integer.")
+      if (scenesPerRunValidationMessage) {
+        throw new Error(scenesPerRunValidationMessage)
       }
-      if (hasEmptyCatalog) {
-        throw new Error(
-          "At least one style is required across Recommended and Other lists.",
-        )
+      if (!Number.isFinite(parsedScenesPerRun) || parsedScenesPerRun <= 0) {
+        throw new Error("Scenes per run must be a positive integer.")
       }
       if (defaultPromptArtStyleValidationMessage) {
         throw new Error(defaultPromptArtStyleValidationMessage)
       }
 
-      const settingsResponse = await SettingsApi.update({
-        default_scenes_per_run: parsedScenes,
+      return SettingsApi.update({
+        default_scenes_per_run: parsedScenesPerRun,
         default_prompt_art_style_mode: defaultPromptArtStyle.promptArtStyleMode,
         default_prompt_art_style_text: getPromptArtStyleTextForPayload(
           defaultPromptArtStyle,
         ),
       })
-      const listsResponse = await SettingsApi.updateArtStyleLists({
-        recommended_styles: parsedStyleLists.recommended,
-        other_styles: parsedStyleLists.other,
-      })
-      return { settingsResponse, listsResponse }
     },
     onSuccess: (payload) => {
-      queryClient.setQueryData(["settings", "bundle"], payload.settingsResponse)
-      queryClient.setQueryData(
-        ["settings", "art-style-lists"],
-        payload.listsResponse,
-      )
-      setScenesPerRun(
-        String(payload.settingsResponse.settings.default_scenes_per_run),
-      )
+      queryClient.setQueryData(["settings", "bundle"], payload)
+      setScenesPerRun(String(payload.settings.default_scenes_per_run))
       setDefaultPromptArtStyle(
-        getPromptArtStyleSelectionFromSettings(
-          payload.settingsResponse.settings,
-        ),
+        getPromptArtStyleSelectionFromSettings(payload.settings),
       )
-      setRecommendedStylesText(
-        payload.listsResponse.recommended_styles.join("\n"),
-      )
-      setOtherStylesText(payload.listsResponse.other_styles.join("\n"))
       queryClient.invalidateQueries({ queryKey: ["settings", "bundle"] })
-      showSuccessToast("Settings updated.")
+      showSuccessToast("Pipeline defaults updated.")
     },
     onError: (error) => {
       const message =
-        error instanceof Error ? error.message : "Failed to save settings."
+        error instanceof Error
+          ? error.message
+          : "Failed to save pipeline defaults."
+      showErrorToast(message)
+    },
+  })
+
+  const saveArtStyleListsMutation = useMutation({
+    mutationFn: async () => {
+      if (hasEmptyCatalog) {
+        throw new Error(
+          "At least one style is required across Recommended and Other lists.",
+        )
+      }
+
+      return SettingsApi.updateArtStyleLists({
+        recommended_styles: parsedStyleLists.recommended,
+        other_styles: parsedStyleLists.other,
+      })
+    },
+    onSuccess: (payload) => {
+      queryClient.setQueryData(["settings", "art-style-lists"], payload)
+      setRecommendedStylesText(payload.recommended_styles.join("\n"))
+      setOtherStylesText(payload.other_styles.join("\n"))
+      queryClient.invalidateQueries({ queryKey: ["settings", "bundle"] })
+      queryClient.invalidateQueries({
+        queryKey: ["settings", "art-style-lists"],
+      })
+      showSuccessToast("Art style lists updated.")
+    },
+    onError: (error) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to save art style lists."
       showErrorToast(message)
     },
   })
@@ -237,32 +270,25 @@ function SettingsPage() {
     },
   })
 
-  const handleReset = () => {
-    if (!settingsQuery.data || !artStyleListsQuery.data) {
+  const handlePipelineDefaultsReset = () => {
+    if (!settingsQuery.data) {
       return
     }
     setScenesPerRun(String(settingsQuery.data.settings.default_scenes_per_run))
     setDefaultPromptArtStyle(
       getPromptArtStyleSelectionFromSettings(settingsQuery.data.settings),
     )
+  }
+
+  const handleArtStyleListsReset = () => {
+    if (!artStyleListsQuery.data) {
+      return
+    }
     setRecommendedStylesText(
       artStyleListsQuery.data.recommended_styles.join("\n"),
     )
     setOtherStylesText(artStyleListsQuery.data.other_styles.join("\n"))
   }
-
-  const isDirty =
-    settingsQuery.data !== undefined &&
-    artStyleListsQuery.data !== undefined &&
-    (scenesPerRun !==
-      String(settingsQuery.data.settings.default_scenes_per_run) ||
-      defaultPromptArtStyle.promptArtStyleMode !==
-        savedDefaultPromptArtStyle.promptArtStyleMode ||
-      defaultPromptArtStyle.promptArtStyleText !==
-        savedDefaultPromptArtStyle.promptArtStyleText ||
-      recommendedStylesText !==
-        artStyleListsQuery.data.recommended_styles.join("\n") ||
-      otherStylesText !== artStyleListsQuery.data.other_styles.join("\n"))
 
   const isLoading = settingsQuery.isLoading || artStyleListsQuery.isLoading
   const queryError = settingsQuery.error ?? artStyleListsQuery.error
@@ -319,6 +345,11 @@ function SettingsPage() {
                     value={scenesPerRun}
                     onChange={(event) => setScenesPerRun(event.target.value)}
                   />
+                  {scenesPerRunValidationMessage ? (
+                    <Text mt={2} fontSize="sm" color="red.300">
+                      {scenesPerRunValidationMessage}
+                    </Text>
+                  ) : null}
                 </Box>
 
                 <Box>
@@ -351,6 +382,27 @@ function SettingsPage() {
                   Last updated:{" "}
                   {formatDateTime(settingsQuery.data.settings.updated_at)}
                 </Text>
+                <Flex justify="flex-end" gap={2}>
+                  <Button
+                    variant="ghost"
+                    onClick={handlePipelineDefaultsReset}
+                    disabled={!pipelineDefaultsDirty}
+                  >
+                    Reset
+                  </Button>
+                  <Button
+                    colorScheme="blue"
+                    onClick={() => savePipelineDefaultsMutation.mutate()}
+                    loading={savePipelineDefaultsMutation.isPending}
+                    disabled={
+                      !pipelineDefaultsDirty ||
+                      scenesPerRunValidationMessage !== null ||
+                      defaultPromptArtStyleValidationMessage !== null
+                    }
+                  >
+                    Save pipeline defaults
+                  </Button>
+                </Flex>
               </Stack>
             </Box>
 
@@ -430,7 +482,14 @@ function SettingsPage() {
                     </AlertContent>
                   </AlertRoot>
                 ) : null}
-                <Flex justify="flex-end">
+                <Flex justify="flex-end" gap={2} wrap="wrap">
+                  <Button
+                    variant="ghost"
+                    onClick={handleArtStyleListsReset}
+                    disabled={!artStyleListsDirty}
+                  >
+                    Reset
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -439,6 +498,14 @@ function SettingsPage() {
                   >
                     Reset to defaults
                   </Button>
+                  <Button
+                    colorScheme="blue"
+                    onClick={() => saveArtStyleListsMutation.mutate()}
+                    loading={saveArtStyleListsMutation.isPending}
+                    disabled={!artStyleListsDirty || hasEmptyCatalog}
+                  >
+                    Save styles
+                  </Button>
                 </Flex>
                 <Text fontSize="sm" color="fg.muted">
                   Last updated:{" "}
@@ -446,24 +513,6 @@ function SettingsPage() {
                 </Text>
               </Stack>
             </Box>
-
-            <Flex justify="flex-end" gap={2}>
-              <Button variant="ghost" onClick={handleReset} disabled={!isDirty}>
-                Reset
-              </Button>
-              <Button
-                colorScheme="blue"
-                onClick={() => saveMutation.mutate()}
-                loading={saveMutation.isPending}
-                disabled={
-                  !isDirty ||
-                  hasEmptyCatalog ||
-                  defaultPromptArtStyleValidationMessage !== null
-                }
-              >
-                Save settings
-              </Button>
-            </Flex>
           </>
         ) : null}
       </Stack>

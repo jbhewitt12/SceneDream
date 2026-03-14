@@ -17,8 +17,8 @@ export const shouldLaunchImageGenerationOnly = (
 
 type BuildPipelineRunStartPayloadParams = {
   entry: DocumentDashboardEntry
-  imagesForScenes: number
-  promptArtStyleSelection: PromptArtStyleSelection
+  imagesForScenes?: number
+  promptArtStyleSelection?: PromptArtStyleSelection
 }
 
 export const buildPipelineRunStartPayload = ({
@@ -30,11 +30,17 @@ export const buildPipelineRunStartPayload = ({
     document_id: entry.document_id ?? undefined,
     book_slug: entry.document_id ? undefined : entry.slug,
     book_path: entry.document_id ? undefined : entry.source_path,
-    images_for_scenes: imagesForScenes,
-    prompt_art_style_mode: promptArtStyleSelection.promptArtStyleMode,
-    prompt_art_style_text: getPromptArtStyleTextForPayload(
+  }
+
+  if (imagesForScenes !== undefined) {
+    payload.images_for_scenes = imagesForScenes
+  }
+
+  if (promptArtStyleSelection !== undefined) {
+    payload.prompt_art_style_mode = promptArtStyleSelection.promptArtStyleMode
+    payload.prompt_art_style_text = getPromptArtStyleTextForPayload(
       promptArtStyleSelection,
-    ),
+    )
   }
 
   if (shouldLaunchImageGenerationOnly(entry)) {

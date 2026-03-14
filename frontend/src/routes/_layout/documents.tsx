@@ -148,6 +148,9 @@ const isTerminalRunStatus = (status: string | null | undefined) =>
 const toEntryKey = (entry: DocumentDashboardEntry) =>
   entry.document_id ?? `${entry.slug}:${entry.source_path}`
 
+const hasOwnKey = (value: object, key: string) =>
+  Object.prototype.hasOwnProperty.call(value, key)
+
 function DocumentsPage() {
   const { showErrorToast, showSuccessToast } = useCustomToast()
   const [search, setSearch] = useState("")
@@ -200,47 +203,6 @@ function DocumentsPage() {
       { recommended: 0, other: 0 },
     )
   }, [settingsQuery.data?.art_styles])
-  const settingsDefaultsResolved = settingsQuery.status !== "pending"
-
-  useEffect(() => {
-    const entries = dashboardQuery.data?.data
-    if (!entries?.length || !settingsDefaultsResolved) {
-      return
-    }
-
-    setScenesPerRunByKey((previous) => {
-      let didChange = false
-      const next = { ...previous }
-      for (const entry of entries) {
-        const key = toEntryKey(entry)
-        if (!(key in next)) {
-          didChange = true
-          next[key] = String(defaultScenesPerRun)
-        }
-      }
-      return didChange ? next : previous
-    })
-
-    setArtStyleSelectionByKey((previous) => {
-      let didChange = false
-      const next = { ...previous }
-      for (const entry of entries) {
-        const key = toEntryKey(entry)
-        if (!(key in next)) {
-          didChange = true
-          next[key] = { ...defaultPromptArtStyleSelection }
-        }
-      }
-      return didChange ? next : previous
-    })
-  }, [
-    dashboardQuery.data?.data,
-    defaultPromptArtStyleSelection,
-    defaultScenesPerRun,
-    settingsDefaultsResolved,
-    toEntryKey,
-  ])
-
   useEffect(() => {
     const hasActiveRuns = Object.values(activeRunByKey).some(
       (run) => !isTerminalRunStatus(run.status),
@@ -331,10 +293,15 @@ function DocumentsPage() {
 
   const handleLaunch = async (entry: DocumentDashboardEntry) => {
     const key = toEntryKey(entry)
-    const scenesRaw = scenesPerRunByKey[key] ?? String(defaultScenesPerRun)
+    const hasScenesOverride = hasOwnKey(scenesPerRunByKey, key)
+    const hasArtStyleOverride = hasOwnKey(artStyleSelectionByKey, key)
+    const scenesRaw = hasScenesOverride
+      ? scenesPerRunByKey[key]
+      : String(defaultScenesPerRun)
     const imagesForScenes = Number.parseInt(scenesRaw, 10)
-    const promptArtStyleSelection =
-      artStyleSelectionByKey[key] ?? defaultPromptArtStyleSelection
+    const promptArtStyleSelection = hasArtStyleOverride
+      ? artStyleSelectionByKey[key]
+      : defaultPromptArtStyleSelection
     const promptArtStyleValidationMessage = getPromptArtStyleValidationMessage(
       promptArtStyleSelection,
     )
@@ -356,8 +323,10 @@ function DocumentsPage() {
       const run = await PipelineRunsApi.start(
         buildPipelineRunStartPayload({
           entry,
-          imagesForScenes,
-          promptArtStyleSelection,
+          imagesForScenes: hasScenesOverride ? imagesForScenes : undefined,
+          promptArtStyleSelection: hasArtStyleOverride
+            ? promptArtStyleSelection
+            : undefined,
         }),
       )
 
@@ -467,6 +436,8 @@ function DocumentsPage() {
         <Stack gap={4}>
           {filteredEntries.map((entry) => {
             const key = toEntryKey(entry)
+            const hasScenesOverride = hasOwnKey(scenesPerRunByKey, key)
+            const hasArtStyleOverride = hasOwnKey(artStyleSelectionByKey, key)
             return (
               <DocumentCard
                 key={`${entry.source_path}:${entry.slug}`}
@@ -504,6 +475,26 @@ function DocumentsPage() {
                     },
                   }))
                 }
+                usesSavedSceneDefault={!hasScenesOverride}
+                usesSavedArtStyleDefault={!hasArtStyleOverride}
+                onUseSavedDefaults={() => {
+                  setScenesPerRunByKey((previous) => {
+                    if (!hasOwnKey(previous, key)) {
+                      return previous
+                    }
+                    const next = { ...previous }
+                    delete next[key]
+                    return next
+                  })
+                  setArtStyleSelectionByKey((previous) => {
+                    if (!hasOwnKey(previous, key)) {
+                      return previous
+                    }
+                    const next = { ...previous }
+                    delete next[key]
+                    return next
+                  })
+                }}
                 onLaunch={() => handleLaunch(entry)}
               />
             )
@@ -529,9 +520,12 @@ function DocumentCard({
   artStyleSelection,
   artStyleCatalogCounts,
   launching,
+  usesSavedSceneDefault,
+  usesSavedArtStyleDefault,
   onScenesPerRunChange,
   onArtStyleModeChange,
   onArtStyleTextChange,
+  onUseSavedDefaults,
   onLaunch,
 }: {
   entry: DocumentDashboardEntry
@@ -543,11 +537,14 @@ function DocumentCard({
     other: number
   }
   launching: boolean
+  usesSavedSceneDefault: boolean
+  usesSavedArtStyleDefault: boolean
   onScenesPerRunChange: (value: string) => void
   onArtStyleModeChange: (
     value: PromptArtStyleSelection["promptArtStyleMode"],
   ) => void
   onArtStyleTextChange: (value: string) => void
+  onUseSavedDefaults: () => void
   onLaunch: () => void
 }) {
   const runSummary: RunSummaryLike | null =
@@ -653,18 +650,33 @@ function DocumentCard({
               />
             </Box>
             <Flex align="flex-end">
-              <Button
-                colorScheme="blue"
-                onClick={onLaunch}
-                loading={launching || hasActiveRun}
-                disabled={!canLaunch || artStyleValidationMessage !== null}
-                gap={2}
-              >
-                <FiPlay />
-                {launchLabel}
-              </Button>
+              <Stack align="stretch" w="full">
+                <Button
+                  colorScheme="blue"
+                  onClick={onLaunch}
+                  loading={launching || hasActiveRun}
+                  disabled={!canLaunch || artStyleValidationMessage !== null}
+                  gap={2}
+                >
+                  <FiPlay />
+                  {launchLabel}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onUseSavedDefaults}
+                  disabled={usesSavedSceneDefault && usesSavedArtStyleDefault}
+                >
+                  Use saved defaults
+                </Button>
+              </Stack>
             </Flex>
           </Grid>
+          <Text mt={2} fontSize="sm" color="fg.muted">
+            {usesSavedSceneDefault && usesSavedArtStyleDefault
+              ? "This card is following the saved pipeline defaults."
+              : "This card has explicit launch overrides."}
+          </Text>
           {canGenerateImages ? (
             <Text mt={2} fontSize="sm" color="fg.muted">
               Generates images for the highest-ranked scenes that do not already
