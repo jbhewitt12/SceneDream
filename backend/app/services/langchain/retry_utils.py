@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import random
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Coroutine, Iterable
 from typing import Any, TypeVar
 
 T = TypeVar("T")
@@ -91,4 +92,42 @@ def retry_with_backoff(
                 f"Retrying in {sleep_for:.1f}s."
             )
             time.sleep(sleep_for)
+            delay *= backoff_factor
+
+
+async def async_retry_with_backoff(
+    func: Callable[..., Coroutine[Any, Any, T]],
+    *args: Any,
+    max_attempts: int = 5,
+    base_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    jitter: float = 0.1,
+    **kwargs: Any,
+) -> T:
+    """Async version of ``retry_with_backoff``.
+
+    Invokes an async ``func`` with retries when rate limiting errors occur,
+    using ``asyncio.sleep`` for non-blocking backoff.
+    """
+
+    attempt = 0
+    delay = base_delay
+    while True:
+        try:
+            return await func(*args, **kwargs)
+        except BaseException as exc:  # noqa: BLE001 allow non-Exception types from SDKs
+            if not is_rate_limit_error(exc):
+                raise
+
+            attempt += 1
+            if attempt >= max_attempts:
+                raise
+
+            sleep_for = delay + random.uniform(0, delay * jitter)
+            func_name = getattr(func, "__name__", func.__class__.__name__)
+            print(
+                f"Rate limit encountered on attempt {attempt}/{max_attempts} for {func_name}. "
+                f"Retrying in {sleep_for:.1f}s."
+            )
+            await asyncio.sleep(sleep_for)
             delay *= backoff_factor

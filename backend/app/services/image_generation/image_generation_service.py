@@ -23,6 +23,7 @@ from app.services.image_generation import (
     gpt_image_api,  # noqa: F401 - ensures provider registration
 )
 from app.services.image_generation.provider_registry import ProviderRegistry
+from app.services.langchain.retry_utils import async_retry_with_backoff
 from models.image_prompt import ImagePrompt
 
 logger = logging.getLogger(__name__)
@@ -832,8 +833,9 @@ class ImageGenerationService:
                     "API key is required for image generation"
                 )
 
-            # Call provider's generate_image method
-            result = await provider.generate_image(
+            # Call provider's generate_image method (with retry on rate limits)
+            result = await async_retry_with_backoff(
+                provider.generate_image,
                 prompt=task.prompt.prompt_text,
                 model=config.model,
                 size=task.size,
