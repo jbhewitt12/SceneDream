@@ -345,7 +345,7 @@ function SettingsPage() {
               backdropFilter="blur(8px) saturate(140%)"
             >
               <Stack gap={4}>
-                <Heading size="sm">Art Styles</Heading>
+                <Heading size="sm">Random Style Mix</Heading>
                 <Text fontSize="sm" color="fg.muted">
                   Enter one style per line.
                 </Text>
