@@ -910,11 +910,38 @@ class ImageGenerationService:
                 "request_id": None,  # Could extract from API response if available
             }
 
-            generated_image = self._image_repo.create(
-                data=image_data,
-                commit=True,
-                refresh=True,
+            existing_deleted = self._image_repo.find_existing_by_params(
+                image_prompt_id=task.prompt.id,
+                variant_index=task.variant_index,
+                provider=config.provider,
+                model=config.model,
+                size=task.size,
+                quality=task.quality,
+                style=task.style,
+                include_file_deleted=True,
             )
+            if existing_deleted and existing_deleted.file_deleted:
+                existing_deleted.generated_asset_id = None
+                existing_deleted.storage_path = task.storage_path
+                existing_deleted.file_name = task.file_name
+                existing_deleted.width = width
+                existing_deleted.height = height
+                existing_deleted.bytes_approx = file_size
+                existing_deleted.checksum_sha256 = checksum
+                existing_deleted.request_id = None
+                existing_deleted.error = None
+                existing_deleted.file_deleted = False
+                existing_deleted.file_deleted_at = None
+                self._session.add(existing_deleted)
+                self._session.commit()
+                self._session.refresh(existing_deleted)
+                generated_image = existing_deleted
+            else:
+                generated_image = self._image_repo.create(
+                    data=image_data,
+                    commit=True,
+                    refresh=True,
+                )
 
             logger.info(
                 "Generated image %s for prompt %s (%s, %s)",
@@ -940,29 +967,49 @@ class ImageGenerationService:
             # Try to create a failed record
             try:
                 assert task.prompt.scene_extraction is not None
-                failed_data = {
-                    "scene_extraction_id": task.prompt.scene_extraction_id,
-                    "image_prompt_id": task.prompt.id,
-                    "book_slug": task.prompt.scene_extraction.book_slug,
-                    "chapter_number": task.prompt.scene_extraction.chapter_number,
-                    "variant_index": task.variant_index,
-                    "provider": config.provider,
-                    "model": config.model,
-                    "size": task.size,
-                    "quality": task.quality,
-                    "style": task.style,
-                    "aspect_ratio": task.aspect_ratio,
-                    "response_format": config.response_format,
-                    "storage_path": task.storage_path,
-                    "file_name": task.file_name,
-                    "error": error_msg,
-                }
-                failed_image = self._image_repo.create(
-                    data=failed_data,
-                    commit=True,
-                    refresh=True,
+                existing_deleted = self._image_repo.find_existing_by_params(
+                    image_prompt_id=task.prompt.id,
+                    variant_index=task.variant_index,
+                    provider=config.provider,
+                    model=config.model,
+                    size=task.size,
+                    quality=task.quality,
+                    style=task.style,
+                    include_file_deleted=True,
                 )
-                logger.info("Created failed image record: %s", failed_image.id)
+                if existing_deleted and existing_deleted.file_deleted:
+                    existing_deleted.error = error_msg
+                    self._session.add(existing_deleted)
+                    self._session.commit()
+                    self._session.refresh(existing_deleted)
+                    logger.info(
+                        "Updated deleted image record with failure: %s",
+                        existing_deleted.id,
+                    )
+                else:
+                    failed_data = {
+                        "scene_extraction_id": task.prompt.scene_extraction_id,
+                        "image_prompt_id": task.prompt.id,
+                        "book_slug": task.prompt.scene_extraction.book_slug,
+                        "chapter_number": task.prompt.scene_extraction.chapter_number,
+                        "variant_index": task.variant_index,
+                        "provider": config.provider,
+                        "model": config.model,
+                        "size": task.size,
+                        "quality": task.quality,
+                        "style": task.style,
+                        "aspect_ratio": task.aspect_ratio,
+                        "response_format": config.response_format,
+                        "storage_path": task.storage_path,
+                        "file_name": task.file_name,
+                        "error": error_msg,
+                    }
+                    failed_image = self._image_repo.create(
+                        data=failed_data,
+                        commit=True,
+                        refresh=True,
+                    )
+                    logger.info("Created failed image record: %s", failed_image.id)
             except Exception as db_exc:
                 logger.error("Failed to create error record: %s", db_exc)
 

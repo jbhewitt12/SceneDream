@@ -57,7 +57,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from dotenv import load_dotenv
 from sqlmodel import Session
@@ -153,6 +153,7 @@ def _count_prompt_ready_scenes_without_images(
     image_repo: GeneratedImageRepository,
     book_slug: str,
     target_scenes: int,
+    scene_has_ready_prompts: Callable[[UUID], bool] | None = None,
 ) -> tuple[int, int]:
     """Count unique ranked scenes that are ready for image generation."""
 
@@ -176,7 +177,12 @@ def _count_prompt_ready_scenes_without_images(
         if image_repo.list_for_scene(scene_id, limit=1):
             continue
 
-        if prompt_repo.has_any_for_scene(scene_id):
+        has_ready_prompts = (
+            scene_has_ready_prompts(scene_id)
+            if scene_has_ready_prompts is not None
+            else prompt_repo.has_any_for_scene(scene_id)
+        )
+        if has_ready_prompts:
             ready_scenes += 1
         else:
             scenes_missing_prompts += 1
@@ -185,6 +191,55 @@ def _count_prompt_ready_scenes_without_images(
             break
 
     return ready_scenes, scenes_missing_prompts
+
+
+def _build_run_prompt_generation_config(
+    args: argparse.Namespace,
+) -> ImagePromptGenerationConfig:
+    """Build the effective prompt-generation config for pipeline runs."""
+
+    config_kwargs = _build_prompt_generation_config_kwargs(args)
+
+    if hasattr(args, "prompts_per_scene") and args.prompts_per_scene is not None:
+        config_kwargs["variants_count"] = args.prompts_per_scene
+        config_kwargs["use_ranking_recommendation"] = not (
+            hasattr(args, "ignore_ranking_recommendations")
+            and args.ignore_ranking_recommendations
+        )
+    else:
+        config_kwargs["use_ranking_recommendation"] = True
+
+    return ImagePromptGenerationConfig(**config_kwargs)
+
+
+def _scene_has_matching_prompt_set(
+    *,
+    prompt_repo: ImagePromptRepository,
+    prompt_service: ImagePromptGenerationService,
+    scene_id: UUID,
+) -> bool:
+    """Return True when the latest stored prompt set matches the requested run config."""
+
+    config = prompt_service._config
+    effective_variants_count = config.variants_count
+    if config.use_ranking_recommendation:
+        ranking = prompt_service._ranking_repo.get_latest_for_scene(scene_id)
+        if ranking and ranking.recommended_prompt_count is not None:
+            effective_variants_count = ranking.recommended_prompt_count
+
+    resolved_config = config.copy_with(variants_count=effective_variants_count)
+    existing_prompts = prompt_repo.get_latest_set_for_scene(
+        scene_id,
+        resolved_config.model_name,
+        resolved_config.prompt_version,
+    )
+    if not existing_prompts:
+        return False
+
+    return prompt_service._existing_prompt_set_matches_config(
+        existing_prompts,
+        resolved_config,
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -897,6 +952,8 @@ async def _run_full_pipeline(
             effective_prompts_for_scenes = fallback_prompt_scene_limit
             prompt_limit_inherited_from_images = primary_prompt_scene_limit is None
 
+    prompt_generation_config = _build_run_prompt_generation_config(args)
+
     # Auto-detect if prompt generation should be skipped
     skip_prompts = args.skip_prompts
     if not skip_prompts and not args.dry_run:
@@ -904,6 +961,10 @@ async def _run_full_pipeline(
             ranking_repo = SceneRankingRepository(session)
             prompt_repo = ImagePromptRepository(session)
             image_repo = GeneratedImageRepository(session)
+            prompt_service = ImagePromptGenerationService(
+                session,
+                config=prompt_generation_config,
+            )
             target_scenes = (
                 effective_prompts_for_scenes if effective_prompts_for_scenes else 100
             )
@@ -915,6 +976,11 @@ async def _run_full_pipeline(
                     image_repo=image_repo,
                     book_slug=book_slug,
                     target_scenes=target_scenes,
+                    scene_has_ready_prompts=lambda scene_id: _scene_has_matching_prompt_set(
+                        prompt_repo=prompt_repo,
+                        prompt_service=prompt_service,
+                        scene_id=scene_id,
+                    ),
                 )
             )
 
@@ -980,15 +1046,12 @@ async def _run_full_pipeline(
                 )
 
             with Session(engine) as session:
-                # Get top-ranked scenes without prompts
+                # Get top-ranked scenes and regenerate only when prompts are missing or mismatched.
                 ranking_repo = SceneRankingRepository(session)
                 prompt_repo = ImagePromptRepository(session)
 
                 # Determine target number of scenes to generate prompts for
                 target_scenes = effective_prompts_for_scenes
-
-                # Determine config based on flags
-                config_kwargs = _build_prompt_generation_config_kwargs(args)
 
                 if (
                     hasattr(args, "prompts_per_scene")
@@ -998,27 +1061,19 @@ async def _run_full_pipeline(
                         hasattr(args, "ignore_ranking_recommendations")
                         and args.ignore_ranking_recommendations
                     ):
-                        # Explicit override mode
-                        config_kwargs["variants_count"] = args.prompts_per_scene
-                        config_kwargs["use_ranking_recommendation"] = False
                         logger.info(
                             "Using fixed variant count: %d (ignoring rankings)",
                             args.prompts_per_scene,
                         )
                     else:
-                        # Fallback for scenes without rankings
-                        config_kwargs["variants_count"] = args.prompts_per_scene
-                        config_kwargs["use_ranking_recommendation"] = True
                         logger.info(
                             "Using ranking recommendations (fallback: %d variants)",
                             args.prompts_per_scene,
                         )
                 else:
-                    # Full auto mode
-                    config_kwargs["use_ranking_recommendation"] = True
                     logger.info("Using ranking recommendations (fallback: 4 variants)")
 
-                prompt_config = ImagePromptGenerationConfig(**config_kwargs)
+                prompt_config = _build_run_prompt_generation_config(args)
                 prompt_service = ImagePromptGenerationService(
                     session, config=prompt_config
                 )
@@ -1056,11 +1111,14 @@ async def _run_full_pipeline(
                     if ranking.scene_extraction:
                         scene = ranking.scene_extraction
 
-                        # Check if scene already has prompts
-                        existing_prompts = prompt_repo.has_any_for_scene(scene.id)
-                        if existing_prompts:
+                        # Reuse only prompt sets that already match this run's style config.
+                        if _scene_has_matching_prompt_set(
+                            prompt_repo=prompt_repo,
+                            prompt_service=prompt_service,
+                            scene_id=scene.id,
+                        ):
                             logger.debug(
-                                "Scene %s already has prompts, skipping",
+                                "Scene %s already has matching prompts, skipping",
                                 scene.id,
                             )
                             continue

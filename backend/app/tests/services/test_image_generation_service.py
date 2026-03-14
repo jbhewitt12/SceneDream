@@ -204,6 +204,86 @@ async def test_generate_for_selection_idempotency(
     assert result_ids == []
 
 
+async def test_generate_for_selection_regenerates_when_only_deleted_image_exists(
+    db: Session,
+    scene_factory: Callable[..., SceneExtraction],
+    prompt_factory: Callable[..., ImagePrompt],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    """Deleted image records must not block regeneration for the same prompt."""
+
+    scene = scene_factory()
+    prompt = prompt_factory(
+        scene,
+        style_tags=["vivid"],
+        attributes={
+            "camera": "dslr",
+            "lens": "35mm",
+            "composition": "rule-of-thirds",
+            "lighting": "neon glow",
+            "palette": "cyan and magenta",
+            "aspect_ratio": "1:1",
+            "references": ["Blade Runner"],
+        },
+    )
+
+    image_repo = GeneratedImageRepository(db)
+    image_repo.create(
+        data={
+            "scene_extraction_id": scene.id,
+            "image_prompt_id": prompt.id,
+            "book_slug": scene.book_slug,
+            "chapter_number": scene.chapter_number,
+            "variant_index": 0,
+            "provider": "openai_gpt_image",
+            "model": "gpt-image-1.5",
+            "size": "1024x1024",
+            "quality": "standard",
+            "style": "vivid",
+            "aspect_ratio": "1:1",
+            "response_format": "b64_json",
+            "storage_path": f"img/generated/{scene.book_slug}/chapter-{scene.chapter_number}",
+            "file_name": f"scene-{scene.scene_number}-deleted.png",
+            "file_deleted": True,
+        },
+        commit=True,
+    )
+
+    monkeypatch.setattr(image_generation_service_module, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        image_generation_service_module,
+        "_GENERATED_IMAGES_ROOT",
+        (tmp_path / "img").resolve(),
+    )
+
+    provider = image_generation_service_module.ProviderRegistry.get("openai_gpt_image")
+    assert provider is not None
+
+    async def fake_generate_image(**_: object) -> GeneratedImageResult:
+        return GeneratedImageResult(image_data=b"regenerated-image")
+
+    monkeypatch.setattr(provider, "generate_image", fake_generate_image)
+
+    service = ImageGenerationService(
+        db,
+        config=ImageGenerationConfig(storage_base="img/generated"),
+        api_key="test-key",
+    )
+
+    result_ids = await service.generate_for_selection(
+        prompt_ids=[prompt.id],
+        provider="openai_gpt_image",
+        model="gpt-image-1.5",
+    )
+
+    assert len(result_ids) == 1
+
+    images = image_repo.list_for_prompt(prompt.id, provider="openai_gpt_image")
+    active_images = [image for image in images if not image.file_deleted]
+    assert len(active_images) == 1
+
+
 async def test_generate_for_selection_filters_by_book(
     db: Session,
     scene_factory: Callable[..., SceneExtraction],
@@ -401,7 +481,7 @@ async def test_generate_for_selection_does_not_overwrite_same_scene_variant_file
     assert provider is not None
 
     async def fake_generate_image(prompt: str, **_: object) -> GeneratedImageResult:
-        return GeneratedImageResult(image_data=f"image:{prompt}".encode("utf-8"))
+        return GeneratedImageResult(image_data=f"image:{prompt}".encode())
 
     monkeypatch.setattr(provider, "generate_image", fake_generate_image)
 

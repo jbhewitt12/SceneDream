@@ -334,6 +334,8 @@ class GeneratedImageRepository:
         size: str,
         quality: str,
         style: str,
+        *,
+        include_file_deleted: bool = False,
     ) -> GeneratedImage | None:
         """
         Find an existing image matching the idempotency constraint parameters.
@@ -348,6 +350,8 @@ class GeneratedImageRepository:
             GeneratedImage.quality == quality,
             GeneratedImage.style == style,
         )
+        if not include_file_deleted:
+            statement = statement.where(GeneratedImage.file_deleted.is_(False))
         return self._session.exec(statement).first()
 
     def mark_failed(
