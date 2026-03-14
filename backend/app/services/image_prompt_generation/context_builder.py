@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Any
@@ -13,6 +14,8 @@ from .models import (
     ImagePromptGenerationConfig,
     ImagePromptGenerationServiceError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -58,14 +61,34 @@ class SceneContextBuilder:
         before = max(config.context_before, 0)
         after = max(config.context_after, 0)
         total_paragraphs = len(chapter_context.paragraphs)
+        effective_start = base_start
+        effective_end = base_end
+
+        if total_paragraphs > 0:
+            effective_start = min(base_start, total_paragraphs)
+            effective_end = min(base_end, total_paragraphs)
+            if effective_end < effective_start:
+                effective_end = effective_start
+
+        if effective_start != base_start or effective_end != base_end:
+            logger.warning(
+                "Clamped scene paragraph span for scene %s in chapter %s from %s-%s to %s-%s because the parsed chapter has %s paragraphs",
+                scene.id,
+                scene.chapter_number,
+                base_start,
+                base_end,
+                effective_start,
+                effective_end,
+                total_paragraphs,
+            )
 
         # Only include paragraphs OUTSIDE the scene span as context.
         # The scene content is already provided verbatim in the "Scene Excerpt" section,
         # so we only need the surrounding context (before/after) here.
-        before_start = max(1, base_start - before)
-        before_end = base_start - 1  # Stop before the scene starts
-        after_start = base_end + 1  # Start after the scene ends
-        after_end = min(total_paragraphs, base_end + after)
+        before_start = max(1, effective_start - before)
+        before_end = effective_start - 1  # Stop before the scene starts
+        after_start = effective_end + 1  # Start after the scene ends
+        after_end = min(total_paragraphs, effective_end + after)
 
         formatted_lines: list[str] = []
         # Add context paragraphs BEFORE the scene
@@ -92,7 +115,7 @@ class SceneContextBuilder:
         context_window = {
             "chapter_number": scene.chapter_number,
             "chapter_title": chapter_context.title,
-            "paragraph_span": [base_start, base_end],
+            "paragraph_span": [effective_start, effective_end],
             "context_before_span": [before_start, before_end]
             if before_end >= before_start
             else None,
@@ -102,6 +125,8 @@ class SceneContextBuilder:
             "paragraphs_before": before,
             "paragraphs_after": after,
         }
+        if effective_start != base_start or effective_end != base_end:
+            context_window["requested_paragraph_span"] = [base_start, base_end]
         return context_window, context_text
 
     def _load_book_context(

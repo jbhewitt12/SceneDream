@@ -974,3 +974,38 @@ def test_build_scene_context_paragraph_numbering(
     # Scene paragraphs should NOT be in context text (they're in the scene excerpt)
     for para_num in range(scene.scene_paragraph_start, scene.scene_paragraph_end + 1):
         assert f"[Paragraph {para_num}]" not in context_text
+
+
+@pytest.mark.skipif(not EXCESSION_EPUB.exists(), reason="Test EPUB not available")
+def test_build_scene_context_clamps_stale_scene_paragraph_span(
+    db: Session,
+    scene_factory,
+) -> None:
+    scene = scene_factory(
+        book_slug="excession",
+        source_book_path=str(EXCESSION_EPUB),
+        chapter_number=80,
+        chapter_title="VII",
+        scene_paragraph_start=13,
+        scene_paragraph_end=13,
+        chunk_paragraph_start=1,
+        chunk_paragraph_end=45,
+    )
+
+    service = ImagePromptGenerationService(db)
+    config = ImagePromptGenerationConfig()
+
+    context_window, context_text = service._context_builder.build_scene_context(
+        scene=scene,
+        config=config,
+    )
+
+    cached_chapters = service._context_builder._book_cache[scene.source_book_path]
+    total_paragraphs = len(cached_chapters[scene.chapter_number].paragraphs)
+
+    assert total_paragraphs == 11
+    assert context_window["paragraph_span"] == [11, 11]
+    assert context_window["requested_paragraph_span"] == [13, 13]
+    assert context_window["context_before_span"] == [8, 10]
+    assert context_window["context_after_span"] is None
+    assert "[Paragraph 10]" in context_text
