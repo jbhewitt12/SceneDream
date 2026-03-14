@@ -220,6 +220,48 @@ def test_put_art_style_lists_persists_order_and_updates_settings(
         )
 
 
+def test_post_art_style_lists_reset_restores_defaults(client: TestClient) -> None:
+    from app.services.image_prompt_generation.core.style_sampler import (
+        OTHER_STYLES,
+        RECOMMENDED_STYLES,
+    )
+
+    original_lists = _snapshot_style_lists(client)
+
+    try:
+        # Put custom styles
+        client.put(
+            "/api/v1/settings/art-style-lists",
+            json={
+                "recommended_styles": ["Custom Style A", "Custom Style B"],
+                "other_styles": ["Custom Style C"],
+            },
+        )
+
+        # Verify custom styles are in place
+        custom = client.get("/api/v1/settings/art-style-lists")
+        assert custom.status_code == 200
+        assert custom.json()["recommended_styles"] == [
+            "Custom Style A",
+            "Custom Style B",
+        ]
+
+        # Reset to defaults
+        reset_response = client.post("/api/v1/settings/art-style-lists/reset")
+        assert reset_response.status_code == 200
+        reset_payload = reset_response.json()
+        assert reset_payload["recommended_styles"] == list(RECOMMENDED_STYLES)
+        assert reset_payload["other_styles"] == list(OTHER_STYLES)
+
+        # Verify via GET round-trip
+        get_response = client.get("/api/v1/settings/art-style-lists")
+        assert get_response.status_code == 200
+        assert get_response.json()["recommended_styles"] == list(RECOMMENDED_STYLES)
+        assert get_response.json()["other_styles"] == list(OTHER_STYLES)
+    finally:
+        _restore_style_lists(client, original_lists)
+
+
 def test_put_art_style_lists_rejects_empty_payload(client: TestClient) -> None:
     response = client.put(
         "/api/v1/settings/art-style-lists",

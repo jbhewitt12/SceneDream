@@ -220,6 +220,23 @@ function SettingsPage() {
     },
   })
 
+  const resetToDefaultsMutation = useMutation({
+    mutationFn: () => SettingsApi.resetArtStyleLists(),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["settings", "art-style-lists"], data)
+      setRecommendedStylesText(data.recommended_styles.join("\n"))
+      setOtherStylesText(data.other_styles.join("\n"))
+      showSuccessToast("Art style lists reset to defaults.")
+    },
+    onError: (error) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to reset art style lists."
+      showErrorToast(message)
+    },
+  })
+
   const handleReset = () => {
     if (!settingsQuery.data || !artStyleListsQuery.data) {
       return
@@ -354,7 +371,8 @@ function SettingsPage() {
                     Random Style Mix samples from both lists, weighted toward
                     Recommended styles, and passes that mix into prompt
                     generation so each run can explore a range of visual
-                    directions. We generate multiple images for each scene, with a different style for each image.
+                    directions. We generate multiple images for each scene, with
+                    a different style for each image.
                   </Text>
                 </Box>
                 <Box>
@@ -412,6 +430,16 @@ function SettingsPage() {
                     </AlertContent>
                   </AlertRoot>
                 ) : null}
+                <Flex justify="flex-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => resetToDefaultsMutation.mutate()}
+                    loading={resetToDefaultsMutation.isPending}
+                  >
+                    Reset to defaults
+                  </Button>
+                </Flex>
                 <Text fontSize="sm" color="fg.muted">
                   Last updated:{" "}
                   {formatDateTime(artStyleListsQuery.data.updated_at)}

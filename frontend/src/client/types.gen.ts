@@ -146,6 +146,13 @@ export type DocumentDashboardStageStatus = {
 };
 
 /**
+ * Response payload for bulk document stage synchronization.
+ */
+export type DocumentStageSyncResponse = {
+    synced: number;
+};
+
+/**
  * Schema for updating image approval status.
  */
 export type GeneratedImageApprovalUpdate = {
@@ -674,6 +681,8 @@ export type ValidationError = {
 
 export type DocumentsGetDocumentsDashboardResponse = (DocumentDashboardResponse);
 
+export type DocumentsSyncDocumentStagesResponse = (DocumentStageSyncResponse);
+
 export type GeneratedImagesListProvidersResponse = (Array<(string)>);
 
 export type GeneratedImagesListGeneratedImagesData = {
@@ -926,5 +935,7 @@ export type SettingsUpdateArtStyleListsData = {
 };
 
 export type SettingsUpdateArtStyleListsResponse = (ArtStyleListsRead);
+
+export type SettingsResetArtStyleListsResponse = (ArtStyleListsRead);
 
 export type UtilsHealthCheckResponse = (boolean);

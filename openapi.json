@@ -49,6 +49,28 @@
         }
       }
     },
+    "/api/v1/documents/sync-stages": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Sync Document Stages",
+        "description": "Synchronize extraction/ranking statuses for all documents.",
+        "operationId": "documents-sync_document_stages",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentStageSyncResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/image-prompts/scene/{scene_id}": {
       "get": {
         "tags": [
@@ -2311,6 +2333,28 @@
         }
       }
     },
+    "/api/v1/settings/art-style-lists/reset": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Reset Art Style Lists",
+        "description": "Reset recommended/other style pools to the hardcoded defaults.",
+        "operationId": "settings-reset_art_style_lists",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtStyleListsRead"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/pipeline-runs": {
       "post": {
         "tags": [
@@ -2943,6 +2987,20 @@
         "type": "object",
         "title": "DocumentDashboardStages",
         "description": "Per-stage status metadata used by the dashboard."
+      },
+      "DocumentStageSyncResponse": {
+        "properties": {
+          "synced": {
+            "type": "integer",
+            "title": "Synced"
+          }
+        },
+        "type": "object",
+        "required": [
+          "synced"
+        ],
+        "title": "DocumentStageSyncResponse",
+        "description": "Response payload for bulk document stage synchronization."
       },
       "GeneratedImageApprovalUpdate": {
         "properties": {

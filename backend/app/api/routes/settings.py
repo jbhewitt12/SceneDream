@@ -20,6 +20,10 @@ from app.services.art_style import (
     ArtStyleCatalogService,
     ArtStyleCatalogValidationError,
 )
+from app.services.image_prompt_generation.core.style_sampler import (
+    OTHER_STYLES,
+    RECOMMENDED_STYLES,
+)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -148,6 +152,21 @@ async def update_art_style_lists(
     except ArtStyleCatalogValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    return ArtStyleListsRead(
+        recommended_styles=snapshot.recommended_styles,
+        other_styles=snapshot.other_styles,
+        updated_at=snapshot.updated_at,
+    )
+
+
+@router.post("/art-style-lists/reset", response_model=ArtStyleListsRead)
+async def reset_art_style_lists(*, session: SessionDep) -> ArtStyleListsRead:
+    """Reset recommended/other style pools to the hardcoded defaults."""
+    service = ArtStyleCatalogService(session)
+    snapshot = service.replace_style_lists(
+        recommended_styles=list(RECOMMENDED_STYLES),
+        other_styles=list(OTHER_STYLES),
+    )
     return ArtStyleListsRead(
         recommended_styles=snapshot.recommended_styles,
         other_styles=snapshot.other_styles,

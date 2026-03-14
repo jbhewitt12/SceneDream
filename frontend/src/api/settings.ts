@@ -35,4 +35,8 @@ export const SettingsApi = {
       requestBody: payload,
     })
   },
+
+  resetArtStyleLists(): Promise<ArtStyleListsRead> {
+    return SettingsService.resetArtStyleLists()
+  },
 }
