@@ -48,6 +48,11 @@ _RECOMMENDED_STYLES: tuple[str, ...] = (
     "psychedelic art",
     "double exposure",
     "fractal art",
+    "chiaroscuro",
+    "gouache painting",
+    "Mughal miniature painting",
+    "Nihonga",
+    "impasto",
 )
 
 _OTHER_STYLES: tuple[str, ...] = (
@@ -58,7 +63,6 @@ _OTHER_STYLES: tuple[str, ...] = (
     "Abstract art",
     "abstract geometry",
     "Art Deco",
-    "Bauhaus",
     "bokeh art",
     "Brutalism",
     "Byzantine art",
