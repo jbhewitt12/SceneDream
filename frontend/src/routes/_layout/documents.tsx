@@ -11,6 +11,9 @@ import {
   HStack,
   Heading,
   Input,
+  NativeSelectField,
+  NativeSelectIndicator,
+  NativeSelectRoot,
   Spinner,
   Stack,
   Text,
@@ -24,6 +27,11 @@ import { type DocumentDashboardEntry, DocumentsApi } from "@/api/documents"
 import { type PipelineRun, PipelineRunsApi } from "@/api/pipelineRuns"
 import { SettingsApi } from "@/api/settings"
 import { PromptArtStyleControl } from "@/components/Common/PromptArtStyleControl"
+import {
+  type DocumentDashboardPreferences,
+  loadDashboardPreferences,
+  saveDashboardPreferences,
+} from "@/features/documents/documentDashboardPreferences"
 import {
   buildPipelineRunStartPayload,
   shouldLaunchImageGenerationOnly,
@@ -151,9 +159,33 @@ const toEntryKey = (entry: DocumentDashboardEntry) =>
 const hasOwnKey = (value: object, key: string) =>
   Object.prototype.hasOwnProperty.call(value, key)
 
+const isPipelineReady = (entry: DocumentDashboardEntry) =>
+  entry.stages.extraction.status === "completed" &&
+  entry.stages.ranking.status === "completed"
+
+const compareDisplayNames = (
+  left: DocumentDashboardEntry,
+  right: DocumentDashboardEntry,
+) =>
+  left.display_name.localeCompare(right.display_name, undefined, {
+    sensitivity: "base",
+  })
+
+const getLastUpdatedTimestamp = (entry: DocumentDashboardEntry) => {
+  const value = entry.last_run?.updated_at
+  if (!value) {
+    return null
+  }
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? null : timestamp
+}
+
 function DocumentsPage() {
   const { showErrorToast, showSuccessToast } = useCustomToast()
   const [search, setSearch] = useState("")
+  const [preferences, setPreferences] = useState<DocumentDashboardPreferences>(
+    loadDashboardPreferences,
+  )
   const [scenesPerRunByKey, setScenesPerRunByKey] = useState<
     Record<string, string>
   >({})
@@ -171,6 +203,14 @@ function DocumentsPage() {
   useEffect(() => {
     activeRunByKeyRef.current = activeRunByKey
   }, [activeRunByKey])
+
+  const updatePreference = (patch: Partial<DocumentDashboardPreferences>) => {
+    setPreferences((previous) => {
+      const next = { ...previous, ...patch }
+      saveDashboardPreferences(next)
+      return next
+    })
+  }
 
   const dashboardQuery = useQuery({
     queryKey: ["documents", "dashboard"],
@@ -203,6 +243,42 @@ function DocumentsPage() {
       { recommended: 0, other: 0 },
     )
   }, [settingsQuery.data?.art_styles])
+
+  const distinctSourceTypes = useMemo(() => {
+    const types = new Set(
+      (dashboardQuery.data?.data ?? []).map((entry) => entry.source_type),
+    )
+    return Array.from(types).sort((left, right) => left.localeCompare(right))
+  }, [dashboardQuery.data?.data])
+
+  const effectiveSourceTypeFilter = distinctSourceTypes.includes(
+    preferences.sourceTypeFilter,
+  )
+    ? preferences.sourceTypeFilter
+    : ""
+
+  useEffect(() => {
+    if (
+      dashboardQuery.data === undefined ||
+      !preferences.sourceTypeFilter ||
+      effectiveSourceTypeFilter
+    ) {
+      return
+    }
+    setPreferences((previous) => {
+      if (!previous.sourceTypeFilter) {
+        return previous
+      }
+      const next = { ...previous, sourceTypeFilter: "" }
+      saveDashboardPreferences(next)
+      return next
+    })
+  }, [
+    dashboardQuery.data,
+    effectiveSourceTypeFilter,
+    preferences.sourceTypeFilter,
+  ])
+
   useEffect(() => {
     const hasActiveRuns = Object.values(activeRunByKey).some(
       (run) => !isTerminalRunStatus(run.status),
@@ -281,15 +357,75 @@ function DocumentsPage() {
   const filteredEntries = useMemo(() => {
     const rows = dashboardQuery.data?.data ?? []
     const term = search.trim().toLowerCase()
-    if (!term) {
-      return rows
-    }
-    return rows.filter((row) =>
-      [row.display_name, row.source_path, row.slug].some((value) =>
-        value.toLowerCase().includes(term),
-      ),
-    )
-  }, [dashboardQuery.data?.data, search])
+    const filtered = rows.filter((row) => {
+      const matchesSearch =
+        !term ||
+        [row.display_name, row.source_path, row.slug].some((value) =>
+          value.toLowerCase().includes(term),
+        )
+      if (!matchesSearch) {
+        return false
+      }
+
+      if (preferences.readinessFilter === "ready" && !isPipelineReady(row)) {
+        return false
+      }
+
+      if (preferences.readinessFilter === "not_ready" && isPipelineReady(row)) {
+        return false
+      }
+
+      if (
+        effectiveSourceTypeFilter &&
+        row.source_type !== effectiveSourceTypeFilter
+      ) {
+        return false
+      }
+
+      return true
+    })
+
+    return [...filtered].sort((left, right) => {
+      if (preferences.sortOrder === "alpha_asc") {
+        return compareDisplayNames(left, right)
+      }
+
+      if (preferences.sortOrder === "alpha_desc") {
+        return compareDisplayNames(right, left)
+      }
+
+      if (preferences.sortOrder === "images_desc") {
+        const byImages =
+          right.counts.images_generated - left.counts.images_generated
+        return byImages !== 0 ? byImages : compareDisplayNames(left, right)
+      }
+
+      const leftTimestamp = getLastUpdatedTimestamp(left)
+      const rightTimestamp = getLastUpdatedTimestamp(right)
+
+      if (leftTimestamp === null && rightTimestamp === null) {
+        return compareDisplayNames(left, right)
+      }
+      if (leftTimestamp === null) {
+        return 1
+      }
+      if (rightTimestamp === null) {
+        return -1
+      }
+      if (rightTimestamp !== leftTimestamp) {
+        return rightTimestamp - leftTimestamp
+      }
+
+      return compareDisplayNames(left, right)
+    })
+  }, [
+    dashboardQuery.data?.data,
+    effectiveSourceTypeFilter,
+    getLastUpdatedTimestamp,
+    preferences.readinessFilter,
+    preferences.sortOrder,
+    search,
+  ])
 
   const handleLaunch = async (entry: DocumentDashboardEntry) => {
     const key = toEntryKey(entry)
@@ -372,8 +508,12 @@ function DocumentsPage() {
           </Button>
         </Flex>
 
-        <HStack gap={3} align="stretch">
-          <Box position="relative" flex="1">
+        <Flex gap={3} align={{ base: "stretch", lg: "center" }} wrap="wrap">
+          <Box
+            position="relative"
+            flex="1"
+            minW={{ base: "full", md: "320px" }}
+          >
             <Box
               position="absolute"
               left={3}
@@ -389,10 +529,81 @@ function DocumentsPage() {
               onChange={(event) => setSearch(event.target.value)}
             />
           </Box>
-          <Badge alignSelf="center" colorScheme="blue" px={3} py={1}>
-            {filteredEntries.length} shown
-          </Badge>
-        </HStack>
+          <Flex gap={3} align="center" wrap="wrap">
+            <HStack gap={1} borderWidth="1px" borderRadius="md" p={1}>
+              <Button
+                size="sm"
+                variant={
+                  preferences.readinessFilter === "all" ? "solid" : "ghost"
+                }
+                onClick={() => updatePreference({ readinessFilter: "all" })}
+              >
+                All
+              </Button>
+              <Button
+                size="sm"
+                variant={
+                  preferences.readinessFilter === "ready" ? "solid" : "ghost"
+                }
+                onClick={() => updatePreference({ readinessFilter: "ready" })}
+              >
+                Ready
+              </Button>
+              <Button
+                size="sm"
+                variant={
+                  preferences.readinessFilter === "not_ready"
+                    ? "solid"
+                    : "ghost"
+                }
+                onClick={() =>
+                  updatePreference({ readinessFilter: "not_ready" })
+                }
+              >
+                Not Ready
+              </Button>
+            </HStack>
+
+            <NativeSelectRoot w={{ base: "full", sm: "160px" }}>
+              <NativeSelectField
+                value={effectiveSourceTypeFilter}
+                onChange={(event) =>
+                  updatePreference({ sourceTypeFilter: event.target.value })
+                }
+              >
+                <option value="">All types</option>
+                {distinctSourceTypes.map((sourceType) => (
+                  <option key={sourceType} value={sourceType}>
+                    {sourceType.toUpperCase()}
+                  </option>
+                ))}
+              </NativeSelectField>
+              <NativeSelectIndicator />
+            </NativeSelectRoot>
+
+            <NativeSelectRoot w={{ base: "full", sm: "180px" }}>
+              <NativeSelectField
+                value={preferences.sortOrder}
+                onChange={(event) =>
+                  updatePreference({
+                    sortOrder: event.target
+                      .value as DocumentDashboardPreferences["sortOrder"],
+                  })
+                }
+              >
+                <option value="last_updated">Last Updated</option>
+                <option value="alpha_asc">Alphabetical (A-Z)</option>
+                <option value="alpha_desc">Alphabetical (Z-A)</option>
+                <option value="images_desc">Most Images</option>
+              </NativeSelectField>
+              <NativeSelectIndicator />
+            </NativeSelectRoot>
+
+            <Badge colorScheme="blue" px={3} py={1} whiteSpace="nowrap">
+              {filteredEntries.length} shown
+            </Badge>
+          </Flex>
+        </Flex>
 
         {settingsQuery.error ? (
           <AlertRoot status="warning">
@@ -427,8 +638,8 @@ function DocumentsPage() {
         !filteredEntries.length ? (
           <Box borderWidth="1px" borderRadius="lg" p={6}>
             <Text color="fg.muted">
-              No documents matched your search or no files were found in
-              `documents/`.
+              No documents matched your search and filters, or no files were
+              found in `documents/`.
             </Text>
           </Box>
         ) : null}
