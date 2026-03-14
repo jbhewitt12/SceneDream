@@ -354,7 +354,7 @@ function SettingsPage() {
                     Random Style Mix samples from both lists, weighted toward
                     Recommended styles, and passes that mix into prompt
                     generation so each run can explore a range of visual
-                    directions.
+                    directions. We generate multiple images for each scene, with a different style for each image.
                   </Text>
                 </Box>
                 <Box>
