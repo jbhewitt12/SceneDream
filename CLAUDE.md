@@ -1,51 +1,94 @@
 # Repository Guidelines
 
-SceneDream orchestrates an end-to-end pipeline that ingests EPUB novels, extracts cinematic scenes, ranks them, develops DALL·E 3-ready prompts, and renders images. Everything runs locally for fast iteration and experimentation.
+SceneDream orchestrates a local end-to-end pipeline that ingests source documents, extracts cinematic scenes, ranks them, generates structured image prompts, renders images, and optionally queues approved outputs for social posting.
 
-This project is built with the FastAPI Template.
+The stack is FastAPI + SQLModel on the backend, React + Chakra UI + TanStack Router on the frontend, PostgreSQL for metadata, and filesystem-backed source/generated assets.
 
 ## Key files
 
-- `backend/app/services/scene_extraction/scene_extraction.py` — core extractor that chunks EPUBs, calls Gemini, and persists scene metadata.
-- `backend/app/services/scene_extraction/scene_refinement.py` — optional Grok-powered refinement pass that flags keep/discard decisions and annotates scenes.
-- `backend/app/services/scene_ranking/scene_ranking_service.py` — applies weighted multi-model scoring to prioritize scenes ready for prompting.
-- `backend/app/services/image_prompt_generation/image_prompt_generation_service.py` — builds structured DALL·E 3 prompt variants with context windows and style metadata.
-- `backend/app/services/image_generation/image_generation_service.py` & `backend/app/services/image_generation/dalle_image_api.py` — orchestrate image creation, storage, and retries; the CLI entrypoint lives in `backend/app/services/image_gen_cli.py`.
-- `backend/app/services/langchain/gemini_api.py` & `backend/app/services/langchain/xai_api.py` — LangChain wrappers around Gemini 2.5 Pro and xAI Grok used across extraction, refinement, and ranking.
+- `backend/app/services/scene_extraction/scene_extraction.py` - core extractor that loads supported book/document formats, chunks chapters, calls Gemini/OpenAI-backed LLM routing, and persists scene metadata.
+- `backend/app/services/scene_extraction/scene_refinement.py` - optional refinement pass that annotates scenes with keep/discard decisions and extra metadata.
+- `backend/app/services/scene_ranking/scene_ranking_service.py` - ranks extracted scenes and persists weighted scoring output.
+- `backend/app/services/image_prompt_generation/image_prompt_generation_service.py` - builds prompt-generation configs, resolves `random_mix` vs `single_style` art-style behavior, and persists prompt variants plus metadata.
+- `backend/app/services/image_generation/image_generation_service.py` - synchronous image generation orchestration across registered providers.
+- `backend/app/services/image_generation/batch_image_generation_service.py` - OpenAI Batch API image generation flow with persisted batch tracking.
+- `backend/app/services/pipeline/pipeline_run_start_service.py` - service-layer entry point for resolving pipeline launch requests, defaults, skip flags, and prompt art-style settings.
+- `backend/app/services/pipeline/document_stage_status_service.py` - computes and synchronizes document-level extraction/ranking statuses (`pending`, `running`, `completed`, `failed`, `stale`).
+- `backend/app/services/document_dashboard_service.py` - builds the Documents dashboard payload by merging filesystem discovery, canonical documents, counts, and stage status metadata.
+- `backend/app/services/art_style/art_style_catalog_service.py` - transactional sync service for DB-backed recommended/other art-style lists managed from Settings.
+- `backend/app/services/social_posting/social_posting_service.py` - queues and posts approved images to configured social services.
+- `frontend/src/routes/_layout/documents.tsx` - Documents dashboard with adaptive launch CTA and per-document art-style controls.
+- `frontend/src/routes/_layout/settings.tsx` - Settings page for pipeline defaults and editable art-style lists.
+- `frontend/src/components/Common/PromptArtStyleControl.tsx` - shared frontend control for `Random Style Mix` vs `Single art style`.
 
 ## Project Structure & Module Organization
-- `backend/app` bundles the FastAPI app: `api/routes` exposes REST resources for scenes, rankings, prompts, and generated images; `services/*` holds the pipeline stages plus EPUB tooling; `repositories/` centralize SQLModel persistence; `schemas/` defines DTOs; tests for both API and services live in `backend/app/tests`.
-- `backend/models` defines SQLModel tables (`SceneExtraction`, `SceneRanking`, `ImagePrompt`, `GeneratedImage`) consumed by Alembic migrations in `backend/app/alembic`.
-- `frontend/src` houses the React + Chakra UI client: `routes/_layout/*` renders dashboards for each pipeline stage, `api/` & `client/` contain the generated OpenAPI SDK, while `components/`, `hooks/`, and `theme/` provide shared UI primitives.
-- `documents/` stores source inputs for ingestion (legacy `books/` paths still resolve for backward compatibility); `img/` accumulates generated assets (notably `img/generated/<book>/...`).
-- `scripts/` contains automation like `generate-client.sh` and deployment helpers.
+
+- `backend/app/api/routes` exposes the current API surface: `documents`, `pipeline-runs`, `settings`, `scene-extractions`, `scene-rankings`, `image-prompts`, and `generated-images`.
+- `backend/app/services` holds business logic for books/document loading, extraction, ranking, prompt generation, image generation, analytics, pipeline orchestration, art-style management, image cleanup, prompt metadata, and social posting.
+- `backend/app/repositories` is the persistence boundary around SQLModel entities. Keep business rules out of repositories.
+- `backend/models` defines the canonical SQLModel tables, including `Document`, `PipelineRun`, `GeneratedAsset`, `SceneExtraction`, `SceneRanking`, `ImagePrompt`, `GeneratedImage`, `ArtStyle`, `AppSettings`, `ImageGenerationBatch`, and `SocialMediaPost`.
+- `backend/app/schemas` defines API payloads. The current API contract is snake_case, and the generated frontend client expects snake_case fields.
+- `backend/app/tests` contains route, service, repository, book-loader, and integration-smoke tests.
+- `frontend/src/api` wraps the generated OpenAPI client in `frontend/src/client`. Prefer updating/regenerating the client rather than writing ad hoc fetch code.
+- `frontend/src/routes/_layout` contains the main app screens for documents, extracted scenes, rankings, prompt gallery, generated images, and settings.
+- `frontend/src/components` contains shared UI, prompt/image presentation, and dashboard controls.
+- `documents/` is the canonical source directory scanned by the dashboard. Legacy `books/` paths still resolve for compatibility.
+- `img/generated/` stores generated image outputs; `img/` is also mounted by the backend for serving local assets.
+- `issues/` contains implementation plans and architectural change notes for major shipped features; review relevant issues before large refactors.
 
 ## Concurrency Rule
-- All new FastAPI endpoints must be implemented as async, non-blocking handlers so concurrent requests stay responsive; offload CPU-bound work to background tasks or executors to avoid blocking the event loop.
+
+- All new FastAPI endpoints must be async and non-blocking. Offload CPU-bound or blocking filesystem/network work to background tasks, executors, or threadpool helpers so concurrent requests stay responsive.
 
 ## Build, Test, and Development Commands
-- `docker compose watch` spins up the full stack with live reload.
-- `cd backend && uv run fastapi dev app/main.py` runs the API locally after stopping the compose backend service.
-- `cd frontend && npm run dev` serves the Vite app on `5173`; stop the Docker frontend first if running.
-- `cd backend && uv run pytest` executes pytest with coverage and HTML reports; pass extra pytest flags at the end.
-- Pipeline CLIs: from `backend/`, use `uv run python -m app.services.scene_extraction.main ...`, `uv run python -m app.services.scene_ranking.main rank ...`, and `uv run python -m app.services.image_generation.main ...` for staged or end-to-end runs.
+
+- `docker compose watch` starts the full stack with live reload.
+- `docker compose up -d db` starts only Postgres for local backend/frontend development.
+- `cd backend && uv sync` installs backend dependencies.
+- `cd backend && uv run alembic upgrade head` applies database migrations.
+- `cd backend && uv run fastapi dev app/main.py` runs the backend locally.
+- `cd frontend && npm install` installs frontend dependencies.
+- `cd frontend && npm run dev` starts the Vite frontend on port `5173`.
+- `cd backend && uv run pytest` runs the backend test suite. Integration-marked live tests are excluded by default.
+- `cd backend && uv run bash scripts/lint.sh` runs backend mypy, Ruff check, and Ruff format.
+- `cd frontend && npm run lint` runs Biome formatting/lint fixes.
+- `cd frontend && npm run build` runs the frontend TypeScript build and Vite production build.
+- `./scripts/generate-client.sh` regenerates `openapi.json`, `frontend/openapi.json`, and the frontend OpenAPI client.
+
+## Pipeline and CLI Commands
+
+- Run from `backend/`.
+- `uv run python -m app.services.scene_extraction.main --help` for extraction commands.
+- `uv run python -m app.services.scene_ranking.main rank --help` for ranking commands.
+- `uv run python -m app.services.image_generation.main --help` for image-generation commands.
+- `uv run python -m app.services.image_gen_cli --help` for the end-to-end pipeline CLI.
+- `uv run python -m app.services.prompt_metadata.main --help` for prompt-metadata tooling.
 
 ## Coding Style & Naming Conventions
-- Python code uses 4-space indentation with linting/type checks enforced by `uv run bash scripts/lint.sh` (runs mypy, ruff check, and ruff format).
-- Keep SQLModel classes in PascalCase (`SceneExtraction`, `SceneRanking`, `ImagePrompt`, `GeneratedImage`), repository methods in snake_case, and JSON keys camelCase to match frontend expectations.
-- Frontend TypeScript follows Biome (configured in `frontend/biome.json`) with 2-space indentation; run `npm run lint` to format and organize imports.
+
+- Python uses 4-space indentation. Run `uv run bash scripts/lint.sh` before finishing backend work.
+- TypeScript uses Biome formatting with 2-space indentation. Run `npm run lint` in `frontend/`.
+- Keep SQLModel classes in PascalCase and repository/service methods in snake_case.
+- Preserve snake_case API/schema fields unless you are intentionally changing the OpenAPI contract and regenerating the frontend client in the same change.
+- Keep route handlers thin: HTTP validation/translation in routes, orchestration in services, persistence in repositories.
+- Prefer DB-backed runtime configuration over hardcoded catalogs when touching art-style or settings behavior.
+- Prompt art-style mode values are `random_mix` and `single_style`; keep backend schemas, frontend state, and pipeline launch payloads aligned.
 
 ## Testing Guidelines
-- Backend tests live in `backend/app/tests`; prefer unit and service tests that stub external LLM/image calls, and mark any live API smoke tests (e.g. `test_gemini_api_live.py`) with `pytest.mark.integration` so they auto-skip without credentials.
-- Never do frontend E2E tests.
+
+- Backend tests live in `backend/app/tests`.
+- Prefer unit/service/route tests that mock external LLM, image-generation, and posting APIs with `monkeypatch`.
+- Live smoke tests such as `test_gemini_api_live.py` and `test_gpt_image_api_live.py` must stay marked with `pytest.mark.integration`.
+- Never add frontend E2E tests to this repository.
+- If you change the OpenAPI contract or generated frontend client usage, run both `cd frontend && npm run lint` and `cd frontend && npm run build`.
 
 ## Testing Requirements for New Code
-- Every new service must have corresponding unit tests in `backend/app/tests/services/`.
-- Every new API route must have corresponding route tests in `backend/app/tests/api/routes/`.
-- Every new repository must have corresponding tests in `backend/app/tests/repositories/`.
-- All external API calls (LLM, image generation, etc.) must be mocked using `monkeypatch` — never call live services in unit tests.
-- Run `cd backend && uv run pytest` after making changes and ensure all tests pass before considering work complete.
-- New test data must be cleaned up: use the shared `scene_factory` and `prompt_factory` fixtures from `conftest.py` which handle FK-safe teardown automatically.
-- Do not duplicate fixture definitions — reuse the shared factories in `backend/app/tests/conftest.py`.
-- For async service tests, use `@pytest.mark.anyio("asyncio")` and define the test as `async def`.
-- Follow the existing test patterns in `backend/app/tests/services/test_scene_ranking_service.py` as the reference for service-level unit tests (factory + monkeypatch + assertions + cleanup).
+
+- Every new service needs service-level tests under `backend/app/tests/services/`.
+- Every new API route needs route tests under `backend/app/tests/api/routes/`.
+- Every new repository needs repository tests under `backend/app/tests/repositories/`.
+- Mock all external API calls in unit tests. Do not hit live LLM, image, or social APIs in normal test runs.
+- Run `cd backend && uv run pytest` after backend changes and ensure the suite passes before considering the work complete.
+- Reuse shared fixtures from `backend/app/tests/conftest.py`, especially `scene_factory` and `prompt_factory`, instead of redefining fixture stacks.
+- For async service tests, use `@pytest.mark.anyio("asyncio")` and `async def`.
+- Follow the established service-test style in files such as `backend/app/tests/services/test_scene_ranking_service.py`, `backend/app/tests/services/test_pipeline_run_start_service.py`, and `backend/app/tests/services/test_image_prompt_generation_service.py`.
