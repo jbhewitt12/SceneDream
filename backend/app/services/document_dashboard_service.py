@@ -409,12 +409,7 @@ class DocumentDashboardService:
         counts: DocumentDashboardCounts,
     ) -> DocumentDashboardStages:
         extraction_status = "completed" if counts.extracted > 0 else "pending"
-        if counts.extracted == 0 or counts.ranked == 0:
-            ranking_status = "pending"
-        elif counts.ranked >= counts.extracted:
-            ranking_status = "completed"
-        else:
-            ranking_status = "stale"
+        ranking_status = "completed" if counts.ranked > 0 else "pending"
         prompts_status = "completed" if counts.prompts_generated > 0 else "pending"
         images_status = "completed" if counts.images_generated > 0 else "pending"
 

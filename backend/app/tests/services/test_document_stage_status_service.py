@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-import pytest
 from sqlmodel import Session
 
 from app.repositories import (
@@ -42,7 +41,7 @@ def test_sync_document_sets_pending_when_no_scenes(db: Session) -> None:
     db.commit()
 
 
-def test_sync_document_marks_extraction_completed_and_ranking_stale(
+def test_sync_document_marks_partial_ranking_as_completed(
     db: Session,
     scene_factory,
 ) -> None:
@@ -99,9 +98,9 @@ def test_sync_document_marks_extraction_completed_and_ranking_stale(
     db.refresh(document)
 
     assert document.extraction_status == "completed"
-    assert document.ranking_status == "stale"
+    assert document.ranking_status == "completed"
     assert document.extraction_completed_at is not None
-    assert document.ranking_completed_at is None
+    assert document.ranking_completed_at is not None
 
     db.delete(document)
     db.commit()
@@ -271,6 +270,79 @@ def test_mark_stage_running_and_failed_updates_document_fields(db: Session) -> N
     db.commit()
 
 
+def test_completed_stages_are_not_downgraded_by_sync(db: Session) -> None:
+    document_repo = DocumentRepository(db)
+    completed_at = datetime.now(timezone.utc)
+    slug = f"test-book-stage-sticky-{uuid4()}"
+    document = document_repo.create(
+        data={
+            "slug": slug,
+            "source_path": f"documents/{slug}.epub",
+            "source_type": "epub",
+            "ingestion_state": "ingested",
+            "extraction_status": "completed",
+            "extraction_completed_at": completed_at,
+            "ranking_status": "completed",
+            "ranking_completed_at": completed_at,
+            "source_metadata": {},
+        },
+        commit=True,
+    )
+
+    service = DocumentStageStatusService(db)
+    service.sync_document(document=document)
+    db.commit()
+    db.refresh(document)
+
+    assert document.extraction_status == "completed"
+    assert document.extraction_completed_at == completed_at
+    assert document.ranking_status == "completed"
+    assert document.ranking_completed_at == completed_at
+
+    db.delete(document)
+    db.commit()
+
+
+def test_mark_stage_updates_do_not_override_completed_stages(db: Session) -> None:
+    document_repo = DocumentRepository(db)
+    completed_at = datetime.now(timezone.utc)
+    slug = f"test-book-stage-sticky-runtime-{uuid4()}"
+    document = document_repo.create(
+        data={
+            "slug": slug,
+            "source_path": f"documents/{slug}.epub",
+            "source_type": "epub",
+            "ingestion_state": "ingested",
+            "extraction_status": "completed",
+            "extraction_completed_at": completed_at,
+            "ranking_status": "completed",
+            "ranking_completed_at": completed_at,
+            "source_metadata": {},
+        },
+        commit=True,
+    )
+
+    service = DocumentStageStatusService(db)
+    service.mark_stage_running(document=document, stage="extraction")
+    service.mark_stage_failed(
+        document=document,
+        stage="ranking",
+        error_message="Should not override completed",
+    )
+    db.commit()
+    db.refresh(document)
+
+    assert document.extraction_status == "completed"
+    assert document.extraction_completed_at == completed_at
+    assert document.extraction_error is None
+    assert document.ranking_status == "completed"
+    assert document.ranking_completed_at == completed_at
+    assert document.ranking_error is None
+
+    db.delete(document)
+    db.commit()
+
+
 def test_sync_all_documents_updates_multiple_documents(
     db: Session,
     scene_factory,
@@ -418,8 +490,6 @@ def test_sync_all_documents_preserves_existing_completed_timestamps(
 
 def test_sync_document_marks_extraction_completed_from_successful_pipeline_run(
     db: Session,
-    monkeypatch: pytest.MonkeyPatch,
-    scene_factory,
 ) -> None:
     document_repo = DocumentRepository(db)
     run_repo = PipelineRunRepository(db)
@@ -435,14 +505,6 @@ def test_sync_document_marks_extraction_completed_from_successful_pipeline_run(
         },
         commit=True,
     )
-    scene_factory(
-        book_slug=slug,
-        source_book_path=document.source_path,
-        document_id=document.id,
-        chapter_number=1,
-        scene_number=1,
-        chunk_index=0,
-    )
     run_repo.create(
         data={
             "document_id": document.id,
@@ -456,8 +518,6 @@ def test_sync_document_marks_extraction_completed_from_successful_pipeline_run(
     )
 
     service = DocumentStageStatusService(db)
-    monkeypatch.setattr(service, "_is_extraction_complete", lambda **_: False)
-
     service.sync_document(document=document)
     db.commit()
     db.refresh(document)
@@ -469,10 +529,8 @@ def test_sync_document_marks_extraction_completed_from_successful_pipeline_run(
     db.commit()
 
 
-def test_sync_document_does_not_use_image_only_runs_for_extraction_completion(
+def test_sync_document_does_not_use_image_only_runs_without_extraction_evidence(
     db: Session,
-    monkeypatch: pytest.MonkeyPatch,
-    scene_factory,
 ) -> None:
     document_repo = DocumentRepository(db)
     run_repo = PipelineRunRepository(db)
@@ -488,14 +546,6 @@ def test_sync_document_does_not_use_image_only_runs_for_extraction_completion(
         },
         commit=True,
     )
-    scene_factory(
-        book_slug=slug,
-        source_book_path=document.source_path,
-        document_id=document.id,
-        chapter_number=1,
-        scene_number=1,
-        chunk_index=0,
-    )
     run_repo.create(
         data={
             "document_id": document.id,
@@ -509,8 +559,6 @@ def test_sync_document_does_not_use_image_only_runs_for_extraction_completion(
     )
 
     service = DocumentStageStatusService(db)
-    monkeypatch.setattr(service, "_is_extraction_complete", lambda **_: False)
-
     service.sync_document(document=document)
     db.commit()
     db.refresh(document)

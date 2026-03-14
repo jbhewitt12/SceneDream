@@ -53,10 +53,15 @@ class DocumentStageStatusService:
         document: Document,
         stage: DocumentStageName,
     ) -> Document:
-        """Mark one stage as currently running and clear stale failure metadata."""
+        """Mark one stage as running unless the document already reached completion."""
 
         payload: dict[str, object] = {}
         if stage == "extraction":
+            if self._is_sticky_completed(
+                status=document.extraction_status,
+                completed_at=document.extraction_completed_at,
+            ):
+                return document
             payload.update(
                 {
                     "extraction_status": STAGE_STATUS_RUNNING,
@@ -65,6 +70,11 @@ class DocumentStageStatusService:
                 }
             )
         else:
+            if self._is_sticky_completed(
+                status=document.ranking_status,
+                completed_at=document.ranking_completed_at,
+            ):
+                return document
             payload.update(
                 {
                     "ranking_status": STAGE_STATUS_RUNNING,
@@ -87,11 +97,16 @@ class DocumentStageStatusService:
         stage: DocumentStageName,
         error_message: str | None,
     ) -> Document:
-        """Mark one stage as failed and persist a bounded error message."""
+        """Mark one stage as failed unless the document already reached completion."""
 
         bounded_error = (error_message or "")[:2000] or None
         payload: dict[str, object] = {}
         if stage == "extraction":
+            if self._is_sticky_completed(
+                status=document.extraction_status,
+                completed_at=document.extraction_completed_at,
+            ):
+                return document
             payload.update(
                 {
                     "extraction_status": STAGE_STATUS_FAILED,
@@ -100,6 +115,11 @@ class DocumentStageStatusService:
                 }
             )
         else:
+            if self._is_sticky_completed(
+                status=document.ranking_status,
+                completed_at=document.ranking_completed_at,
+            ):
+                return document
             payload.update(
                 {
                     "ranking_status": STAGE_STATUS_FAILED,
@@ -194,9 +214,8 @@ class DocumentStageStatusService:
             return STAGE_STATUS_COMPLETED
         if not scenes:
             return STAGE_STATUS_PENDING
-        if self._is_extraction_complete(document=document, scenes=scenes):
-            return STAGE_STATUS_COMPLETED
-        return STAGE_STATUS_PENDING
+        # Any extracted scenes are sufficient to unlock image-generation mode.
+        return STAGE_STATUS_COMPLETED
 
     def _has_completed_extraction_run(self, *, document: Document) -> bool:
         statement = (
@@ -236,8 +255,6 @@ class DocumentStageStatusService:
         ranked_scene_count = self._count_ranked_scenes(rankable_scenes)
         if ranked_scene_count == 0:
             return STAGE_STATUS_PENDING
-        if ranked_scene_count < len(rankable_scenes):
-            return STAGE_STATUS_STALE
         return STAGE_STATUS_COMPLETED
 
     def _count_ranked_scenes(self, scenes: list[SceneExtraction]) -> int:
@@ -304,6 +321,12 @@ class DocumentStageStatusService:
         preserve_failed: bool,
         now: datetime,
     ) -> tuple[str, datetime | None, str | None]:
+        if DocumentStageStatusService._is_sticky_completed(
+            status=current_status,
+            completed_at=current_completed_at,
+        ):
+            return STAGE_STATUS_COMPLETED, current_completed_at or now, None
+
         if preserve_failed and current_status == STAGE_STATUS_FAILED:
             return current_status, current_completed_at, current_error
 
@@ -320,3 +343,11 @@ class DocumentStageStatusService:
                 None,
             )
         return target_status, None, None
+
+    @staticmethod
+    def _is_sticky_completed(
+        *,
+        status: str | None,
+        completed_at: datetime | None,
+    ) -> bool:
+        return status == STAGE_STATUS_COMPLETED or completed_at is not None

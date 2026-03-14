@@ -174,6 +174,61 @@ def test_document_dashboard_service_uses_legacy_slug_fallback(
     assert match.last_run.usage_summary == {}
 
 
+def test_document_dashboard_service_marks_legacy_partial_ranking_as_completed(
+    db: Session,
+    scene_factory,
+    tmp_path: Path,
+) -> None:
+    source_path = "documents/Test Shelf/Legacy Partial Book.txt"
+    source_file = tmp_path / source_path
+    source_file.parent.mkdir(parents=True, exist_ok=True)
+    source_file.write_text("Plain text chapter content.", encoding="utf-8")
+
+    legacy_slug = "legacy-partial-book"
+    ranked_scene = scene_factory(
+        book_slug=legacy_slug,
+        source_book_path=source_path,
+        document_id=None,
+        chapter_number=1,
+        scene_number=1,
+        chunk_index=0,
+    )
+    scene_factory(
+        book_slug=legacy_slug,
+        source_book_path=source_path,
+        document_id=None,
+        chapter_number=1,
+        scene_number=2,
+        chunk_index=1,
+    )
+
+    ranking_repo = SceneRankingRepository(db)
+    ranking_repo.create(
+        data={
+            "scene_extraction_id": ranked_scene.id,
+            "model_vendor": "test-vendor",
+            "model_name": "test-model",
+            "prompt_version": "test-v1",
+            "scores": {"visual_style_potential": 8.0},
+            "overall_priority": 8.0,
+            "weight_config": {"visual_style_potential": 1.0},
+            "weight_config_hash": f"legacy-dashboard-hash-{ranked_scene.id}",
+            "raw_response": {},
+        },
+        commit=True,
+    )
+
+    service = DocumentDashboardService(db, project_root=tmp_path)
+    entries = service.list_entries()
+    match = next((entry for entry in entries if entry.source_path == source_path), None)
+
+    assert match is not None
+    assert match.counts.extracted == 2
+    assert match.counts.ranked == 1
+    assert match.stages.extraction.status == "completed"
+    assert match.stages.ranking.status == "completed"
+
+
 def test_default_project_root_detects_local_layout() -> None:
     source_file = Path(
         "/Users/test/SceneDream/backend/app/services/document_dashboard_service.py"
