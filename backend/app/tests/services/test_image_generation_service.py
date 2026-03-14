@@ -384,6 +384,69 @@ async def test_fetch_prompts_for_top_scenes_skips_duplicate_rankings(
     assert [prompt.id for prompt in prompts] == [prompt_ready.id]
 
 
+async def test_fetch_prompts_for_top_scenes_uses_latest_prompt_set_only(
+    db: Session,
+    scene_factory: Callable[..., SceneExtraction],
+    prompt_factory: Callable[..., ImagePrompt],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Top-scene image generation must not mix older prompt sets into a new run."""
+
+    book_slug = f"test-book-{uuid4()}"
+    scene = scene_factory(book_slug=book_slug, chapter_number=1)
+    old_prompt_one = prompt_factory(
+        scene,
+        prompt_version="image-prompts-v3",
+        variant_index=0,
+        title="Old prompt one",
+    )
+    old_prompt_two = prompt_factory(
+        scene,
+        prompt_version="image-prompts-v3",
+        variant_index=1,
+        title="Old prompt two",
+    )
+    latest_prompt_one = prompt_factory(
+        scene,
+        prompt_version="image-prompts-v4",
+        variant_index=0,
+        title="Latest prompt one",
+    )
+    latest_prompt_two = prompt_factory(
+        scene,
+        prompt_version="image-prompts-v4",
+        variant_index=1,
+        title="Latest prompt two",
+    )
+
+    rankings = [
+        SimpleNamespace(
+            scene_extraction_id=scene.id,
+            overall_priority=9.8,
+            warnings=[],
+        )
+    ]
+
+    service = ImageGenerationService(db, api_key="test-key")
+    monkeypatch.setattr(
+        service._ranking_repo,
+        "list_top_rankings_for_book",
+        lambda **_kwargs: rankings,
+    )
+
+    prompts = await service._fetch_prompts_for_top_scenes(
+        book_slug=book_slug,
+        top_scenes_count=1,
+    )
+
+    assert [prompt.id for prompt in prompts] == [
+        latest_prompt_one.id,
+        latest_prompt_two.id,
+    ]
+    assert old_prompt_one.id not in {prompt.id for prompt in prompts}
+    assert old_prompt_two.id not in {prompt.id for prompt in prompts}
+
+
 async def test_generate_for_selection_handles_errors(
     db: Session,
     scene_factory: Callable[..., SceneExtraction],

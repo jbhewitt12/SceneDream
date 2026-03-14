@@ -220,6 +220,23 @@ def _scene_has_matching_prompt_set(
 ) -> bool:
     """Return True when the latest stored prompt set matches the requested run config."""
 
+    return bool(
+        _get_matching_prompt_set_for_scene(
+            prompt_repo=prompt_repo,
+            prompt_service=prompt_service,
+            scene_id=scene_id,
+        )
+    )
+
+
+def _get_matching_prompt_set_for_scene(
+    *,
+    prompt_repo: ImagePromptRepository,
+    prompt_service: ImagePromptGenerationService,
+    scene_id: UUID,
+) -> list[Any]:
+    """Return the latest prompt set for a scene when it matches the run config."""
+
     config = prompt_service._config
     effective_variants_count = config.variants_count
     if config.use_ranking_recommendation:
@@ -228,18 +245,66 @@ def _scene_has_matching_prompt_set(
             effective_variants_count = ranking.recommended_prompt_count
 
     resolved_config = config.copy_with(variants_count=effective_variants_count)
-    existing_prompts = prompt_repo.get_latest_set_for_scene(
+    existing_prompts = prompt_repo.get_latest_generated_set_for_scene(
         scene_id,
-        resolved_config.model_name,
-        resolved_config.prompt_version,
     )
     if not existing_prompts:
-        return False
+        return []
 
-    return prompt_service._existing_prompt_set_matches_config(
+    if not prompt_service._existing_prompt_set_matches_config(
         existing_prompts,
         resolved_config,
+    ):
+        return []
+
+    return existing_prompts
+
+
+def _collect_matching_prompt_ids_for_image_generation(
+    *,
+    ranking_repo: SceneRankingRepository,
+    prompt_repo: ImagePromptRepository,
+    image_repo: GeneratedImageRepository,
+    prompt_service: ImagePromptGenerationService,
+    book_slug: str,
+    target_scenes: int,
+) -> list[UUID]:
+    """Collect prompt IDs for the top-ranked scenes whose latest prompt set matches."""
+
+    fetch_limit = max(target_scenes * 50, 100)
+    rankings = ranking_repo.list_top_rankings_for_book(
+        book_slug=book_slug,
+        limit=fetch_limit,
+        include_scene=True,
     )
+
+    prompt_ids: list[UUID] = []
+    seen_scene_ids: set[UUID] = set()
+    matched_scenes = 0
+
+    for ranking in rankings:
+        scene_id = ranking.scene_extraction_id
+        if scene_id in seen_scene_ids:
+            continue
+        seen_scene_ids.add(scene_id)
+
+        if image_repo.list_for_scene(scene_id, limit=1):
+            continue
+
+        matching_prompts = _get_matching_prompt_set_for_scene(
+            prompt_repo=prompt_repo,
+            prompt_service=prompt_service,
+            scene_id=scene_id,
+        )
+        if not matching_prompts:
+            continue
+
+        prompt_ids.extend(prompt.id for prompt in matching_prompts)
+        matched_scenes += 1
+        if matched_scenes >= target_scenes:
+            break
+
+    return prompt_ids
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1173,6 +1238,29 @@ async def _run_full_pipeline(
         )
 
         with Session(engine) as session:
+            ranking_repo = SceneRankingRepository(session)
+            prompt_repo = ImagePromptRepository(session)
+            image_repo = GeneratedImageRepository(session)
+            prompt_service = ImagePromptGenerationService(
+                session,
+                config=prompt_generation_config,
+            )
+            prompt_ids = _collect_matching_prompt_ids_for_image_generation(
+                ranking_repo=ranking_repo,
+                prompt_repo=prompt_repo,
+                image_repo=image_repo,
+                prompt_service=prompt_service,
+                book_slug=book_slug,
+                target_scenes=args.images_for_scenes,
+            )
+            if not prompt_ids:
+                logger.warning(
+                    "No prompt sets matching the resolved run configuration were found for the top %d scene(s) in '%s'; skipping image generation.",
+                    args.images_for_scenes,
+                    book_slug,
+                )
+                return stats
+
             mode = getattr(args, "mode", "sync")
             if mode == "batch":
                 image_service: ImageGenerationService | BatchImageGenerationService = (
@@ -1190,8 +1278,7 @@ async def _run_full_pipeline(
 
             try:
                 generated_ids = await image_service.generate_for_selection(
-                    book_slug=book_slug,
-                    top_scenes=args.images_for_scenes,
+                    prompt_ids=prompt_ids,
                     quality=args.quality,
                     preferred_style=args.style,
                     aspect_ratio=args.aspect_ratio,

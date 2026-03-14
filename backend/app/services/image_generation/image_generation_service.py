@@ -590,7 +590,7 @@ class ImageGenerationService:
                 continue
 
             # Check if scene has prompts
-            scene_prompts = self._prompt_repo.list_for_scene(
+            scene_prompts = self._prompt_repo.get_latest_generated_set_for_scene(
                 scene_id,
                 include_scene=True,
             )

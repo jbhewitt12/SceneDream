@@ -105,6 +105,56 @@ def test_get_latest_set_for_scene_returns_variants_sorted(
     repository.delete_for_scene(scene.id, commit=True)
 
 
+def test_get_latest_generated_set_for_scene_returns_newest_model_version_set(
+    db: Session, scene_factory
+) -> None:
+    scene = scene_factory()
+    repository = ImagePromptRepository(db)
+    repository.bulk_create(
+        [
+            _prompt_payload(
+                scene,
+                variant_index=0,
+                model_name="gemini-2.5-flash",
+                prompt_version="image-prompts-v1",
+            ),
+            _prompt_payload(
+                scene,
+                variant_index=1,
+                model_name="gemini-2.5-flash",
+                prompt_version="image-prompts-v1",
+            ),
+            _prompt_payload(
+                scene,
+                variant_index=0,
+                model_name="gemini-3-pro-preview",
+                prompt_version="image-prompts-v4",
+            ),
+            _prompt_payload(
+                scene,
+                variant_index=1,
+                model_name="gemini-3-pro-preview",
+                prompt_version="image-prompts-v4",
+            ),
+        ],
+        commit=True,
+    )
+
+    latest = repository.get_latest_generated_set_for_scene(scene.id)
+
+    assert [prompt.model_name for prompt in latest] == [
+        "gemini-3-pro-preview",
+        "gemini-3-pro-preview",
+    ]
+    assert [prompt.prompt_version for prompt in latest] == [
+        "image-prompts-v4",
+        "image-prompts-v4",
+    ]
+    assert [prompt.variant_index for prompt in latest] == [0, 1]
+
+    repository.delete_for_scene(scene.id, commit=True)
+
+
 def test_list_for_book_filters(db: Session) -> None:
     scene_repo = SceneExtractionRepository(db)
     repository = ImagePromptRepository(db)

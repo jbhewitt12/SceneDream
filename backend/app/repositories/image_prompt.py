@@ -159,6 +159,39 @@ class ImagePromptRepository:
         statement = statement.order_by(ImagePrompt.variant_index.asc())
         return list(self._session.exec(statement))
 
+    def get_latest_generated_set_for_scene(
+        self,
+        scene_extraction_id: UUID,
+        *,
+        include_scene: bool = False,
+    ) -> list[ImagePrompt]:
+        """Return the newest coherent prompt set for a scene.
+
+        The latest prompt row determines the active `(model_name, prompt_version)`
+        pair, and then the full set for that pair is loaded in variant order.
+        """
+
+        latest_statement = (
+            select(ImagePrompt.model_name, ImagePrompt.prompt_version)
+            .where(ImagePrompt.scene_extraction_id == scene_extraction_id)
+            .order_by(ImagePrompt.created_at.desc(), ImagePrompt.variant_index.desc())
+            .limit(1)
+        )
+        latest_prompt_key = self._session.exec(latest_statement).first()
+        if latest_prompt_key is None:
+            return []
+
+        model_name, prompt_version = latest_prompt_key
+        statement = select(ImagePrompt).where(
+            ImagePrompt.scene_extraction_id == scene_extraction_id,
+            ImagePrompt.model_name == model_name,
+            ImagePrompt.prompt_version == prompt_version,
+        )
+        statement = statement.order_by(ImagePrompt.variant_index.asc())
+        if include_scene:
+            statement = statement.options(joinedload(ImagePrompt.scene_extraction))
+        return list(self._session.exec(statement))
+
     def create(
         self,
         *,
