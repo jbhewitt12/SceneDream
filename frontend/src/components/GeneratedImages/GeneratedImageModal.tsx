@@ -2,16 +2,19 @@ import {
   Badge,
   Box,
   Button,
+  Flex,
   HStack,
   IconButton,
   Image,
   Input,
+  Separator,
+  SimpleGrid,
   Stack,
   Text,
   Textarea,
 } from "@chakra-ui/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import {
   FiChevronLeft,
   FiChevronRight,
@@ -55,6 +58,80 @@ type GeneratedImageModalProps = {
   onCustomRemix?: (imageId: string, customPromptText: string) => Promise<void>
   onQueueForPosting?: (imageId: string) => Promise<void>
 }
+
+type SidebarSectionProps = {
+  eyebrow: string
+  title?: string
+  description?: string
+  action?: ReactNode
+  children: ReactNode
+}
+
+type DetailItemProps = {
+  label: string
+  value: ReactNode
+}
+
+const sectionCardStyles = {
+  borderWidth: "1px",
+  borderRadius: "xl",
+  bg: "rgba(255,255,255,0.04)",
+  backdropFilter: "blur(10px) saturate(140%)",
+  boxShadow: "sm",
+} as const
+
+const SidebarSection = ({
+  eyebrow,
+  title,
+  description,
+  action,
+  children,
+}: SidebarSectionProps) => (
+  <Box {...sectionCardStyles} px={4} py={4}>
+    <Stack gap={4}>
+      <Flex align="start" justify="space-between" gap={3}>
+        <Stack gap={1}>
+          <Text
+            fontSize="xs"
+            textTransform="uppercase"
+            letterSpacing="0.12em"
+            color="fg.subtle"
+          >
+            {eyebrow}
+          </Text>
+          {title ? (
+            <Text fontSize="lg" fontWeight="semibold" lineHeight="1.2">
+              {title}
+            </Text>
+          ) : null}
+          {description ? (
+            <Text fontSize="sm" color="fg.subtle">
+              {description}
+            </Text>
+          ) : null}
+        </Stack>
+        {action}
+      </Flex>
+      {children}
+    </Stack>
+  </Box>
+)
+
+const DetailItem = ({ label, value }: DetailItemProps) => (
+  <Stack gap={1}>
+    <Text
+      fontSize="xs"
+      textTransform="uppercase"
+      letterSpacing="0.12em"
+      color="fg.subtle"
+    >
+      {label}
+    </Text>
+    <Text fontSize="sm" fontWeight="medium">
+      {value}
+    </Text>
+  </Stack>
+)
 
 const GeneratedImageModal = ({
   isOpen,
@@ -258,6 +335,18 @@ const GeneratedImageModal = ({
     : -1
   const isEditedPromptInvalid =
     !editedPromptText.trim() || editedPromptText === promptText
+  const approvalStateLabel =
+    currentImage?.image.user_approved === true
+      ? "Approved"
+      : currentImage?.image.user_approved === false
+        ? "Rejected"
+        : null
+  const approvalStatePalette =
+    currentImage?.image.user_approved === true
+      ? "green"
+      : currentImage?.image.user_approved === false
+        ? "red"
+        : "gray"
   const isCustomRemixDisabled =
     isRemixing || isEditedPromptInvalid || !onCustomRemix
 
@@ -420,12 +509,384 @@ const GeneratedImageModal = ({
                 maxH="70vh"
                 pr={2}
               >
-                {/* Image metadata */}
-                <Box>
-                  <HStack justify="space-between" align="center" mb={2}>
-                    <Text fontWeight="bold" fontSize="sm">
-                      Image Details
-                    </Text>
+                {(onApprovalChange || onQueueForPosting) && (
+                  <SidebarSection eyebrow="Review and publishing">
+                    <Stack gap={4}>
+                      {onApprovalChange && (
+                        <Box
+                          borderWidth="1px"
+                          borderRadius="lg"
+                          borderColor="whiteAlpha.200"
+                          bg="blackAlpha.200"
+                          px={3}
+                          py={3}
+                        >
+                          <Stack gap={3}>
+                            <HStack justify="space-between" align="center">
+                              <Text fontSize="sm" fontWeight="medium">
+                                Approval
+                              </Text>
+                              {approvalStateLabel ? (
+                                <Badge
+                                  colorPalette={approvalStatePalette}
+                                  variant="subtle"
+                                >
+                                  {approvalStateLabel}
+                                </Badge>
+                              ) : null}
+                            </HStack>
+                            <HStack gap={2} align="center">
+                              <IconButton
+                                aria-label="Approve image"
+                                variant={
+                                  currentImage.image.user_approved === true
+                                    ? "solid"
+                                    : "outline"
+                                }
+                                colorPalette={
+                                  currentImage.image.user_approved === true
+                                    ? "green"
+                                    : "gray"
+                                }
+                                onClick={() =>
+                                  onApprovalChange(
+                                    currentImage.image.id,
+                                    currentImage.image.user_approved === true
+                                      ? null
+                                      : true,
+                                  )
+                                }
+                              >
+                                <FiThumbsUp />
+                              </IconButton>
+                              <IconButton
+                                aria-label="Reject image"
+                                variant={
+                                  currentImage.image.user_approved === false
+                                    ? "solid"
+                                    : "outline"
+                                }
+                                colorPalette={
+                                  currentImage.image.user_approved === false
+                                    ? "red"
+                                    : "gray"
+                                }
+                                onClick={() =>
+                                  onApprovalChange(
+                                    currentImage.image.id,
+                                    currentImage.image.user_approved === false
+                                      ? null
+                                      : false,
+                                  )
+                                }
+                              >
+                                <FiThumbsDown />
+                              </IconButton>
+                            </HStack>
+                          </Stack>
+                        </Box>
+                      )}
+
+                      {onApprovalChange && onQueueForPosting && <Separator />}
+
+                      {onQueueForPosting && (
+                        <Stack gap={3}>
+                          <HStack justify="space-between" align="center">
+                            <Text fontSize="sm" fontWeight="medium">
+                              Social media
+                            </Text>
+                            {canQueueForPosting && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                colorPalette="blue"
+                                loading={isQueueing}
+                                loadingText="Queueing"
+                                onClick={handleQueueForPosting}
+                              >
+                                <FiShare2 />
+                                Queue for Posting
+                              </Button>
+                            )}
+                          </HStack>
+                          {postingStatus?.posts &&
+                          postingStatus.posts.length > 0 ? (
+                            <Stack gap={2}>
+                              {postingStatus.posts.map((post) => (
+                                <Box
+                                  key={post.id}
+                                  borderWidth="1px"
+                                  borderRadius="lg"
+                                  borderColor="whiteAlpha.200"
+                                  bg="blackAlpha.200"
+                                  px={3}
+                                  py={3}
+                                >
+                                  <Stack gap={2}>
+                                    <HStack
+                                      justify="space-between"
+                                      align="center"
+                                    >
+                                      <Badge
+                                        colorPalette={
+                                          post.status === "posted"
+                                            ? "green"
+                                            : post.status === "failed"
+                                              ? "red"
+                                              : "blue"
+                                        }
+                                      >
+                                        {post.service_name}
+                                      </Badge>
+                                      <Text fontSize="xs" color="fg.muted">
+                                        {post.status === "posted"
+                                          ? "Posted"
+                                          : post.status === "queued"
+                                            ? "Queued"
+                                            : "Failed"}
+                                      </Text>
+                                    </HStack>
+                                    {post.error_message &&
+                                    post.status === "failed" ? (
+                                      <Text fontSize="xs" color="red.400">
+                                        {post.error_message}
+                                      </Text>
+                                    ) : null}
+                                    {post.external_url ? (
+                                      <Button
+                                        aria-label="Open social post"
+                                        size="xs"
+                                        variant="ghost"
+                                        justifyContent="flex-start"
+                                        asChild
+                                      >
+                                        <a
+                                          href={post.external_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          <FiExternalLink />
+                                          View post
+                                        </a>
+                                      </Button>
+                                    ) : null}
+                                  </Stack>
+                                </Box>
+                              ))}
+                            </Stack>
+                          ) : (
+                            <Text fontSize="sm" color="fg.subtle">
+                              {currentImage.image.user_approved !== true
+                                ? "Approve this image first to unlock social sharing."
+                                : "No social posts yet. Queue this image when you are ready to publish it."}
+                            </Text>
+                          )}
+                        </Stack>
+                      )}
+                    </Stack>
+                  </SidebarSection>
+                )}
+
+                {currentImage.prompt && (
+                  <SidebarSection
+                    eyebrow="Prompt body"
+                    title="Edit and remix"
+                    description="Adjust the actual prompt text, then trigger a fresh variation from your edited version."
+                  >
+                    <Stack gap={3}>
+                      <Textarea
+                        value={editedPromptText}
+                        onChange={(event) =>
+                          setEditedPromptText(event.target.value)
+                        }
+                        fontSize="sm"
+                        fontFamily="mono"
+                        color="fg.muted"
+                        minH="220px"
+                        resize="vertical"
+                        disabled={isRemixing}
+                        bg="blackAlpha.200"
+                        borderColor="whiteAlpha.200"
+                      />
+                      <HStack
+                        justify="space-between"
+                        align="center"
+                        wrap="wrap"
+                      >
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorPalette="purple"
+                          loading={isRemixing}
+                          loadingText="Remixing"
+                          onClick={handleCustomRemix}
+                          disabled={isCustomRemixDisabled}
+                        >
+                          <FiEdit3 />
+                          Remix with Edits
+                        </Button>
+                      </HStack>
+                    </Stack>
+                  </SidebarSection>
+                )}
+
+                {currentImage.scene && (
+                  <SidebarSection
+                    eyebrow="Scene context"
+                    title={`Scene ${currentImage.scene.scene_number}`}
+                    description={`${currentImage.scene.chapter_title} · ${currentImage.scene.location_marker}`}
+                  >
+                    <Stack gap={4}>
+                      <SimpleGrid columns={{ base: 1, sm: 2 }} gap={4}>
+                        <DetailItem
+                          label="Book"
+                          value={currentImage.scene.book_slug}
+                        />
+                        <DetailItem
+                          label="Chapter"
+                          value={`#${currentImage.scene.chapter_number}`}
+                        />
+                      </SimpleGrid>
+                      <Box
+                        borderWidth="1px"
+                        borderRadius="lg"
+                        borderColor="whiteAlpha.200"
+                        bg="blackAlpha.200"
+                        px={3}
+                        py={3}
+                      >
+                        <Text
+                          fontSize="sm"
+                          whiteSpace="pre-wrap"
+                          color="fg.muted"
+                        >
+                          {currentImage.scene.refined || currentImage.scene.raw}
+                        </Text>
+                      </Box>
+                    </Stack>
+                  </SidebarSection>
+                )}
+
+                {currentImage.prompt && (
+                  <SidebarSection
+                    eyebrow="Prompt overview"
+                    action={
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        colorPalette="purple"
+                        onClick={() => setIsMetadataModalOpen(true)}
+                        disabled={!currentImage?.prompt?.id}
+                        alignSelf="start"
+                      >
+                        <FiRefreshCw />
+                        Regenerate
+                      </Button>
+                    }
+                  >
+                    <Stack gap={3}>
+                      <Stack gap={1}>
+                        <Text
+                          fontSize="xs"
+                          textTransform="uppercase"
+                          letterSpacing="0.12em"
+                          color="fg.subtle"
+                        >
+                          Title
+                        </Text>
+                        <Input
+                          value={editedTitle}
+                          onChange={(e) => handleTitleChange(e.target.value)}
+                          placeholder="Title"
+                          fontSize="lg"
+                          fontWeight="semibold"
+                          size="sm"
+                          bg="blackAlpha.200"
+                          borderColor="whiteAlpha.200"
+                        />
+                      </Stack>
+                      <Stack gap={1}>
+                        <Text
+                          fontSize="xs"
+                          textTransform="uppercase"
+                          letterSpacing="0.12em"
+                          color="fg.subtle"
+                        >
+                          Flavour text
+                        </Text>
+                        <Textarea
+                          value={editedFlavour}
+                          onChange={(e) => handleFlavourChange(e.target.value)}
+                          placeholder="Description / flavour text"
+                          fontSize="sm"
+                          color="fg.subtle"
+                          fontStyle="italic"
+                          resize="none"
+                          minH="88px"
+                          bg="blackAlpha.200"
+                          borderColor="whiteAlpha.200"
+                        />
+                      </Stack>
+                      <HStack
+                        justify="space-between"
+                        align="center"
+                        wrap="wrap"
+                      >
+                        {metadataMutation.isPending ? (
+                          <Text fontSize="xs" color="fg.muted">
+                            Saving copy changes...
+                          </Text>
+                        ) : (
+                          <Box />
+                        )}
+                        <HStack gap={2} wrap="wrap">
+                          {approvalStateLabel ? (
+                            <Badge
+                              colorPalette={approvalStatePalette}
+                              variant="subtle"
+                            >
+                              {approvalStateLabel}
+                            </Badge>
+                          ) : null}
+                          <Badge colorPalette="gray" variant="subtle">
+                            Variant #{currentImage.image.variant_index + 1}
+                          </Badge>
+                        </HStack>
+                      </HStack>
+                      {currentImage.prompt.style_tags &&
+                        currentImage.prompt.style_tags.length > 0 && (
+                          <>
+                            <Separator />
+                            <Stack gap={2}>
+                              <Text
+                                fontSize="xs"
+                                textTransform="uppercase"
+                                letterSpacing="0.12em"
+                                color="fg.subtle"
+                              >
+                                Style tags
+                              </Text>
+                              <HStack gap={2} wrap="wrap">
+                                {currentImage.prompt.style_tags.map((tag) => (
+                                  <Badge
+                                    key={tag}
+                                    colorPalette="purple"
+                                    variant="subtle"
+                                  >
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </HStack>
+                            </Stack>
+                          </>
+                        )}
+                    </Stack>
+                  </SidebarSection>
+                )}
+
+                <SidebarSection
+                  eyebrow="Image details"
+                  action={
                     <IconButton
                       aria-label="Crop image"
                       variant="ghost"
@@ -435,285 +896,38 @@ const GeneratedImageModal = ({
                     >
                       <FiCrop />
                     </IconButton>
-                  </HStack>
-                  <HStack gap={2} wrap="wrap" mb={2}>
-                    <Badge>{currentImage.image.size}</Badge>
-                    <Badge colorScheme="purple">
-                      {currentImage.image.quality}
-                    </Badge>
-                    <Badge colorScheme="blue">{currentImage.image.style}</Badge>
-                    <Badge colorScheme="gray">
-                      Variant #{currentImage.image.variant_index + 1}
-                    </Badge>
-                  </HStack>
-                  <Text fontSize="xs" color="fg.muted">
-                    {currentImage.image.provider} · {currentImage.image.model}
-                  </Text>
-                </Box>
-
-                {/* Approval controls */}
-                {onApprovalChange && (
-                  <Box>
-                    <Text fontWeight="bold" fontSize="sm" mb={2}>
-                      Approval
-                    </Text>
-                    <HStack gap={2} align="center">
-                      <IconButton
-                        aria-label="Approve image"
-                        variant={
-                          currentImage.image.user_approved === true
-                            ? "solid"
-                            : "outline"
-                        }
-                        colorPalette={
-                          currentImage.image.user_approved === true
-                            ? "green"
-                            : "gray"
-                        }
-                        onClick={() =>
-                          onApprovalChange(
-                            currentImage.image.id,
-                            currentImage.image.user_approved === true
-                              ? null
-                              : true,
-                          )
-                        }
-                      >
-                        <FiThumbsUp />
-                      </IconButton>
-                      <IconButton
-                        aria-label="Reject image"
-                        variant={
-                          currentImage.image.user_approved === false
-                            ? "solid"
-                            : "outline"
-                        }
-                        colorPalette={
-                          currentImage.image.user_approved === false
-                            ? "red"
-                            : "gray"
-                        }
-                        onClick={() =>
-                          onApprovalChange(
-                            currentImage.image.id,
-                            currentImage.image.user_approved === false
-                              ? null
-                              : false,
-                          )
-                        }
-                      >
-                        <FiThumbsDown />
-                      </IconButton>
-                      {currentImage.image.user_approved != null && (
-                        <Text fontSize="xs" color="fg.muted" ml={2}>
-                          {currentImage.image.user_approved
-                            ? "Approved"
-                            : "Rejected"}
-                        </Text>
-                      )}
+                  }
+                >
+                  <Stack gap={4}>
+                    <HStack gap={2} wrap="wrap">
+                      <Badge>{currentImage.image.size}</Badge>
+                      <Badge colorPalette="purple">
+                        {currentImage.image.quality}
+                      </Badge>
+                      <Badge colorPalette="blue">
+                        {currentImage.image.style}
+                      </Badge>
                     </HStack>
-                  </Box>
-                )}
-
-                {/* Social media sharing */}
-                {onQueueForPosting && (
-                  <Box>
-                    <Text fontWeight="bold" fontSize="sm" mb={2}>
-                      Social Media
-                    </Text>
-                    {postingStatus?.posts && postingStatus.posts.length > 0 ? (
-                      <Stack gap={2}>
-                        {postingStatus.posts.map((post) => (
-                          <HStack
-                            key={post.id}
-                            gap={2}
-                            p={2}
-                            borderWidth="1px"
-                            borderRadius="md"
-                            bg={
-                              post.status === "posted"
-                                ? "green.50"
-                                : post.status === "failed"
-                                  ? "red.50"
-                                  : "blue.50"
-                            }
-                            _dark={{
-                              bg:
-                                post.status === "posted"
-                                  ? "green.900"
-                                  : post.status === "failed"
-                                    ? "red.900"
-                                    : "blue.900",
-                            }}
-                          >
-                            <Badge
-                              colorScheme={
-                                post.status === "posted"
-                                  ? "green"
-                                  : post.status === "failed"
-                                    ? "red"
-                                    : "blue"
-                              }
-                            >
-                              {post.service_name}
-                            </Badge>
-                            <Text fontSize="xs" flex="1">
-                              {post.status === "posted"
-                                ? "Posted"
-                                : post.status === "queued"
-                                  ? "Queued"
-                                  : "Failed"}
-                            </Text>
-                            {post.external_url && (
-                              <Button
-                                aria-label="View on Flickr"
-                                size="xs"
-                                variant="ghost"
-                                asChild
-                              >
-                                <a
-                                  href={post.external_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  <FiExternalLink />
-                                </a>
-                              </Button>
-                            )}
-                            {post.status === "failed" && post.error_message && (
-                              <Text fontSize="xs" color="red.500">
-                                {post.error_message}
-                              </Text>
-                            )}
-                          </HStack>
-                        ))}
-                      </Stack>
-                    ) : (
-                      <Text fontSize="xs" color="fg.muted" mb={2}>
-                        {currentImage.image.user_approved !== true
-                          ? "Approve this image to enable sharing"
-                          : "Not yet posted"}
-                      </Text>
-                    )}
-                    {canQueueForPosting && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        colorPalette="blue"
-                        loading={isQueueing}
-                        loadingText="Queueing"
-                        onClick={handleQueueForPosting}
-                        mt={2}
-                      >
-                        <FiShare2 />
-                        Queue for Posting
-                      </Button>
-                    )}
-                  </Box>
-                )}
-
-                {/* Prompt text */}
-                {currentImage.prompt && (
-                  <Box>
-                    <Text fontWeight="bold" fontSize="sm" mb={2}>
-                      Prompt
-                    </Text>
-                    <Stack gap={2} mb={3}>
-                      <Input
-                        value={editedTitle}
-                        onChange={(e) => handleTitleChange(e.target.value)}
-                        placeholder="Title"
-                        fontSize="md"
-                        fontWeight="semibold"
-                        variant="flushed"
-                        size="sm"
+                    <SimpleGrid columns={{ base: 1, sm: 2 }} gap={4}>
+                      <DetailItem
+                        label="Provider"
+                        value={currentImage.image.provider}
                       />
-                      <Textarea
-                        value={editedFlavour}
-                        onChange={(e) => handleFlavourChange(e.target.value)}
-                        placeholder="Description / flavour text"
-                        fontSize="sm"
-                        color="fg.subtle"
-                        fontStyle="italic"
-                        variant="flushed"
-                        resize="none"
-                        minH="60px"
+                      <DetailItem
+                        label="Model"
+                        value={currentImage.image.model}
                       />
-                    </Stack>
-                    <HStack justify="flex-end" align="center" mb={2}>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        colorPalette="purple"
-                        onClick={() => setIsMetadataModalOpen(true)}
-                        disabled={!currentImage?.prompt?.id}
-                      >
-                        <HStack gap={1} align="center">
-                          <FiRefreshCw aria-hidden="true" />
-                          <Text as="span">Regenerate</Text>
-                        </HStack>
-                      </Button>
-                    </HStack>
-                    {currentImage.prompt.style_tags &&
-                      currentImage.prompt.style_tags.length > 0 && (
-                        <HStack gap={2} wrap="wrap" mb={2}>
-                          {currentImage.prompt.style_tags.map((tag) => (
-                            <Badge
-                              key={tag}
-                              colorScheme="purple"
-                              variant="subtle"
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
-                        </HStack>
-                      )}
-                    <Textarea
-                      value={editedPromptText}
-                      onChange={(event) =>
-                        setEditedPromptText(event.target.value)
-                      }
-                      fontSize="sm"
-                      fontFamily="mono"
-                      color="fg.muted"
-                      minH="200px"
-                      resize="vertical"
-                      disabled={isRemixing}
-                    />
-                    <HStack justify="flex-end" mt={2}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        colorPalette="purple"
-                        loading={isRemixing}
-                        loadingText="Remixing"
-                        onClick={handleCustomRemix}
-                        disabled={isCustomRemixDisabled}
-                      >
-                        <HStack gap={1} align="center">
-                          <FiEdit3 aria-hidden="true" />
-                          <Text as="span">Remix with Edits</Text>
-                        </HStack>
-                      </Button>
-                    </HStack>
-                  </Box>
-                )}
-
-                {/* Scene text */}
-                {currentImage.scene && (
-                  <Box>
-                    <Text fontWeight="bold" fontSize="sm" mb={2}>
-                      Scene {currentImage.scene.scene_number}
-                    </Text>
-                    <Text fontSize="xs" color="fg.subtle" mb={1}>
-                      {currentImage.scene.chapter_title} ·{" "}
-                      {currentImage.scene.location_marker}
-                    </Text>
-                    <Text fontSize="sm" whiteSpace="pre-wrap" color="fg.muted">
-                      {currentImage.scene.refined || currentImage.scene.raw}
-                    </Text>
-                  </Box>
-                )}
+                      <DetailItem
+                        label="Chapter"
+                        value={`#${currentImage.image.chapter_number}`}
+                      />
+                      <DetailItem
+                        label="Variant"
+                        value={`#${currentImage.image.variant_index + 1}`}
+                      />
+                    </SimpleGrid>
+                  </Stack>
+                </SidebarSection>
               </Stack>
             )}
           </HStack>
