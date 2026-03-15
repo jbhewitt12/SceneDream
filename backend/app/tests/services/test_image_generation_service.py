@@ -11,7 +11,7 @@ import pytest
 from sqlmodel import Session
 
 import app.services.image_generation.image_generation_service as image_generation_service_module
-from app.repositories import GeneratedImageRepository
+from app.repositories import GeneratedImageRepository, SceneRankingRepository
 from app.services.image_generation import dalle_image_api
 from app.services.image_generation.base_provider import GeneratedImageResult
 from app.services.image_generation.image_generation_service import (
@@ -479,6 +479,79 @@ async def test_generate_for_selection_handles_errors(
     assert len(images) == 1
     assert images[0].error is not None
     assert "Failed to generate image" in images[0].error
+
+
+async def test_generate_for_selection_recovers_session_after_duplicate_insert(
+    db: Session,
+    scene_factory: Callable[..., SceneExtraction],
+    prompt_factory: Callable[..., ImagePrompt],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    """A duplicate insert race must not leave the shared session unusable."""
+
+    scene = scene_factory(scene_number=12)
+    prompt = prompt_factory(
+        scene,
+        variant_index=0,
+        style_tags=["vivid"],
+        attributes={"aspect_ratio": "1:1"},
+    )
+
+    ranking_repo = SceneRankingRepository(db)
+    ranking_repo.create(
+        data={
+            "scene_extraction_id": scene.id,
+            "model_vendor": "openai",
+            "model_name": "test-ranking-model",
+            "prompt_version": "test-ranking-v1",
+            "scores": {"cinematic": 0.9},
+            "overall_priority": 9.5,
+            "weight_config": {"cinematic": 1.0},
+            "weight_config_hash": "test-weight-hash",
+            "raw_response": {},
+        },
+        commit=True,
+    )
+
+    monkeypatch.setattr(image_generation_service_module, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        image_generation_service_module,
+        "_GENERATED_IMAGES_ROOT",
+        (tmp_path / "img").resolve(),
+    )
+
+    provider = image_generation_service_module.ProviderRegistry.get("openai_gpt_image")
+    assert provider is not None
+
+    started = 0
+    ready = asyncio.Event()
+
+    async def fake_generate_image(**_: object) -> GeneratedImageResult:
+        nonlocal started
+        started += 1
+        if started >= 2:
+            ready.set()
+        await ready.wait()
+        return GeneratedImageResult(image_data=b"duplicate-image")
+
+    monkeypatch.setattr(provider, "generate_image", fake_generate_image)
+
+    service = ImageGenerationService(
+        db,
+        config=ImageGenerationConfig(storage_base="img/generated"),
+        api_key="test-key",
+    )
+
+    generated_ids = await service.generate_for_selection(
+        prompt_ids=[prompt.id, prompt.id],
+        provider="openai_gpt_image",
+        model="gpt-image-1.5",
+        concurrency=2,
+    )
+
+    assert len(generated_ids) == 1
+    assert ranking_repo.get_latest_for_scene(scene.id) is not None
 
 
 async def test_generate_for_selection_filters_by_chapter_range(

@@ -659,6 +659,19 @@ def _build_prompt_generation_config_kwargs(
     return config_kwargs
 
 
+def _rollback_session_after_scene_error(
+    session: Session,
+    *,
+    context: str,
+) -> None:
+    """Clear a failed transaction before continuing the current batch."""
+
+    try:
+        session.rollback()
+    except Exception:
+        logger.exception("Failed to roll back session after %s", context)
+
+
 def _filter_scenes_for_ranking(
     *,
     session: Session,
@@ -1175,16 +1188,17 @@ async def _run_full_pipeline(
 
                     if ranking.scene_extraction:
                         scene = ranking.scene_extraction
+                        scene_id = scene.id
 
                         # Reuse only prompt sets that already match this run's style config.
                         if _scene_has_matching_prompt_set(
                             prompt_repo=prompt_repo,
                             prompt_service=prompt_service,
-                            scene_id=scene.id,
+                            scene_id=scene_id,
                         ):
                             logger.debug(
                                 "Scene %s already has matching prompts, skipping",
-                                scene.id,
+                                scene_id,
                             )
                             continue
 
@@ -1205,8 +1219,14 @@ async def _run_full_pipeline(
                                     scene.chapter_number,
                                 )
                         except Exception as exc:
-                            error_msg = f"Failed to generate prompts for scene {scene.id}: {exc}"
+                            error_msg = (
+                                f"Failed to generate prompts for scene {scene_id}: {exc}"
+                            )
                             logger.error(error_msg)
+                            _rollback_session_after_scene_error(
+                                session,
+                                context=f"prompt generation failure for scene {scene_id}",
+                            )
                             stats.errors.append(error_msg)
 
                 logger.info(
@@ -1482,14 +1502,15 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
 
             if ranking.scene_extraction:
                 scene = ranking.scene_extraction
+                scene_id = scene.id
 
                 # Check if scene already has prompts (unless overwrite is enabled)
                 if not args.overwrite:
-                    existing_prompts = prompt_repo.has_any_for_scene(scene.id)
+                    existing_prompts = prompt_repo.has_any_for_scene(scene_id)
                     if existing_prompts:
                         logger.debug(
                             "Scene %s already has prompts, skipping",
-                            scene.id,
+                            scene_id,
                         )
                         continue
 
@@ -1510,10 +1531,12 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
                             scene.chapter_number,
                         )
                 except Exception as exc:
-                    error_msg = (
-                        f"Failed to generate prompts for scene {scene.id}: {exc}"
-                    )
+                    error_msg = f"Failed to generate prompts for scene {scene_id}: {exc}"
                     logger.error(error_msg)
+                    _rollback_session_after_scene_error(
+                        session,
+                        context=f"prompt generation failure for scene {scene_id}",
+                    )
                     stats.errors.append(error_msg)
 
         logger.info(
@@ -1795,6 +1818,7 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
             metadata["scene_ranking_id"] = str(ranking.id)
             if ranking.overall_priority is not None:
                 metadata["ranking_priority"] = ranking.overall_priority
+            scene_id = scene.id
 
             try:
                 prompts = await prompt_service.generate_for_scene(
@@ -1804,8 +1828,12 @@ async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
                     metadata=metadata,
                 )
             except Exception as exc:
-                error_msg = f"Failed to generate prompts for scene {scene.id}: {exc}"
+                error_msg = f"Failed to generate prompts for scene {scene_id}: {exc}"
                 logger.error(error_msg)
+                _rollback_session_after_scene_error(
+                    session,
+                    context=f"prompt generation failure for scene {scene_id}",
+                )
                 stats.errors.append(error_msg)
                 continue
 
@@ -1999,6 +2027,7 @@ async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
             metadata["scene_ranking_id"] = str(ranking.id)
             if ranking.overall_priority is not None:
                 metadata["ranking_priority"] = ranking.overall_priority
+            scene_id = scene.id
 
             try:
                 new_variants = await prompt_service.generate_for_scene(
@@ -2009,8 +2038,14 @@ async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
                     metadata=metadata,
                 )
             except Exception as exc:
-                error_msg = f"Failed to regenerate prompts for scene {scene.id}: {exc}"
+                error_msg = (
+                    f"Failed to regenerate prompts for scene {scene_id}: {exc}"
+                )
                 logger.error(error_msg)
+                _rollback_session_after_scene_error(
+                    session,
+                    context=f"prompt regeneration failure for scene {scene_id}",
+                )
                 stats.errors.append(error_msg)
                 continue
 
