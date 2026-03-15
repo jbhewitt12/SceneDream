@@ -647,8 +647,6 @@ function DocumentsPage() {
         <Stack gap={4}>
           {filteredEntries.map((entry) => {
             const key = toEntryKey(entry)
-            const hasScenesOverride = hasOwnKey(scenesPerRunByKey, key)
-            const hasArtStyleOverride = hasOwnKey(artStyleSelectionByKey, key)
             return (
               <DocumentCard
                 key={`${entry.source_path}:${entry.slug}`}
@@ -686,26 +684,6 @@ function DocumentsPage() {
                     },
                   }))
                 }
-                usesSavedSceneDefault={!hasScenesOverride}
-                usesSavedArtStyleDefault={!hasArtStyleOverride}
-                onUseSavedDefaults={() => {
-                  setScenesPerRunByKey((previous) => {
-                    if (!hasOwnKey(previous, key)) {
-                      return previous
-                    }
-                    const next = { ...previous }
-                    delete next[key]
-                    return next
-                  })
-                  setArtStyleSelectionByKey((previous) => {
-                    if (!hasOwnKey(previous, key)) {
-                      return previous
-                    }
-                    const next = { ...previous }
-                    delete next[key]
-                    return next
-                  })
-                }}
                 onLaunch={() => handleLaunch(entry)}
               />
             )
@@ -731,12 +709,9 @@ function DocumentCard({
   artStyleSelection,
   artStyleCatalogCounts,
   launching,
-  usesSavedSceneDefault,
-  usesSavedArtStyleDefault,
   onScenesPerRunChange,
   onArtStyleModeChange,
   onArtStyleTextChange,
-  onUseSavedDefaults,
   onLaunch,
 }: {
   entry: DocumentDashboardEntry
@@ -748,14 +723,11 @@ function DocumentCard({
     other: number
   }
   launching: boolean
-  usesSavedSceneDefault: boolean
-  usesSavedArtStyleDefault: boolean
   onScenesPerRunChange: (value: string) => void
   onArtStyleModeChange: (
     value: PromptArtStyleSelection["promptArtStyleMode"],
   ) => void
   onArtStyleTextChange: (value: string) => void
-  onUseSavedDefaults: () => void
   onLaunch: () => void
 }) {
   const runSummary: RunSummaryLike | null =
@@ -861,33 +833,19 @@ function DocumentCard({
               />
             </Box>
             <Flex align="flex-end">
-              <Stack align="stretch" w="full">
-                <Button
-                  colorScheme="blue"
-                  onClick={onLaunch}
-                  loading={launching || hasActiveRun}
-                  disabled={!canLaunch || artStyleValidationMessage !== null}
-                  gap={2}
-                >
-                  <FiPlay />
-                  {launchLabel}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onUseSavedDefaults}
-                  disabled={usesSavedSceneDefault && usesSavedArtStyleDefault}
-                >
-                  Use saved defaults
-                </Button>
-              </Stack>
+              <Button
+                colorScheme="blue"
+                onClick={onLaunch}
+                loading={launching || hasActiveRun}
+                disabled={!canLaunch || artStyleValidationMessage !== null}
+                gap={2}
+                w="full"
+              >
+                <FiPlay />
+                {launchLabel}
+              </Button>
             </Flex>
           </Grid>
-          <Text mt={2} fontSize="sm" color="fg.muted">
-            {usesSavedSceneDefault && usesSavedArtStyleDefault
-              ? "This card is following the saved pipeline defaults."
-              : "This card has explicit launch overrides."}
-          </Text>
           {canGenerateImages ? (
             <Text mt={2} fontSize="sm" color="fg.muted">
               Generates images for the highest-ranked scenes that do not already
