@@ -46,3 +46,31 @@ def test_generate_metadata_falls_back_to_openai(
     assert isinstance(result, dict)
     assert result["title"] == "Neon Verdict"
     assert result["flavour_text"]
+
+
+def test_build_metadata_prompt_bans_gilded(
+    db: Session,
+    scene_factory,
+    prompt_factory,
+) -> None:
+    scene = scene_factory()
+    prompt = prompt_factory(scene)
+    service = PromptMetadataGenerationService(db)
+
+    payload = service._build_metadata_prompt(prompt)
+
+    assert 'Never use the word "gilded" in the title or flavour text.' in payload
+
+
+def test_build_variants_prompt_bans_gilded(
+    db: Session,
+    scene_factory,
+    prompt_factory,
+) -> None:
+    scene = scene_factory()
+    prompt = prompt_factory(scene)
+    service = PromptMetadataGenerationService(db)
+
+    payload = service._build_variants_prompt(prompt, variants_count=3)
+
+    assert 'Never use the word "gilded" in any title or flavour text.' in payload

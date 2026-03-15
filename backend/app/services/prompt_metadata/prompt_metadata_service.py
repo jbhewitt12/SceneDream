@@ -220,6 +220,7 @@ class PromptMetadataGenerationService:
             4. Capture the mood, color, and energy implied by the prompt without copying its wording verbatim.
             5. Keep things cool, modern, and hype without sounding clickbait or cringe.
             6. Let the flavour text read like an MTG-style whisper, sly prophecy, or wry aside rather than a literal caption.
+            7. Never use the word "gilded" in the title or flavour text.
 
             Respond ONLY with JSON: {{"title": "<string>", "flavour_text": "<string>"}}
             """
@@ -257,6 +258,7 @@ class PromptMetadataGenerationService:
             4. Capture the vibe, palette, and energy implied by the prompt without copying its wording verbatim.
             5. Keep things modern and hype without sounding like clickbait.
             6. Let the flavour text read like an MTG-style whisper, sly prophecy, or wry aside rather than a literal caption.
+            7. Never use the word "gilded" in any title or flavour text.
 
             Respond ONLY with JSON in this exact shape:
             {{
