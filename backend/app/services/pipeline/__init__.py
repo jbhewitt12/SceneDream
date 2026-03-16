@@ -1,5 +1,6 @@
 """Pipeline orchestration services."""
 
+from .background import spawn_background_task
 from .document_stage_status_service import (
     STAGE_STATUS_COMPLETED,
     STAGE_STATUS_FAILED,
@@ -28,6 +29,13 @@ from .orchestrator_config import (
     RemixTarget,
     SceneTarget,
 )
+from .pipeline_orchestrator import (
+    PipelineOrchestrator,
+    RunDiagnosticsTracker,
+    build_usage_summary,
+    classify_pipeline_error_code,
+    log_pipeline_event,
+)
 from .pipeline_run_start_service import PipelineRunResolution, PipelineRunStartService
 
 __all__ = [
@@ -40,6 +48,7 @@ __all__ = [
     "PipelineExecutionContext",
     "PipelineExecutionResult",
     "PipelineExecutionTarget",
+    "PipelineOrchestrator",
     "PipelineRunResolution",
     "PipelineRunStartService",
     "PipelineStagePlan",
@@ -48,6 +57,7 @@ __all__ = [
     "PreparedPipelineExecution",
     "PromptExecutionOptions",
     "RemixTarget",
+    "RunDiagnosticsTracker",
     "SceneTarget",
     "STAGE_STATUS_COMPLETED",
     "STAGE_STATUS_FAILED",
@@ -55,4 +65,8 @@ __all__ = [
     "STAGE_STATUS_RUNNING",
     "STAGE_STATUS_STALE",
     "SourceDocumentMissingError",
+    "build_usage_summary",
+    "classify_pipeline_error_code",
+    "log_pipeline_event",
+    "spawn_background_task",
 ]

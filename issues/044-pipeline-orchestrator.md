@@ -755,3 +755,54 @@ Behavior:
   - `backend/app/services/pipeline/pipeline_run_start_service.py` (modified — added `prepare_execution()` and supporting methods)
   - `backend/app/services/pipeline/orchestrator_config.py` (modified — added `copy_with()` to `PipelineStagePlan` and `PromptExecutionOptions`)
   - `backend/app/tests/services/test_pipeline_run_start_service.py` (modified — added 31 new tests for `prepare_execution()`)
+
+### Phase 3: Build the core orchestrator lifecycle
+- Status: completed
+- Summary: Created `PipelineOrchestrator` with `execute()` entry point, moved diagnostics tracking (`RunDiagnosticsTracker`), usage-summary construction (`build_usage_summary`), and error classification (`classify_pipeline_error_code`) out of the route layer into the orchestrator module. Created shared background-task helper (`spawn_background_task`). Stage dispatch methods are stubs pending Phase 5 wiring. Added 29 orchestrator lifecycle tests.
+- Completed work:
+  - Created `backend/app/services/pipeline/pipeline_orchestrator.py` with:
+    - `RunDiagnosticsTracker` — moved from `_RunDiagnosticsTracker` in `pipeline_runs.py`
+    - `classify_pipeline_error_code()` — moved from `_classify_pipeline_error_code` in `pipeline_runs.py`
+    - `log_pipeline_event()` — moved from `_log_pipeline_event` in `pipeline_runs.py`
+    - `build_usage_summary()` — new function that builds usage summary from `PreparedPipelineExecution` instead of `argparse.Namespace`
+    - `_update_run_status()`, `_apply_document_stage_update()`, `_set_document_stage_running()`, `_set_document_stage_failed()`, `_sync_document_stage_statuses()`, `_format_failure_message()` — internal DB helpers moved from route layer
+    - `PipelineOrchestrator` class with:
+      - `execute(prepared)` — async entry point that dispatches stages, tracks diagnostics, and finalizes success/failure
+      - `_transition_stage()` — stage transition helper that updates diagnostics, DB status, and document stage running
+      - `_finalize_failure()`, `_finalize_stats_failure()`, `_finalize_success()` — shared finalization logic
+      - `_execute_extraction()`, `_execute_ranking()`, `_execute_prompt_generation()`, `_execute_image_generation()` — stub stage methods for Phase 5
+    - Constructor accepts injectable DB helper callbacks for testability
+  - Created `backend/app/services/pipeline/background.py` with `spawn_background_task()` — shared asyncio task scheduling helper
+  - Updated `backend/app/services/pipeline/__init__.py` to export `PipelineOrchestrator`, `RunDiagnosticsTracker`, `build_usage_summary`, `classify_pipeline_error_code`, `log_pipeline_event`, `spawn_background_task`
+  - Created `backend/app/tests/services/test_pipeline_orchestrator.py` with 29 tests across 8 test classes:
+    - `TestRunDiagnosticsTracker` (5 tests) — initial state, stage recording, stage closing, finalize success/failure
+    - `TestClassifyPipelineErrorCode` (6 tests) — missing source, invalid request, stage error, generic exception
+    - `TestBuildUsageSummary` (3 tests) — success shape, failure info, skip flags derived from stage plan
+    - `TestOrchestratorSuccess` (3 tests) — all stages, skipped stages, stage transitions
+    - `TestOrchestratorFailure` (4 tests) — exception failure, stats errors, ranking stage failure, missing source classification
+    - `TestOrchestratorUsageSummaryCompatibility` (6 tests) — required keys, skip flags, config overrides, output counts, sync mode, resumed stages
+    - `TestOrchestratorContextCarry` (1 test) — context state preserved through execution
+    - `TestOrchestratorSceneTarget` (1 test) — non-document target stage dispatch
+- Remaining work in this phase:
+  - none
+- Deviations from plan:
+  - The plan says "Move diagnostics tracker and usage-summary logic into the orchestrator" — the route-layer originals are preserved in `pipeline_runs.py` since Phase 5 will migrate callers. The orchestrator module contains the new canonical implementations.
+  - `build_usage_summary()` is a standalone function rather than an orchestrator method, since it takes `PreparedPipelineExecution` and is pure computation. This keeps the orchestrator class focused on execution.
+  - The orchestrator constructor accepts injectable callbacks for `update_run_status`, `set_document_stage_running`, `set_document_stage_failed`, and `sync_document_stage_statuses`. This makes tests simple and fast without DB mocking.
+  - The plan mentions "Add tests showing route files no longer own execution state machines" — route files still own their state machines in Phase 3 since migration happens in Phase 5. The orchestrator tests demonstrate that the orchestrator can independently own a complete execution lifecycle.
+- Tests and verification run:
+  - `cd backend && uv run pytest app/tests/services/test_pipeline_orchestrator.py -v` — 29 passed
+  - `cd backend && uv run pytest` — 391 passed, 7 deselected
+  - `cd backend && uv run ruff check app/services/pipeline/ app/tests/services/test_pipeline_orchestrator.py` — clean
+  - `cd backend && uv run ruff format --check` — clean on all changed files
+  - `cd backend && uv run bash scripts/lint.sh` — mypy reports 5 pre-existing errors (none introduced by this phase)
+- Known issues / follow-ups for next agent:
+  - The 5 pre-existing mypy errors in `document_stage_status_service.py` (4 errors) and `image_gen_cli.py` (1 error) are unrelated to this work
+  - The route-layer originals (`_RunDiagnosticsTracker`, `_classify_pipeline_error_code`, `_build_usage_summary`, `_execute_pipeline_run`, etc.) remain active in `pipeline_runs.py` until Phase 5 migrates callers to the orchestrator
+  - Stage dispatch methods in the orchestrator are stubs — Phase 5 will wire them to real service calls
+  - `spawn_background_task()` in `background.py` is available but not yet used by any route — Phase 5 will switch `pipeline_runs.py` to use it
+- Files changed:
+  - `backend/app/services/pipeline/pipeline_orchestrator.py` (created)
+  - `backend/app/services/pipeline/background.py` (created)
+  - `backend/app/services/pipeline/__init__.py` (modified — added exports)
+  - `backend/app/tests/services/test_pipeline_orchestrator.py` (created)
