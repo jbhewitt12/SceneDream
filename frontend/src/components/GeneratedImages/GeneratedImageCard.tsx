@@ -17,6 +17,7 @@ import { buildGeneratedImageUrl } from "./url"
 
 type GeneratedImageCardProps = {
   image: GeneratedImageRead
+  socialPostingEnabled: boolean
   onClick: () => void
   onApprovalChange?: (imageId: string, approved: boolean | null) => void
   onRemix?: (imageId: string) => Promise<void> | void
@@ -25,6 +26,7 @@ type GeneratedImageCardProps = {
 
 const GeneratedImageCard = ({
   image,
+  socialPostingEnabled,
   onClick,
   onApprovalChange,
   onRemix,
@@ -119,7 +121,7 @@ const GeneratedImageCard = ({
             <Badge colorScheme="red">Error</Badge>
           </Box>
         )}
-        {image.has_been_posted && (
+        {socialPostingEnabled && image.has_been_posted && (
           <Box
             position="absolute"
             top={2}
@@ -227,7 +229,8 @@ const GeneratedImageCard = ({
               </>
             )}
 
-            {onQueueForPosting &&
+            {socialPostingEnabled &&
+              onQueueForPosting &&
               image.user_approved === true &&
               !image.has_been_posted &&
               !image.file_deleted && (

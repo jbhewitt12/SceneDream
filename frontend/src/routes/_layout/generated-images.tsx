@@ -41,6 +41,7 @@ import {
   type SceneExtractionFilterOptions,
   SceneExtractionService,
 } from "@/api/sceneExtractions"
+import { SettingsApi } from "@/api/settings"
 import {
   GeneratedImageCard,
   GeneratedImageModal,
@@ -79,7 +80,7 @@ const generatedImagesSearchSchema = z.object({
     .catch(undefined),
   posted: z
     .preprocess((value) => {
-      if (value === undefined || value === "") return false
+      if (value === undefined || value === "") return undefined
       if (value === "all") return "all"
       if (value === true || value === "true" || value === "posted") {
         return true
@@ -87,9 +88,9 @@ const generatedImagesSearchSchema = z.object({
       if (value === false || value === "false" || value === "not_posted") {
         return false
       }
-      return false
+      return undefined
     }, z.union([z.boolean(), z.literal("all")]).optional())
-    .catch(false),
+    .catch(undefined),
   page_size: z.coerce.number().int().min(1).max(48).catch(24),
 })
 
@@ -115,12 +116,14 @@ const GeneratedImagesFilters = ({
   options,
   providers,
   isFetching,
+  socialPostingEnabled,
 }: {
   search: GeneratedImagesSearch
   onChange: FilterUpdater
   options: SceneExtractionFilterOptions | undefined
   providers: string[]
   isFetching: boolean
+  socialPostingEnabled: boolean
 }) => {
   const books = options?.books ?? []
 
@@ -133,7 +136,7 @@ const GeneratedImagesFilters = ({
   const resetFilters = () => {
     handleChange({
       approval: undefined,
-      posted: false,
+      posted: socialPostingEnabled ? false : undefined,
       provider: undefined,
     })
   }
@@ -242,42 +245,57 @@ const GeneratedImagesFilters = ({
             <NativeSelectIndicator />
           </NativeSelectRoot>
         </Stack>
-        <Stack gap={1}>
-          <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
-            Posted
-          </Text>
-          <NativeSelectRoot disabled={disabled} w="full">
-            <NativeSelectField
-              value={
-                search.posted === "all"
-                  ? "all"
-                  : search.posted === true
-                    ? "posted"
-                    : "not_posted"
-              }
-              onChange={(event) => {
-                const val = event.target.value
-                handleChange({
-                  posted:
-                    val === "posted" ? true : val === "all" ? "all" : false,
-                })
-              }}
-            >
-              <option value="all">All images</option>
-              <option value="posted">Posted</option>
-              <option value="not_posted">Not posted</option>
-            </NativeSelectField>
-            <NativeSelectIndicator />
-          </NativeSelectRoot>
-        </Stack>
+        {socialPostingEnabled ? (
+          <Stack gap={1}>
+            <Text textTransform="uppercase" fontSize="xs" color="fg.subtle">
+              Posted
+            </Text>
+            <NativeSelectRoot disabled={disabled} w="full">
+              <NativeSelectField
+                value={
+                  search.posted === "all"
+                    ? "all"
+                    : search.posted === true
+                      ? "posted"
+                      : "not_posted"
+                }
+                onChange={(event) => {
+                  const val = event.target.value
+                  handleChange({
+                    posted:
+                      val === "posted" ? true : val === "all" ? "all" : false,
+                  })
+                }}
+              >
+                <option value="all">All images</option>
+                <option value="posted">Posted</option>
+                <option value="not_posted">Not posted</option>
+              </NativeSelectField>
+              <NativeSelectIndicator />
+            </NativeSelectRoot>
+          </Stack>
+        ) : null}
       </SimpleGrid>
     </Stack>
   )
 }
 
-const useGeneratedImagesData = (search: GeneratedImagesSearch) => {
+const useGeneratedImagesData = (
+  search: GeneratedImagesSearch,
+  socialPostingEnabled: boolean,
+) => {
   const queryEnabled = true
-  const queryKey = ["generated-images", "list", search] as const
+  const queryKey = [
+    "generated-images",
+    "list",
+    search,
+    socialPostingEnabled,
+  ] as const
+  const postedFilter = socialPostingEnabled
+    ? search.posted === undefined
+      ? false
+      : search.posted
+    : undefined
 
   const query = useInfiniteQuery({
     queryKey,
@@ -286,7 +304,7 @@ const useGeneratedImagesData = (search: GeneratedImagesSearch) => {
         book: search.book_slug,
         provider: search.provider,
         approval: search.approval,
-        posted: search.posted === "all" ? undefined : search.posted,
+        posted: postedFilter === "all" ? undefined : postedFilter,
         limit: search.page_size,
         offset: pageParam,
       }),
@@ -328,6 +346,17 @@ function GeneratedImagesGalleryPage() {
     queryKey: ["generated-images", "providers"],
     queryFn: () => GeneratedImageApi.listProviders(),
   })
+  const settingsQuery = useQuery({
+    queryKey: ["settings", "bundle"],
+    queryFn: () => SettingsApi.get(),
+  })
+
+  const socialPostingEnabled =
+    settingsQuery.data?.settings.social_posting_enabled ?? false
+  const filterSearch = {
+    ...search,
+    posted: socialPostingEnabled ? search.posted ?? false : undefined,
+  }
 
   const handleSearchUpdate = useCallback(
     (updates: Partial<GeneratedImagesSearch>) => {
@@ -335,14 +364,33 @@ function GeneratedImagesGalleryPage() {
         search: (prev: GeneratedImagesSearch) => ({
           ...prev,
           ...updates,
+          posted: socialPostingEnabled
+            ? updates.posted ?? prev.posted
+            : undefined,
         }),
       })
     },
-    [navigate],
+    [navigate, socialPostingEnabled],
   )
 
-  const { query: imagesQuery, queryKey: listQueryKey } =
-    useGeneratedImagesData(search)
+  const { query: imagesQuery, queryKey: listQueryKey } = useGeneratedImagesData(
+    search,
+    socialPostingEnabled,
+  )
+
+  useEffect(() => {
+    if (socialPostingEnabled || search.posted === undefined) {
+      return
+    }
+
+    navigate({
+      replace: true,
+      search: (prev: GeneratedImagesSearch) => ({
+        ...prev,
+        posted: undefined,
+      }),
+    })
+  }, [navigate, search.posted, socialPostingEnabled])
 
   const approvalMutation = useMutation<
     GeneratedImageRead,
@@ -658,11 +706,12 @@ function GeneratedImagesGalleryPage() {
 
       <Box position="sticky" top={0} zIndex={1} bg="bg.canvas">
         <GeneratedImagesFilters
-          search={search}
+          search={filterSearch}
           onChange={handleSearchUpdate}
           options={filtersQuery.data}
           providers={providersQuery.data ?? []}
           isFetching={filtersQuery.isFetching || providersQuery.isFetching}
+          socialPostingEnabled={socialPostingEnabled}
         />
       </Box>
 
@@ -681,10 +730,13 @@ function GeneratedImagesGalleryPage() {
               <GeneratedImageCard
                 key={image.id}
                 image={image}
+                socialPostingEnabled={socialPostingEnabled}
                 onClick={() => handleImageClick(image.id)}
                 onApprovalChange={handleApprovalChange}
                 onRemix={handleRemix}
-                onQueueForPosting={handleQueueForPosting}
+                onQueueForPosting={
+                  socialPostingEnabled ? handleQueueForPosting : undefined
+                }
               />
             ))}
           </SimpleGrid>
@@ -720,10 +772,13 @@ function GeneratedImagesGalleryPage() {
           id: img.id,
           scene_extraction_id: img.scene_extraction_id,
         }))}
+        socialPostingEnabled={socialPostingEnabled}
         onNavigate={handleNavigate}
         onApprovalChange={handleApprovalChange}
         onCustomRemix={handleCustomRemix}
-        onQueueForPosting={handleQueueForPosting}
+        onQueueForPosting={
+          socialPostingEnabled ? handleQueueForPosting : undefined
+        }
       />
     </Container>
   )

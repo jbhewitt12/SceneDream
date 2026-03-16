@@ -53,6 +53,7 @@ type GeneratedImageModalProps = {
   onClose: () => void
   imageId: string | null
   allImages?: Array<{ id: string; scene_extraction_id: string }>
+  socialPostingEnabled: boolean
   onNavigate?: (imageId: string) => void
   onApprovalChange?: (imageId: string, approved: boolean | null) => void
   onCustomRemix?: (imageId: string, customPromptText: string) => Promise<void>
@@ -138,6 +139,7 @@ const GeneratedImageModal = ({
   onClose,
   imageId,
   allImages = [],
+  socialPostingEnabled,
   onNavigate,
   onApprovalChange,
   onCustomRemix,
@@ -154,7 +156,7 @@ const GeneratedImageModal = ({
   const postingStatusQuery = useQuery({
     queryKey: ["posting-status", imageId],
     queryFn: () => getPostingStatus(imageId!),
-    enabled: isOpen && imageId !== null,
+    enabled: socialPostingEnabled && isOpen && imageId !== null,
   })
 
   const currentImage = imageQuery.data
@@ -371,7 +373,9 @@ const GeneratedImageModal = ({
     setIsQueueing(true)
     try {
       await onQueueForPosting(currentImage.image.id)
-      queryClient.invalidateQueries({ queryKey: ["posting-status", imageId] })
+      if (socialPostingEnabled) {
+        queryClient.invalidateQueries({ queryKey: ["posting-status", imageId] })
+      }
     } catch (error) {
       console.error("Queue for posting failed", error)
     } finally {
@@ -380,6 +384,7 @@ const GeneratedImageModal = ({
   }
 
   const canQueueForPosting =
+    socialPostingEnabled &&
     currentImage?.image?.user_approved === true &&
     !postingStatus?.has_been_posted &&
     !postingStatus?.is_queued
@@ -509,8 +514,15 @@ const GeneratedImageModal = ({
                 maxH="70vh"
                 pr={2}
               >
-                {(onApprovalChange || onQueueForPosting) && (
-                  <SidebarSection eyebrow="Review and publishing">
+                {(onApprovalChange ||
+                  (socialPostingEnabled && onQueueForPosting)) && (
+                  <SidebarSection
+                    eyebrow={
+                      socialPostingEnabled && onQueueForPosting
+                        ? "Review and publishing"
+                        : "Review"
+                    }
+                  >
                     <Stack gap={4}>
                       {onApprovalChange && (
                         <Box
@@ -587,9 +599,13 @@ const GeneratedImageModal = ({
                         </Box>
                       )}
 
-                      {onApprovalChange && onQueueForPosting && <Separator />}
+                      {onApprovalChange &&
+                      socialPostingEnabled &&
+                      onQueueForPosting ? (
+                        <Separator />
+                      ) : null}
 
-                      {onQueueForPosting && (
+                      {socialPostingEnabled && onQueueForPosting && (
                         <Stack gap={3}>
                           <HStack justify="space-between" align="center">
                             <Text fontSize="sm" fontWeight="medium">
