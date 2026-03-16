@@ -694,3 +694,31 @@ Behavior:
 - [ ] `cd backend && uv run pytest` passes
 - [ ] `cd backend && uv run bash scripts/lint.sh` passes
 - [ ] `cd frontend && npm run build` passes
+
+## Phase Implementation Notes
+
+### Phase 1: Define orchestration config and result types
+- Status: completed
+- Summary: Created `orchestrator_config.py` with all execution target, stage plan, options, config, context, and result types. Moved `PipelineStats` from `image_gen_cli.py` with backward-compatible re-export. Added comprehensive config validation tests.
+- Completed work:
+  - Created `backend/app/services/pipeline/orchestrator_config.py` with `DocumentTarget`, `SceneTarget`, `RemixTarget`, `CustomRemixTarget`, `PipelineStagePlan`, `PromptExecutionOptions`, `ImageExecutionOptions`, `PipelineExecutionConfig` (with `copy_with` and `validate`), `PipelineExecutionContext`, `PreparedPipelineExecution`, `PipelineStats`, `PipelineExecutionResult`
+  - Moved `PipelineStats` from `image_gen_cli.py` to `orchestrator_config.py`; `image_gen_cli.py` re-exports via `from app.services.pipeline.orchestrator_config import PipelineStats as PipelineStats`
+  - Updated `backend/app/services/pipeline/__init__.py` to export all new types
+  - Created `backend/app/tests/services/test_pipeline_execution_config.py` with 36 tests covering: stage plan validation for all target types, config-level validation (including scene target, exact variant, contradictory flag checks), `copy_with` behavior, expressiveness tests for all four run types, execution context stage-output handoff, no contradictory skip/run fields, `PipelineStats` backward compatibility, and result construction
+- Remaining work in this phase:
+  - none
+- Deviations from plan:
+  - `PipelineExecutionTarget` is a plain type alias (`DocumentTarget | SceneTarget | RemixTarget | CustomRemixTarget`) rather than a base class, since Python union types with dataclasses are more natural than inheritance for discriminated targets
+  - `PipelineStagePlan.validate_for_target()` enforces that image generation requires prompt generation in the same run (consistent with the design principle that orchestrated image-producing runs must create fresh prompts)
+- Tests and verification run:
+  - `cd backend && uv run pytest app/tests/services/test_pipeline_execution_config.py -v` — 36 passed
+  - `cd backend && uv run pytest` — 331 passed, 7 deselected
+  - `cd backend && uv run ruff check` and `ruff format --check` — clean on all changed files
+  - `cd backend && uv run bash scripts/lint.sh` — mypy reports 5 pre-existing errors (none introduced by this phase)
+- Known issues / follow-ups for next agent:
+  - The 5 pre-existing mypy errors in `document_stage_status_service.py` (4 errors) and `image_gen_cli.py` (1 error) are unrelated to this work
+- Files changed:
+  - `backend/app/services/pipeline/orchestrator_config.py` (created)
+  - `backend/app/services/pipeline/__init__.py` (modified — added exports)
+  - `backend/app/services/image_gen_cli.py` (modified — replaced PipelineStats class with re-export)
+  - `backend/app/tests/services/test_pipeline_execution_config.py` (created)

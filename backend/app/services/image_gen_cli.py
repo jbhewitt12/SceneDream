@@ -84,6 +84,7 @@ from app.services.image_prompt_generation.image_prompt_generation_service import
     ImagePromptGenerationConfig,
     ImagePromptGenerationService,
 )
+from app.services.pipeline.orchestrator_config import PipelineStats as PipelineStats
 from app.services.scene_extraction.scene_extraction import (
     SceneExtractionConfig,
     SceneExtractor,
@@ -97,28 +98,6 @@ from models.scene_extraction import SceneExtraction
 logger = logging.getLogger(__name__)
 
 StageCallback = Callable[[str], Awaitable[None] | None]
-
-
-class PipelineStats:
-    """Track statistics across the pipeline."""
-
-    def __init__(self) -> None:
-        self.scenes_extracted = 0
-        self.scenes_refined = 0
-        self.scenes_ranked = 0
-        self.prompts_generated = 0
-        self.images_generated = 0
-        self.errors: list[str] = []
-
-    def to_dict(self) -> dict[str, int | list[str]]:
-        return {
-            "scenes_extracted": self.scenes_extracted,
-            "scenes_refined": self.scenes_refined,
-            "scenes_ranked": self.scenes_ranked,
-            "prompts_generated": self.prompts_generated,
-            "images_generated": self.images_generated,
-            "errors": self.errors,
-        }
 
 
 async def _emit_stage_update(
@@ -1261,9 +1240,7 @@ async def _run_full_pipeline(
                                     scene.chapter_number,
                                 )
                         except Exception as exc:
-                            error_msg = (
-                                f"Failed to generate prompts for scene {scene_id}: {exc}"
-                            )
+                            error_msg = f"Failed to generate prompts for scene {scene_id}: {exc}"
                             logger.error(error_msg)
                             _rollback_session_after_scene_error(
                                 session,
@@ -1571,7 +1548,9 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
                             scene.chapter_number,
                         )
                 except Exception as exc:
-                    error_msg = f"Failed to generate prompts for scene {scene_id}: {exc}"
+                    error_msg = (
+                        f"Failed to generate prompts for scene {scene_id}: {exc}"
+                    )
                     logger.error(error_msg)
                     _rollback_session_after_scene_error(
                         session,
@@ -2078,9 +2057,7 @@ async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
                     metadata=metadata,
                 )
             except Exception as exc:
-                error_msg = (
-                    f"Failed to regenerate prompts for scene {scene_id}: {exc}"
-                )
+                error_msg = f"Failed to regenerate prompts for scene {scene_id}: {exc}"
                 logger.error(error_msg)
                 _rollback_session_after_scene_error(
                     session,
