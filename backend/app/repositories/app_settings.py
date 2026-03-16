@@ -73,3 +73,7 @@ class AppSettingsRepository:
         settings = self.get_or_create_global(commit=True, refresh=True)
         value = settings.default_scenes_per_run
         return value if value > 0 else 5
+
+    def social_posting_enabled(self) -> bool:
+        settings = self.get_or_create_global(commit=True, refresh=True)
+        return bool(settings.social_posting_enabled)

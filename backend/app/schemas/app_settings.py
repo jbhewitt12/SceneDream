@@ -23,6 +23,7 @@ class AppSettingsRead(BaseModel):
     default_scenes_per_run: int
     default_prompt_art_style_mode: PromptArtStyleMode
     default_prompt_art_style_text: str | None
+    social_posting_enabled: bool
     created_at: datetime
     updated_at: datetime
 
@@ -35,6 +36,7 @@ class AppSettingsUpdateRequest(BaseModel):
     default_scenes_per_run: int | None = Field(default=None, ge=1, le=100)
     default_prompt_art_style_mode: PromptArtStyleMode | None = None
     default_prompt_art_style_text: str | None = None
+    social_posting_enabled: bool | None = None
 
     @field_validator("default_prompt_art_style_text")
     @classmethod

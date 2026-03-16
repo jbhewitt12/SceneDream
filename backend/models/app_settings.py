@@ -41,6 +41,7 @@ class AppSettings(SQLModel, table=True):
         max_length=255,
         nullable=True,
     )
+    social_posting_enabled: bool = Field(default=False, nullable=False)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), nullable=False, index=True),

@@ -12,6 +12,9 @@ def test_app_settings_repository_updates_global_defaults(db: Session) -> None:
     original_scenes = settings.default_scenes_per_run
     original_mode = settings.default_prompt_art_style_mode
     original_text = settings.default_prompt_art_style_text
+    original_social_posting_enabled = settings.social_posting_enabled
+
+    assert settings.social_posting_enabled is False
 
     updated = repository.update(
         settings,
@@ -19,6 +22,7 @@ def test_app_settings_repository_updates_global_defaults(db: Session) -> None:
             "default_scenes_per_run": 7,
             "default_prompt_art_style_mode": "single_style",
             "default_prompt_art_style_text": "Ink wash painting",
+            "social_posting_enabled": True,
         },
         commit=True,
         refresh=True,
@@ -26,6 +30,7 @@ def test_app_settings_repository_updates_global_defaults(db: Session) -> None:
     assert updated.default_scenes_per_run == 7
     assert updated.default_prompt_art_style_mode == "single_style"
     assert updated.default_prompt_art_style_text == "Ink wash painting"
+    assert updated.social_posting_enabled is True
 
     restored = repository.update(
         settings,
@@ -33,6 +38,7 @@ def test_app_settings_repository_updates_global_defaults(db: Session) -> None:
             "default_scenes_per_run": original_scenes,
             "default_prompt_art_style_mode": original_mode,
             "default_prompt_art_style_text": original_text,
+            "social_posting_enabled": original_social_posting_enabled,
         },
         commit=True,
         refresh=True,
@@ -40,6 +46,7 @@ def test_app_settings_repository_updates_global_defaults(db: Session) -> None:
     assert restored.default_scenes_per_run == original_scenes
     assert restored.default_prompt_art_style_mode == original_mode
     assert restored.default_prompt_art_style_text == original_text
+    assert restored.social_posting_enabled == original_social_posting_enabled
 
 
 def test_art_style_repository_list_active_filters_inactive_rows(db: Session) -> None:

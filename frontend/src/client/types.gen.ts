@@ -16,6 +16,7 @@ export type AppSettingsRead = {
     default_scenes_per_run: number;
     default_prompt_art_style_mode: 'random_mix' | 'single_style';
     default_prompt_art_style_text: (string | null);
+    social_posting_enabled: boolean;
     created_at: string;
     updated_at: string;
 };
@@ -29,6 +30,7 @@ export type AppSettingsUpdateRequest = {
     default_scenes_per_run?: (number | null);
     default_prompt_art_style_mode?: ('random_mix' | 'single_style' | null);
     default_prompt_art_style_text?: (string | null);
+    social_posting_enabled?: (boolean | null);
 };
 
 /**

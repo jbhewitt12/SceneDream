@@ -71,6 +71,11 @@ async def update_settings(
         if value is not None:
             payload["default_scenes_per_run"] = value
 
+    if "social_posting_enabled" in update.model_fields_set:
+        value = update.social_posting_enabled
+        if value is not None:
+            payload["social_posting_enabled"] = value
+
     style_fields = {
         "default_prompt_art_style_mode",
         "default_prompt_art_style_text",

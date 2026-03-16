@@ -20,6 +20,7 @@ from models.image_prompt import ImagePrompt
 from models.pipeline_run import PipelineRun
 from models.scene_extraction import SceneExtraction
 from models.scene_ranking import SceneRanking
+from models.social_media_post import SocialMediaPost
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -48,6 +49,18 @@ def db() -> Generator[Session, None, None]:
             test_scenes = session.exec(scenes_stmt).all()
 
             for scene in test_scenes:
+                image_ids = session.exec(
+                    select(GeneratedImage.id).where(
+                        GeneratedImage.scene_extraction_id == scene.id
+                    )
+                ).all()
+
+                if image_ids:
+                    social_posts_stmt = delete(SocialMediaPost).where(
+                        SocialMediaPost.generated_image_id.in_(image_ids)
+                    )
+                    session.execute(social_posts_stmt)
+
                 # Delete generated images first
                 images_stmt = delete(GeneratedImage).where(
                     GeneratedImage.scene_extraction_id == scene.id
@@ -153,7 +166,14 @@ def scene_factory(db: Session) -> Callable[..., SceneExtraction]:
     prompt_repo = ImagePromptRepository(db)
     ranking_repo = SceneRankingRepository(db)
     for scene in created:
-        for image in image_repo.list_for_scene(scene.id, include_file_deleted=True):
+        images = image_repo.list_for_scene(scene.id, include_file_deleted=True)
+        image_ids = [image.id for image in images]
+        if image_ids:
+            social_posts_stmt = delete(SocialMediaPost).where(
+                SocialMediaPost.generated_image_id.in_(image_ids)
+            )
+            db.execute(social_posts_stmt)
+        for image in images:
             db.delete(image)
         asset_stmt = delete(GeneratedAsset).where(
             GeneratedAsset.scene_extraction_id == scene.id

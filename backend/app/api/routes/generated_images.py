@@ -16,6 +16,7 @@ from sqlalchemy.exc import OperationalError
 
 from app.api.deps import SessionDep
 from app.repositories import (
+    AppSettingsRepository,
     GeneratedImageRepository,
     ImagePromptRepository,
     SceneExtractionRepository,
@@ -52,6 +53,7 @@ from app.services.image_prompt_generation.image_prompt_generation_service import
     ImagePromptGenerationServiceError,
 )
 from app.services.social_posting import SocialPostingService
+from app.services.social_posting.exceptions import SocialPostingDisabledError
 from app.services.social_posting.scheduler import get_scheduler
 from models.image_prompt import ImagePrompt
 
@@ -63,6 +65,8 @@ _DEFAULT_SCENE_LIMIT = 20
 _MAX_SCENE_LIMIT = 100
 
 logger = logging.getLogger(__name__)
+
+_SOCIAL_POSTING_DISABLED_DETAIL = "Social media posting is disabled in Settings"
 
 
 def _spawn_background_task(
@@ -123,6 +127,12 @@ def _build_list_item(record: Any) -> GeneratedImageListItem:
     payload["is_queued"] = any(p.status == "queued" for p in social_posts)
 
     return GeneratedImageListItem.model_validate(payload)
+
+
+def _ensure_social_posting_enabled(session: SessionDep) -> None:
+    settings_repo = AppSettingsRepository(session)
+    if not settings_repo.social_posting_enabled():
+        raise HTTPException(status_code=409, detail=_SOCIAL_POSTING_DISABLED_DETAIL)
 
 
 async def _read_upload_contents(file: UploadFile) -> bytes:
@@ -820,10 +830,13 @@ async def queue_image_for_posting(
     since the last post, the image will be posted immediately. Otherwise, it
     will be added to the queue for later posting.
     """
+    _ensure_social_posting_enabled(session)
     service = SocialPostingService(session)
 
     try:
         posts = service.queue_image(image_id)
+    except SocialPostingDisabledError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -863,6 +876,7 @@ def get_image_posting_status(
     Returns all posting records for the image, along with summary flags
     indicating whether it has been posted or is currently queued.
     """
+    _ensure_social_posting_enabled(session)
     repository = GeneratedImageRepository(session)
     image = repository.get(image_id)
     if image is None:
@@ -900,12 +914,16 @@ async def retry_failed_posts(
     Optionally filter by service name. Requeued posts will be picked up by
     the scheduler on its next run.
     """
+    _ensure_social_posting_enabled(session)
     from datetime import datetime, timedelta, timezone
 
     # Requeue posts that failed in the last 24 hours
     since = datetime.now(timezone.utc) - timedelta(hours=24)
     svc = SocialPostingService(session)
-    posts = svc.retry_failed(service_name=service_name, since=since)
+    try:
+        posts = svc.retry_failed(service_name=service_name, since=since)
+    except SocialPostingDisabledError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     if not posts:
         return QueueForPostingResponse(posts=[], message="No failed posts to retry")

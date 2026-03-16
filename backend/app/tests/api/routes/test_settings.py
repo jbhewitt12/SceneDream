@@ -54,6 +54,7 @@ def test_get_settings_returns_defaults(
     assert payload["settings"]["default_scenes_per_run"] >= 1
     assert payload["settings"]["default_prompt_art_style_mode"] == "random_mix"
     assert payload["settings"]["default_prompt_art_style_text"] is None
+    assert payload["settings"]["social_posting_enabled"] is False
     assert len(payload["art_styles"]) > 0
 
 
@@ -65,6 +66,9 @@ def test_update_settings_persists_values(client: TestClient) -> None:
     original_scenes = initial_payload["settings"]["default_scenes_per_run"]
     original_mode = initial_payload["settings"]["default_prompt_art_style_mode"]
     original_text = initial_payload["settings"]["default_prompt_art_style_text"]
+    original_social_posting_enabled = initial_payload["settings"][
+        "social_posting_enabled"
+    ]
 
     try:
         response = client.patch(
@@ -73,6 +77,7 @@ def test_update_settings_persists_values(client: TestClient) -> None:
                 "default_scenes_per_run": 8,
                 "default_prompt_art_style_mode": "single_style",
                 "default_prompt_art_style_text": "Painterly realism",
+                "social_posting_enabled": True,
             },
         )
         assert response.status_code == 200
@@ -82,6 +87,7 @@ def test_update_settings_persists_values(client: TestClient) -> None:
         assert (
             payload["settings"]["default_prompt_art_style_text"] == "Painterly realism"
         )
+        assert payload["settings"]["social_posting_enabled"] is True
 
         round_trip = client.get("/api/v1/settings")
         assert round_trip.status_code == 200
@@ -95,6 +101,7 @@ def test_update_settings_persists_values(client: TestClient) -> None:
             round_trip_payload["settings"]["default_prompt_art_style_text"]
             == "Painterly realism"
         )
+        assert round_trip_payload["settings"]["social_posting_enabled"] is True
     finally:
         client.patch(
             "/api/v1/settings",
@@ -102,6 +109,7 @@ def test_update_settings_persists_values(client: TestClient) -> None:
                 "default_scenes_per_run": original_scenes,
                 "default_prompt_art_style_mode": original_mode,
                 "default_prompt_art_style_text": original_text,
+                "social_posting_enabled": original_social_posting_enabled,
             },
         )
 

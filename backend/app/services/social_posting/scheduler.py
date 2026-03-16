@@ -42,6 +42,16 @@ def _get_scheduler_interval_minutes() -> float:
     return min(posting_interval_minutes, MAX_SCHEDULER_INTERVAL_MINUTES)
 
 
+def _is_social_posting_enabled() -> bool:
+    from sqlmodel import Session
+
+    from app.core.db import engine
+    from app.repositories import AppSettingsRepository
+
+    with Session(engine) as session:
+        return AppSettingsRepository(session).social_posting_enabled()
+
+
 class SocialPostingScheduler:
     """
     Manages the background scheduler for processing the social media posting queue.
@@ -136,6 +146,12 @@ class SocialPostingScheduler:
         This provides visibility into the queue state when the server starts,
         which is especially useful after laptop sleep/wake cycles.
         """
+        if not _is_social_posting_enabled():
+            logger.info(
+                "Social posting is disabled in settings; skipping startup queue check"
+            )
+            return
+
         from sqlmodel import Session
 
         from app.core.db import engine
@@ -192,6 +208,12 @@ class SocialPostingScheduler:
         logger.debug("Queue processing job started")
 
         try:
+            if not _is_social_posting_enabled():
+                logger.debug(
+                    "Social posting is disabled in settings; skipping queue job"
+                )
+                return
+
             with Session(engine) as session:
                 service = SocialPostingService(session)
 

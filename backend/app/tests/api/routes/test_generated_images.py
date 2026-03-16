@@ -14,6 +14,7 @@ from sqlmodel import Session
 
 import app.api.routes.generated_images as generated_images_routes
 from app.repositories import (
+    AppSettingsRepository,
     GeneratedImageRepository,
     ImagePromptRepository,
     SceneExtractionRepository,
@@ -21,6 +22,19 @@ from app.repositories import (
 from models.generated_image import GeneratedImage
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
+
+
+def _set_social_posting_enabled(db: Session, enabled: bool) -> bool:
+    repository = AppSettingsRepository(db)
+    settings = repository.get_or_create_global(commit=True, refresh=True)
+    previous = settings.social_posting_enabled
+    repository.update(
+        settings,
+        data={"social_posting_enabled": enabled},
+        commit=True,
+        refresh=True,
+    )
+    return previous
 
 
 @pytest.fixture()
@@ -436,3 +450,59 @@ def test_detail_response_includes_file_deleted_field(
     img_data = response.json()["image"]
     assert img_data["file_deleted"] is True
     assert img_data["file_deleted_at"] is not None
+
+
+def test_queue_for_posting_returns_409_when_social_posting_disabled(
+    client: TestClient,
+    db: Session,
+    remix_test_data: dict[str, object],
+) -> None:
+    image: GeneratedImage = remix_test_data["image"]  # type: ignore[assignment]
+    previous = _set_social_posting_enabled(db, False)
+    image.user_approved = True
+    db.add(image)
+    db.commit()
+    db.refresh(image)
+
+    try:
+        response = client.post(f"/api/v1/generated-images/{image.id}/queue-for-posting")
+        assert response.status_code == 409
+        assert (
+            response.json()["detail"] == "Social media posting is disabled in Settings"
+        )
+    finally:
+        _set_social_posting_enabled(db, previous)
+
+
+def test_posting_status_returns_409_when_social_posting_disabled(
+    client: TestClient,
+    db: Session,
+    remix_test_data: dict[str, object],
+) -> None:
+    image: GeneratedImage = remix_test_data["image"]  # type: ignore[assignment]
+    previous = _set_social_posting_enabled(db, False)
+
+    try:
+        response = client.get(f"/api/v1/generated-images/{image.id}/posting-status")
+        assert response.status_code == 409
+        assert (
+            response.json()["detail"] == "Social media posting is disabled in Settings"
+        )
+    finally:
+        _set_social_posting_enabled(db, previous)
+
+
+def test_retry_failed_posts_returns_409_when_social_posting_disabled(
+    client: TestClient,
+    db: Session,
+) -> None:
+    previous = _set_social_posting_enabled(db, False)
+
+    try:
+        response = client.post("/api/v1/generated-images/retry-failed-posts")
+        assert response.status_code == 409
+        assert (
+            response.json()["detail"] == "Social media posting is disabled in Settings"
+        )
+    finally:
+        _set_social_posting_enabled(db, previous)

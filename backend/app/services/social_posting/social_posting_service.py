@@ -9,10 +9,11 @@ from uuid import UUID
 from sqlmodel import Session
 
 from app.core.config import settings
+from app.repositories import AppSettingsRepository
 from models.generated_image import GeneratedImage
 from models.social_media_post import SocialMediaPost
 
-from .exceptions import RateLimitError
+from .exceptions import RateLimitError, SocialPostingDisabledError
 from .flickr_poster import FlickrPoster
 from .repository import SocialMediaPostRepository
 from .x_poster import XPoster
@@ -26,8 +27,13 @@ class SocialPostingService:
     def __init__(self, session: Session) -> None:
         self._session = session
         self._repo = SocialMediaPostRepository(session)
+        self._settings_repo = AppSettingsRepository(session)
         self._flickr_poster: FlickrPoster | None = None
         self._x_poster: XPoster | None = None
+
+    def is_feature_enabled(self) -> bool:
+        """Return whether social posting is enabled in persisted app settings."""
+        return self._settings_repo.social_posting_enabled()
 
     @staticmethod
     def get_enabled_services() -> list[str]:
@@ -52,6 +58,9 @@ class SocialPostingService:
         Raises:
             ValueError: If image not found or not approved
         """
+        if not self.is_feature_enabled():
+            raise SocialPostingDisabledError("Social media posting is disabled")
+
         image = self._session.get(GeneratedImage, image_id)
         if not image:
             raise ValueError(f"Image not found: {image_id}")
@@ -136,6 +145,10 @@ class SocialPostingService:
         Returns:
             The last processed SocialMediaPost if any were posted, None otherwise
         """
+        if not self.is_feature_enabled():
+            logger.debug("Social posting is disabled; skipping queue processing")
+            return None
+
         enabled_services = self.get_enabled_services()
         last_result: SocialMediaPost | None = None
 
@@ -265,6 +278,9 @@ class SocialPostingService:
         Returns:
             The list of posts that were requeued.
         """
+        if not self.is_feature_enabled():
+            raise SocialPostingDisabledError("Social media posting is disabled")
+
         posts = self._repo.requeue_failed(service_name=service_name, since=since)
         logger.info("Requeued %d failed posts for retry", len(posts))
         return posts

@@ -2495,6 +2495,10 @@
             ],
             "title": "Default Prompt Art Style Text"
           },
+          "social_posting_enabled": {
+            "type": "boolean",
+            "title": "Social Posting Enabled"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -2512,6 +2516,7 @@
           "default_scenes_per_run",
           "default_prompt_art_style_mode",
           "default_prompt_art_style_text",
+          "social_posting_enabled",
           "created_at",
           "updated_at"
         ],
@@ -2558,6 +2563,17 @@
               }
             ],
             "title": "Default Prompt Art Style Text"
+          },
+          "social_posting_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Social Posting Enabled"
           }
         },
         "type": "object",
