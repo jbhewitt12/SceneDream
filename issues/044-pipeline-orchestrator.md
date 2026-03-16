@@ -806,3 +806,34 @@ Behavior:
   - `backend/app/services/pipeline/background.py` (created)
   - `backend/app/services/pipeline/__init__.py` (modified — added exports)
   - `backend/app/tests/services/test_pipeline_orchestrator.py` (created)
+
+### Phase 4: Propagate pipeline_run_id into created outputs
+- Status: completed
+- Summary: Added `pipeline_run_id` parameter to the ranking, prompt generation, and image generation service write paths. All three services now accept an optional `pipeline_run_id` keyword argument and persist it on created rows. Image generation also propagates `pipeline_run_id` through failed-image records and revived deleted-image rows. Added 11 tests covering all propagation paths.
+- Completed work:
+  - Added `pipeline_run_id: UUID | None = None` parameter to `SceneRankingService.rank_scene()` and `rank_scenes()`; ranking create data dict includes `pipeline_run_id` when provided
+  - Added `pipeline_run_id: UUID | None = None` parameter to `ImagePromptGenerationService.generate_for_scene()`, `generate_for_scenes()`, `generate_for_book()`, `generate_remix_variants()`, and `create_custom_remix_variant()`; all record dicts include `pipeline_run_id` when provided
+  - Added `pipeline_run_id: UUID | None = None` parameter to `ImageGenerationService.generate_for_selection()`, threaded through `_execute_tasks()` and `_generate_single()`
+  - Image generation successful create path (`image_data` dict) includes `pipeline_run_id`
+  - Image generation revival path (existing deleted image reactivated) sets `pipeline_run_id` on the revived row
+  - Image generation failed-record create path (`failed_data` dict) includes `pipeline_run_id`
+  - Image generation failed-record update path (existing deleted image updated with error) sets `pipeline_run_id`
+  - Created 11 tests in `test_pipeline_run_id_propagation.py` covering: ranking with/without `pipeline_run_id`, `rank_scenes` propagation, prompt generation with/without `pipeline_run_id`, remix with `pipeline_run_id`, custom remix with `pipeline_run_id`, image generation with/without `pipeline_run_id`, failed image records, and revived deleted-image rows
+- Remaining work in this phase:
+  - none
+- Deviations from plan:
+  - The plan mentions "Remove orchestration logic that searches for reusable prompt sets for image-producing runs" and "Make image-producing orchestration depend on explicit prompt IDs created during the current run" — these are orchestrator-level behaviors that depend on the stage dispatch methods being wired (Phase 5+). Phase 4 focuses on making the write paths capable of persisting `pipeline_run_id`; the orchestrator will use these capabilities when it calls the services.
+  - The plan mentions "Make stage services return created IDs needed to populate PipelineExecutionContext" — all three services already return the created entities or IDs from their public methods. No additional interface changes were needed; the orchestrator (Phase 5+) will extract IDs from these returns.
+- Tests and verification run:
+  - `cd backend && uv run pytest app/tests/services/test_pipeline_run_id_propagation.py -v` — 11 passed
+  - `cd backend && uv run pytest` — 402 passed, 7 deselected
+  - `cd backend && uv run bash scripts/lint.sh` — mypy reports 5 pre-existing errors (none introduced by this phase)
+- Known issues / follow-ups for next agent:
+  - The 5 pre-existing mypy errors in `document_stage_status_service.py` (4 errors) and `image_gen_cli.py` (1 error) are unrelated to this work
+  - All `pipeline_run_id` parameters are optional keyword-only args with `None` default, so no existing callers are broken
+  - Phase 5 will wire the orchestrator stage methods to call these services with the run's `pipeline_run_id`, completing the end-to-end tracking chain
+- Files changed:
+  - `backend/app/services/scene_ranking/scene_ranking_service.py` (modified — added `pipeline_run_id` to `rank_scene()` and `rank_scenes()`)
+  - `backend/app/services/image_prompt_generation/image_prompt_generation_service.py` (modified — added `pipeline_run_id` to `generate_for_scene()`, `generate_for_scenes()`, `generate_for_book()`, `generate_remix_variants()`, `create_custom_remix_variant()`)
+  - `backend/app/services/image_generation/image_generation_service.py` (modified — added `pipeline_run_id` to `generate_for_selection()`, `_execute_tasks()`, `_generate_single()`, including success/failure/revival paths)
+  - `backend/app/tests/services/test_pipeline_run_id_propagation.py` (created — 11 tests)

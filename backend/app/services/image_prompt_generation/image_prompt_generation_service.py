@@ -129,6 +129,7 @@ class ImagePromptGenerationService:
         overwrite: bool | None = None,
         dry_run: bool | None = None,
         metadata: Mapping[str, Any] | None = None,
+        pipeline_run_id: UUID | None = None,
     ) -> list[ImagePrompt] | list[ImagePromptPreview]:
         target_scene = self._resolve_scene(scene)
         config = self._resolve_config(
@@ -250,6 +251,9 @@ class ImagePromptGenerationService:
             llm_request_id=llm_request_id,
             execution_time_ms=execution_time_ms,
         )
+        if pipeline_run_id is not None:
+            for record in records:
+                record["pipeline_run_id"] = pipeline_run_id
 
         if config.dry_run:
             preview_prompts = variant_processor.instantiate_prompts_from_records(
@@ -405,12 +409,16 @@ class ImagePromptGenerationService:
     async def generate_for_scenes(
         self,
         scenes: Sequence[SceneExtraction | UUID],
+        *,
+        pipeline_run_id: UUID | None = None,
         **overrides: Any,
     ) -> list[list[ImagePrompt] | list[ImagePromptPreview] | None]:
         results: list[list[ImagePrompt] | list[ImagePromptPreview] | None] = []
         for scene in scenes:
             try:
-                result = await self.generate_for_scene(scene, **overrides)
+                result = await self.generate_for_scene(
+                    scene, pipeline_run_id=pipeline_run_id, **overrides
+                )
             except Exception as exc:  # pragma: no cover - defensive logging
                 if self._config.fail_on_error or overrides.get("fail_on_error"):
                     raise
@@ -427,6 +435,7 @@ class ImagePromptGenerationService:
         scene_filter: Mapping[str, Any] | None = None,
         ranked_only: bool = False,
         top_n: int | None = None,
+        pipeline_run_id: UUID | None = None,
         **overrides: Any,
     ) -> list[list[ImagePrompt] | list[ImagePromptPreview] | None]:
         scene_filter = scene_filter or {}
@@ -443,7 +452,9 @@ class ImagePromptGenerationService:
             candidate_scenes = candidate_scenes[:top_n]
         if not candidate_scenes:
             return []
-        return await self.generate_for_scenes(candidate_scenes, **overrides)
+        return await self.generate_for_scenes(
+            candidate_scenes, pipeline_run_id=pipeline_run_id, **overrides
+        )
 
     async def generate_remix_variants(
         self,
@@ -451,6 +462,7 @@ class ImagePromptGenerationService:
         *,
         variants_count: int = REMIX_VARIANTS_COUNT,
         dry_run: bool = False,
+        pipeline_run_id: UUID | None = None,
     ) -> list[ImagePrompt] | list[ImagePromptPreview]:
         if variants_count <= 0:
             raise ImagePromptGenerationServiceError(
@@ -554,6 +566,9 @@ class ImagePromptGenerationService:
                     "execution_time_ms": execution_time_ms,
                 }
             )
+        if pipeline_run_id is not None:
+            for record in records:
+                record["pipeline_run_id"] = pipeline_run_id
 
         if config.dry_run:
             preview_prompts = variant_processor.instantiate_prompts_from_records(
@@ -614,6 +629,7 @@ class ImagePromptGenerationService:
         custom_prompt_text: str,
         *,
         dry_run: bool = False,
+        pipeline_run_id: UUID | None = None,
     ) -> ImagePrompt | ImagePromptPreview:
         prompt_record = self._resolve_prompt(source_prompt)
 
@@ -664,6 +680,8 @@ class ImagePromptGenerationService:
             "llm_request_id": None,
             "execution_time_ms": 0,
         }
+        if pipeline_run_id is not None:
+            record["pipeline_run_id"] = pipeline_run_id
 
         if dry_run:
             target_provider = (

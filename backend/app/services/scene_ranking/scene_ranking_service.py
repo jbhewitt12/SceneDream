@@ -260,6 +260,7 @@ class SceneRankingService:
         overwrite: bool | None = None,
         dry_run: bool | None = None,
         metadata: Mapping[str, Any] | None = None,
+        pipeline_run_id: UUID | None = None,
     ) -> SceneRanking | SceneRankingPreview | None:
         overrides: dict[str, Any] = {}
         if prompt_version is not None:
@@ -398,27 +399,30 @@ class SceneRankingService:
                 distinct_visual_moments=distinct_moments,
             )
         try:
+            create_data: dict[str, Any] = {
+                "scene_extraction_id": target_scene.id,
+                "model_vendor": config.model_vendor,
+                "model_name": config.model_name,
+                "prompt_version": config.prompt_version,
+                "justification": parsed.justification,
+                "scores": scores,
+                "overall_priority": overall_priority,
+                "weight_config": weight_cfg,
+                "weight_config_hash": weight_hash,
+                "warnings": warnings,
+                "character_tags": character_tags,
+                "raw_response": raw_payload,
+                "execution_time_ms": execution_time_ms,
+                "temperature": config.temperature,
+                "llm_request_id": llm_request_id,
+                "recommended_prompt_count": parsed.recommended_prompt_count,
+                "complexity_rationale": parsed.complexity_rationale,
+                "distinct_visual_moments": distinct_moments,
+            }
+            if pipeline_run_id is not None:
+                create_data["pipeline_run_id"] = pipeline_run_id
             ranking = self._ranking_repo.create(
-                data={
-                    "scene_extraction_id": target_scene.id,
-                    "model_vendor": config.model_vendor,
-                    "model_name": config.model_name,
-                    "prompt_version": config.prompt_version,
-                    "justification": parsed.justification,
-                    "scores": scores,
-                    "overall_priority": overall_priority,
-                    "weight_config": weight_cfg,
-                    "weight_config_hash": weight_hash,
-                    "warnings": warnings,
-                    "character_tags": character_tags,
-                    "raw_response": raw_payload,
-                    "execution_time_ms": execution_time_ms,
-                    "temperature": config.temperature,
-                    "llm_request_id": llm_request_id,
-                    "recommended_prompt_count": parsed.recommended_prompt_count,
-                    "complexity_rationale": parsed.complexity_rationale,
-                    "distinct_visual_moments": distinct_moments,
-                },
+                data=create_data,
                 commit=config.autocommit,
                 refresh=True,
             )
@@ -484,6 +488,7 @@ class SceneRankingService:
         overwrite: bool | None = None,
         dry_run: bool | None = None,
         metadata: Mapping[str, Any] | None = None,
+        pipeline_run_id: UUID | None = None,
     ) -> list[SceneRanking | SceneRankingPreview | None]:
         results: list[SceneRanking | SceneRankingPreview | None] = []
         total_scenes = len(scenes)
@@ -495,6 +500,7 @@ class SceneRankingService:
                 overwrite=overwrite,
                 dry_run=dry_run,
                 metadata=metadata,
+                pipeline_run_id=pipeline_run_id,
             )
             results.append(result)
 

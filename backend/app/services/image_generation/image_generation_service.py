@@ -373,6 +373,7 @@ class ImageGenerationService:
         response_format: str = "b64_json",
         concurrency: int = 3,
         dry_run: bool = False,
+        pipeline_run_id: UUID | None = None,
     ) -> list[UUID]:
         """
         Generate images for a selection of prompts.
@@ -429,7 +430,7 @@ class ImageGenerationService:
             return []
 
         # Execute tasks with concurrency control
-        results = await self._execute_tasks(tasks, config)
+        results = await self._execute_tasks(tasks, config, pipeline_run_id=pipeline_run_id)
 
         # Collect successful generation IDs
         generated_ids = [
@@ -764,6 +765,8 @@ class ImageGenerationService:
         self,
         tasks: list[GenerationTask],
         config: ImageGenerationConfig,
+        *,
+        pipeline_run_id: UUID | None = None,
     ) -> list[GenerationResult]:
         """Execute generation tasks with bounded concurrency."""
         semaphore = asyncio.Semaphore(config.concurrency)
@@ -771,7 +774,7 @@ class ImageGenerationService:
 
         async def bounded_generate(task: GenerationTask) -> GenerationResult:
             async with semaphore:
-                return await self._generate_single(task, config)
+                return await self._generate_single(task, config, pipeline_run_id=pipeline_run_id)
 
         # Execute all tasks concurrently (bounded by semaphore)
         results = await asyncio.gather(
@@ -785,6 +788,8 @@ class ImageGenerationService:
         self,
         task: GenerationTask,
         config: ImageGenerationConfig,
+        *,
+        pipeline_run_id: UUID | None = None,
     ) -> GenerationResult:
         """Generate a single image from a task."""
         prompt_id = task.prompt.id
@@ -910,7 +915,7 @@ class ImageGenerationService:
                 raise ImageGenerationServiceError(
                     f"Prompt {prompt_id} has no loaded scene"
                 )
-            image_data = {
+            image_data: dict[str, Any] = {
                 "scene_extraction_id": scene_extraction_id,
                 "image_prompt_id": prompt_id,
                 "book_slug": book_slug,
@@ -931,6 +936,8 @@ class ImageGenerationService:
                 "checksum_sha256": checksum,
                 "request_id": None,  # Could extract from API response if available
             }
+            if pipeline_run_id is not None:
+                image_data["pipeline_run_id"] = pipeline_run_id
 
             async with self._get_session_lock():
                 existing_deleted = self._image_repo.find_existing_by_params(
@@ -955,6 +962,8 @@ class ImageGenerationService:
                     existing_deleted.error = None
                     existing_deleted.file_deleted = False
                     existing_deleted.file_deleted_at = None
+                    if pipeline_run_id is not None:
+                        existing_deleted.pipeline_run_id = pipeline_run_id
                     self._session.add(existing_deleted)
                     self._session.commit()
                     self._session.refresh(existing_deleted)
@@ -1003,6 +1012,8 @@ class ImageGenerationService:
                     )
                     if existing_deleted and existing_deleted.file_deleted:
                         existing_deleted.error = error_msg
+                        if pipeline_run_id is not None:
+                            existing_deleted.pipeline_run_id = pipeline_run_id
                         self._session.add(existing_deleted)
                         self._session.commit()
                         self._session.refresh(existing_deleted)
@@ -1015,7 +1026,7 @@ class ImageGenerationService:
                             raise ImageGenerationServiceError(
                                 f"Prompt {prompt_id} has no loaded scene"
                             )
-                        failed_data = {
+                        failed_data: dict[str, Any] = {
                             "scene_extraction_id": scene_extraction_id,
                             "image_prompt_id": prompt_id,
                             "book_slug": book_slug,
@@ -1032,6 +1043,8 @@ class ImageGenerationService:
                             "file_name": task.file_name,
                             "error": error_msg,
                         }
+                        if pipeline_run_id is not None:
+                            failed_data["pipeline_run_id"] = pipeline_run_id
                         failed_image = self._image_repo.create(
                             data=failed_data,
                             commit=True,
