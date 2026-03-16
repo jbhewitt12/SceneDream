@@ -78,8 +78,6 @@ npm run dev
 3. Launch a pipeline run for a document.
 4. Review generated artifacts under `img/generated/<book_slug>/`.
 
-Note: legacy `books/` paths are still supported for backward compatibility.
-
 ## Common Development Commands
 
 ```bash
