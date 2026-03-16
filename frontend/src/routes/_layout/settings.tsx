@@ -10,6 +10,7 @@ import {
   Input,
   Spinner,
   Stack,
+  Switch,
   Text,
   Textarea,
 } from "@chakra-ui/react"
@@ -50,6 +51,7 @@ function SettingsPage() {
     useState<PromptArtStyleSelection>(() =>
       getPromptArtStyleSelectionFromSettings(undefined),
     )
+  const [socialPostingEnabled, setSocialPostingEnabled] = useState(false)
   const [recommendedStylesText, setRecommendedStylesText] = useState<string>("")
   const [otherStylesText, setOtherStylesText] = useState<string>("")
 
@@ -70,6 +72,7 @@ function SettingsPage() {
     setDefaultPromptArtStyle(
       getPromptArtStyleSelectionFromSettings(settingsQuery.data.settings),
     )
+    setSocialPostingEnabled(settingsQuery.data.settings.social_posting_enabled)
   }, [settingsQuery.data])
 
   useEffect(() => {
@@ -221,6 +224,33 @@ function SettingsPage() {
     },
   })
 
+  const saveGeneralSettingsMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      SettingsApi.update({
+        social_posting_enabled: enabled,
+      }),
+    onMutate: async (enabled) => {
+      const previous =
+        settingsQuery.data?.settings.social_posting_enabled ?? false
+      setSocialPostingEnabled(enabled)
+      return { previous }
+    },
+    onSuccess: (payload) => {
+      queryClient.setQueryData(["settings", "bundle"], payload)
+      setSocialPostingEnabled(payload.settings.social_posting_enabled)
+      queryClient.invalidateQueries({ queryKey: ["settings", "bundle"] })
+      showSuccessToast("General settings updated.")
+    },
+    onError: (error, _enabled, context) => {
+      setSocialPostingEnabled(context?.previous ?? false)
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to save general settings."
+      showErrorToast(message)
+    },
+  })
+
   const saveArtStyleListsMutation = useMutation({
     mutationFn: async () => {
       if (hasEmptyCatalog) {
@@ -298,7 +328,8 @@ function SettingsPage() {
       <Stack gap={6}>
         <Heading size="lg">Settings</Heading>
         <Text color="fg.muted">
-          Configure defaults used by pipeline runs and prompt-style sampling.
+          Configure pipeline defaults, prompt-style sampling, and optional
+          posting features.
         </Text>
 
         {isLoading ? (
@@ -510,6 +541,52 @@ function SettingsPage() {
                 <Text fontSize="sm" color="fg.muted">
                   Last updated:{" "}
                   {formatDateTime(artStyleListsQuery.data.updated_at)}
+                </Text>
+              </Stack>
+            </Box>
+
+            <Box
+              p={5}
+              borderWidth="1px"
+              borderRadius="lg"
+              bg="rgba(255,255,255,0.04)"
+              backdropFilter="blur(8px) saturate(140%)"
+            >
+              <Stack gap={4}>
+                <Heading size="sm">General</Heading>
+                <Box p={4} borderWidth="1px" borderRadius="md" bg="bg.subtle">
+                  <Flex align="center" justify="space-between" gap={4}>
+                    <Box>
+                      <Text
+                        textTransform="uppercase"
+                        fontSize="xs"
+                        color="fg.subtle"
+                      >
+                        Social media posting
+                      </Text>
+                      <Text fontSize="sm" color="fg.muted" mt={1}>
+                        Enable posting actions and status in Generated Images.
+                        Disabling this hides those surfaces outside Settings and
+                        pauses background posting work. Changes save
+                        immediately.
+                      </Text>
+                    </Box>
+                    <Switch.Root
+                      checked={socialPostingEnabled}
+                      disabled={saveGeneralSettingsMutation.isPending}
+                      onCheckedChange={(event) => {
+                        saveGeneralSettingsMutation.mutate(event.checked)
+                      }}
+                    >
+                      <Switch.HiddenInput />
+                      <Switch.Control />
+                    </Switch.Root>
+                  </Flex>
+                </Box>
+
+                <Text fontSize="sm" color="fg.muted">
+                  Last updated:{" "}
+                  {formatDateTime(settingsQuery.data.settings.updated_at)}
                 </Text>
               </Stack>
             </Box>
