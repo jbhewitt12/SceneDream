@@ -722,3 +722,36 @@ Behavior:
   - `backend/app/services/pipeline/__init__.py` (modified — added exports)
   - `backend/app/services/image_gen_cli.py` (modified — replaced PipelineStats class with re-export)
   - `backend/app/tests/services/test_pipeline_execution_config.py` (created)
+
+### Phase 2: Refactor preparation into shared orchestration startup
+- Status: completed
+- Summary: Added `prepare_execution(config)` to `PipelineRunStartService` as the unified preparation entry point for all target types. It resolves entities, defaults, sticky skips, extraction/ranking resume state, and creates a pending `PipelineRun`, returning a `PreparedPipelineExecution`. The existing `resolve_pipeline_request()` is preserved for current route/CLI callers until Phase 5 migrates them. Also added `copy_with()` helpers to `PipelineStagePlan` and `PromptExecutionOptions`.
+- Completed work:
+  - Added `prepare_execution(config: PipelineExecutionConfig) -> PreparedPipelineExecution` method
+  - Implemented `_prepare_document_target()` with full sticky-skip logic, art-style resolution, default scenes-per-run resolution, extraction resume, ranking resume, and pending run creation
+  - Implemented `_prepare_scene_target()` with scene validation, document context derivation from scene's book_slug, art-style resolution, and pending run creation
+  - Implemented `_prepare_remix_target()` with source image/prompt validation, document context derivation from image's book_slug, art-style resolution, and pending run creation
+  - Implemented `_prepare_custom_remix_target()` with source validation, document context derivation, custom_prompt_text passthrough, and pending run creation
+  - Added shared helpers: `_resolve_document_identity()`, `_resolve_extraction_resume()`, `_resolve_ranking_resume()`, `_resolve_art_style_from_options()`, `_build_config_overrides()`
+  - Added `copy_with()` to `PipelineStagePlan` and `PromptExecutionOptions` in orchestrator_config.py
+  - Added 31 new tests across 7 test classes: `TestPrepareDocumentTarget` (12 tests), `TestPrepareExtractionResume` (3 tests), `TestPrepareRankingResume` (3 tests), `TestPrepareSceneTarget` (4 tests), `TestPrepareRemixTarget` (4 tests), `TestPrepareCustomRemixTarget` (2 tests), `TestPrepareValidation` (2 tests)
+- Remaining work in this phase:
+  - none
+- Deviations from plan:
+  - The plan says "Replace `resolve_pipeline_request()` with `prepare_execution(config)`" but the existing method is preserved alongside the new one since it is still used by the route and CLI (Phase 5 handles the migration). This is the safer approach.
+  - `_resolve_art_style_from_options()` takes `PromptExecutionOptions` (or duck-typed object) directly rather than `PipelineRunStartRequest`, since the new code path works with config objects not request schemas. The art-style resolution logic is equivalent.
+  - The plan mentions "Add a small helper for route-layer threadpool execution where needed" — this is deferred to Phase 3 which creates `background.py`. Phase 2 focuses purely on the preparation service; route-layer changes come in Phase 5.
+- Tests and verification run:
+  - `cd backend && uv run pytest app/tests/services/test_pipeline_run_start_service.py -v` — 46 passed (15 existing + 31 new)
+  - `cd backend && uv run pytest app/tests/services/test_pipeline_execution_config.py -v` — 36 passed
+  - `cd backend && uv run pytest` — 362 passed, 7 deselected
+  - `cd backend && uv run ruff check` and `ruff format` — clean on all changed files
+  - `cd backend && uv run bash scripts/lint.sh` — mypy reports 5 pre-existing errors (none introduced by this phase)
+- Known issues / follow-ups for next agent:
+  - The 5 pre-existing mypy errors in `document_stage_status_service.py` (4 errors) and `image_gen_cli.py` (1 error) are unrelated to this work
+  - `resolve_pipeline_request()` remains the active code path for the existing route and CLI. Phase 5 will migrate callers to `prepare_execution()`.
+  - The route-layer `run_in_threadpool` helper mentioned in the plan is a better fit for Phase 3 (`background.py`) or Phase 5 when routes are updated
+- Files changed:
+  - `backend/app/services/pipeline/pipeline_run_start_service.py` (modified — added `prepare_execution()` and supporting methods)
+  - `backend/app/services/pipeline/orchestrator_config.py` (modified — added `copy_with()` to `PipelineStagePlan` and `PromptExecutionOptions`)
+  - `backend/app/tests/services/test_pipeline_run_start_service.py` (modified — added 31 new tests for `prepare_execution()`)

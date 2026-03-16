@@ -67,6 +67,12 @@ class PipelineStagePlan:
     run_prompt_generation: bool = False
     run_image_generation: bool = False
 
+    def copy_with(self, **overrides: Any) -> PipelineStagePlan:
+        """Return a shallow copy with field overrides applied."""
+        import dataclasses
+
+        return dataclasses.replace(self, **overrides)
+
     def validate_for_target(self, target: PipelineExecutionTarget) -> list[str]:
         """Return a list of validation error messages (empty means valid)."""
         errors: list[str] = []
@@ -116,6 +122,12 @@ class PromptExecutionOptions:
     prompt_art_style_mode: str | None = None
     prompt_art_style_text: str | None = None
     require_exact_scene_variants: bool = False
+
+    def copy_with(self, **overrides: Any) -> PromptExecutionOptions:
+        """Return a shallow copy with field overrides applied."""
+        import dataclasses
+
+        return dataclasses.replace(self, **overrides)
 
 
 @dataclass(slots=True)
