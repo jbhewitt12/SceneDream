@@ -14,9 +14,11 @@ This issue intentionally does not require every implementation detail to become 
 
 Backfill is intentionally removed from scope. It is a legacy maintenance mode and does not need to shape the orchestrator design.
 
+Batch image generation is also intentionally out of scope for this issue. Orchestrator-backed execution will be sync-only for image generation. The existing batch implementation stays in the codebase unchanged so it can be reintroduced cleanly in a later feature, but this plan does not migrate it or preserve batch mode on orchestrator-backed launch surfaces.
+
 ## Objectives
 - Create one orchestrator entry point for background pipeline execution.
-- Preserve current API and CLI behavior while removing duplicated orchestration logic.
+- Preserve current sync API and CLI behavior while removing duplicated orchestration logic.
 - Make the orchestration model flexible enough for future launch types, especially scene-specific generation.
 - Ensure every orchestrated run is tracked through a persisted `PipelineRun`.
 - Ensure outputs created during a run are linked back to that run via `pipeline_run_id`.
@@ -77,6 +79,16 @@ The orchestrator should not stop at tracking the `PipelineRun` row itself. New r
 
 ### 4. Be pragmatic about async
 The orchestrator can expose an async `execute()` entry point, but internal blocking work does not need to be rewritten into native async APIs immediately. Use fresh sessions and threadpool helpers where appropriate.
+
+### 5. Carry explicit execution context across stages
+The orchestrator needs more than static config. It also needs a runtime execution context that carries:
+
+- resolved resume state for partially completed stages
+- resolved scene selection for ranking/prompt stages where applicable
+- exact prompt IDs created during the current run
+- exact image IDs created during the current run
+
+This context must be the source of truth for downstream stage inputs. In particular, image generation must consume exact prompt IDs captured during prompt generation rather than rediscovering prompts from broad scene/book queries.
 
 ## Proposed Solution
 
@@ -149,6 +161,7 @@ Rules:
 Initial scope:
 - orchestrated image generation is sync-first
 - batch generation is explicitly deferred from this issue
+- this issue removes batch-specific launch behavior from orchestrator-backed API/CLI surfaces instead of silently ignoring it
 
 #### `PipelineExecutionConfig`
 - `target: PipelineExecutionTarget`
@@ -166,6 +179,34 @@ Include `copy_with(**overrides)` and validation helpers. Validation should rejec
 - `run_id: UUID`
 - `config: PipelineExecutionConfig`
 - `config_overrides: dict[str, Any]`
+- `context: PipelineExecutionContext`
+
+#### `PipelineExecutionContext`
+Runtime state carried from preparation into execution and updated as stages complete.
+
+Preparation-owned fields:
+- `document_id: UUID | None`
+- `book_slug: str | None`
+- `book_path: str | None`
+- `extraction_resume_from_chapter: int | None`
+- `extraction_resume_from_chunk: int | None`
+- `ranking_scene_ids: list[UUID] | None`
+- `ranking_resume_scene_id: UUID | None`
+- `requested_image_count: int | None`
+
+Execution-owned fields:
+- `created_ranking_ids: list[UUID]`
+- `created_prompt_ids: list[UUID]`
+- `created_prompt_ids_by_scene: dict[UUID, list[UUID]]`
+- `created_image_ids: list[UUID]`
+- `failed_image_ids: list[UUID]`
+
+Rules:
+- preparation resolves resume state for document-backed extraction and ranking runs
+- prompt generation appends the exact prompt IDs created during this run to `created_prompt_ids`
+- scene-targeted runs must populate `created_prompt_ids_by_scene[scene_id]` with exactly the prompts created for that scene in this run
+- image generation must consume `created_prompt_ids` or the relevant per-scene subset directly; it must not query "latest prompts for scene/book" for orchestrated image-producing runs
+- diagnostics and usage summary use this context to record requested-versus-generated counts
 
 #### `PipelineExecutionResult`
 - `run_id: UUID`
@@ -183,7 +224,7 @@ Move `PipelineStats` out of `image_gen_cli.py` into this module and keep a backw
 2. Preparation service resolves entities/defaults and creates a pending `PipelineRun`.
 3. Caller receives the persisted run immediately.
 4. Background task calls `PipelineOrchestrator.execute(prepared)`.
-5. Orchestrator performs stage transitions and updates document stage statuses where relevant.
+5. Orchestrator performs stage transitions, updates `prepared.context` with resolved stage outputs, and updates document stage statuses where relevant.
 6. Newly created or updated rankings/prompts/images are persisted with `pipeline_run_id=<run_id>`.
 7. Orchestrator finalizes the run with usage summary and diagnostics.
 
@@ -197,12 +238,21 @@ Refactor `PipelineRunStartService` into a general orchestration preparation serv
 - Resolve default scenes-per-run values where needed.
 - Synchronize document stage statuses before skip decisions for document-backed runs.
 - Apply sticky completion skip rules for extraction/ranking and emit one effective stage plan.
+- Preserve extraction resume semantics by resolving `resume_from_chapter` / `resume_from_chunk` for partially extracted documents.
+- Preserve ranking resume semantics by resolving the remaining scene set for the active ranking config rather than restarting from the first scene.
 - Validate required source path behavior when extraction is enabled.
 - Create the pending `PipelineRun`.
 - Serialize effective config into `config_overrides`.
+- Populate `PipelineExecutionContext` with authoritative resume metadata and any precomputed stage inputs.
 
 ### Scope of sticky skip logic
 Sticky completion skip logic should be applied during preparation for document-backed orchestrated runs. It should not be reimplemented in execution.
+
+If extraction or ranking is only partially complete, preparation must preserve resume semantics rather than collapsing the run into either "skip" or "rerun everything":
+
+- extraction: resume from the next missing chapter/chunk boundary when source-path access still exists
+- ranking: resume with the remaining unranked scene IDs for the current ranking configuration
+- only fully completed stages become sticky-skipped
 
 Scene-targeted and remix-targeted runs should not invoke extraction or ranking at all.
 
@@ -242,6 +292,29 @@ Move diagnostics tracking and usage-summary construction out of `pipeline_runs.p
 ### Error classification
 Move pipeline error classification into the orchestrator. Keep machine-readable codes stable.
 
+### Usage summary compatibility contract
+`usage_summary` must remain backward-compatible for document stage inference and dashboard consumers.
+
+Required shape for orchestrated runs:
+- `requested.skip_extraction`
+- `requested.skip_ranking`
+- `requested.skip_prompts`
+- `requested.mode`
+- `effective.config_overrides`
+- `outputs.scenes_extracted`
+- `outputs.scenes_ranked`
+- `outputs.prompts_generated`
+- `outputs.images_generated`
+- `diagnostics`
+
+Rules:
+- for orchestrated runs in this issue, `requested.mode` is always `"sync"`
+- `requested.skip_extraction`, `requested.skip_ranking`, and `requested.skip_prompts` are derived from the effective stage plan after preparation, not from raw request payloads
+- a stage that resumes partial work is **not** considered skipped; its corresponding `requested.skip_*` value must be `false`
+- only stages omitted from the effective stage plan are reported as skipped
+- `effective.config_overrides` must continue to include the resolved values currently used by downstream readers, including resolved book identity, resolved art-style settings, and resolved scene-count defaults
+- scene-targeted and remix/custom-remix runs may add extra requested/effective keys, but they must not remove the compatibility keys above
+
 ## Output Tracking Requirement
 This is required for the orchestrator to be considered complete.
 
@@ -268,6 +341,9 @@ This requirement includes:
 - create and return a persisted pending `PipelineRunRead` immediately
 - offload blocking preparation work from the event loop
 - spawn orchestrator execution in the background
+- support sync image generation only for this issue
+
+Batch-mode request fields should not remain as misleading no-ops. This issue should either remove them from orchestrator-backed request/CLI surfaces or reject them with a validation error. Preferred approach: remove `mode`, `poll_timeout`, and `poll_interval` from orchestrator-backed pipeline-run request/CLI surfaces while leaving batch service code untouched.
 
 ### Remix and custom remix API
 Remix/custom-remix should become tracked pipeline runs.
@@ -327,6 +403,8 @@ Remove the legacy `refresh` command rather than migrating it.
 
 `backfill` is removed rather than migrated.
 
+For this issue, orchestrator-backed `run` is sync-only for image generation. Batch-specific options are removed from the supported `run` contract rather than silently accepted.
+
 ## Implementation Plan
 
 ### Phase 1: Define orchestration config and result types
@@ -340,12 +418,14 @@ Remove the legacy `refresh` command rather than migrating it.
 - Add `ImageExecutionOptions`
 - Add `PipelineExecutionConfig`
 - Add `PreparedPipelineExecution`
+- Add `PipelineExecutionContext`
 - Add `PipelineExecutionResult`
 - Move `PipelineStats` from `image_gen_cli.py`
 - Remove duplicate execution-time `skip_*` flags from the effective config contract
 
 **Tests**:
 - Add config tests covering valid and invalid target/stage combinations
+- Add config/context tests covering stage-output handoff for prompt IDs
 - Add tests that assert the effective config does not allow contradictory stage/skip representations
 
 **Verification**:
@@ -362,12 +442,16 @@ Remove the legacy `refresh` command rather than migrating it.
 - Backfill `document_id` and `book_slug` where derivable
 - Resolve art-style defaults and scenes-per-run defaults
 - Sync document stage status before skip resolution for document-backed runs
+- Resolve extraction resume state for partially extracted runs
+- Resolve ranking resume state for partially ranked runs
 - Create pending `PipelineRun`
 - Serialize effective config into `config_overrides`
 - Add a small helper for route-layer threadpool execution where needed
 
 **Tests**:
 - Extend preparation-service tests for document, scene, remix, and custom-remix targets
+- Add tests asserting extraction resume metadata is preserved for partially extracted runs
+- Add tests asserting ranking resume metadata is preserved for partially ranked runs
 - Add tests asserting preparation emits one effective stage plan after sticky skip resolution
 
 **Verification**:
@@ -384,10 +468,12 @@ Remove the legacy `refresh` command rather than migrating it.
 - Move pipeline error classification into the orchestrator
 - Add internal helpers for stage updates and document stage status updates
 - Add shared background-task helper in `backend/app/services/pipeline/background.py`
+- Make orchestrator stage methods read/write `PipelineExecutionContext` instead of rediscovering cross-stage inputs from ad hoc queries
 
 **Tests**:
 - Add orchestrator lifecycle tests for success/failure finalization
 - Add tests for diagnostics and usage-summary persistence
+- Add tests asserting backward-compatible `usage_summary.requested.skip_*` values from the effective stage plan
 - Add tests showing route files no longer own execution state machines
 
 **Verification**:
@@ -407,6 +493,7 @@ Remove the legacy `refresh` command rather than migrating it.
 - Ensure remix/custom-remix-created prompts are linked to their run
 - Remove orchestration logic that searches for reusable prompt sets for image-producing runs
 - Make image-producing orchestration depend on explicit prompt IDs created during the current run
+- Make stage services return created IDs needed to populate `PipelineExecutionContext`
 
 This phase may require small interface changes to existing services or repositories. That is intentional.
 
@@ -426,20 +513,24 @@ This phase may require small interface changes to existing services or repositor
 
 **Tasks**:
 - Move extraction/ranking/prompt/image execution logic from `_run_full_pipeline()` into orchestrator stage methods
-- Keep current behavior for default scene counts and skip handling while removing prompt-reuse-based image selection for image-producing runs
+- Keep current behavior for default scene counts, extraction resume, ranking resume, and skip handling while removing prompt-reuse-based image selection for image-producing runs
 - Update `pipeline_runs.py` to build config, prepare execution, return the pending run, and spawn orchestrator execution
 - Update `_run_full_pipeline()` in `image_gen_cli.py` to delegate to preparation + orchestrator
+- Remove batch-specific `run` launch handling from orchestrator-backed API/CLI surfaces while leaving batch service code in place
 
 **Tests**:
 - Update full-pipeline API route tests to verify pending-run creation and background kickoff
 - Update CLI delegation tests for `run`
 - Add regression tests for document stage status updates through the orchestrator
+- Add regression tests for extraction resume and ranking resume through the orchestrator
 
 **Verification**:
 - [ ] Full pipeline works from API
 - [ ] Full pipeline works from CLI
 - [ ] Status transitions remain correct
 - [ ] Document stage status updates remain correct
+- [ ] Extraction resume semantics remain correct
+- [ ] Ranking resume semantics remain correct
 
 ### Phase 6: Add scene-targeted generation
 **Goal**: prove the orchestrator can support fine-grained future features without another architecture change.
@@ -543,6 +634,7 @@ Behavior:
 | `backend/app/api/routes/pipeline_runs.py` | Modify |
 | `backend/app/api/routes/generated_images.py` | Modify |
 | `backend/app/api/routes/scene_extractions.py` | Modify |
+| `backend/app/schemas/pipeline_run.py` | Modify |
 | `backend/app/schemas/scene_extraction.py` | Modify |
 | `backend/app/schemas/generated_image.py` | Modify |
 | `backend/app/services/scene_ranking/scene_ranking_service.py` | Modify |
@@ -564,6 +656,7 @@ Behavior:
 - Route tests for pending-run creation and response contracts
 - Regression tests for CLI command behavior, including removal of `images` and `backfill`
 - Assertions that created rows carry `pipeline_run_id`
+- Regression tests for extraction/ranking resume behavior and explicit prompt-ID handoff to image generation
 
 ## Required Commands
 - `cd backend && uv run pytest`
@@ -576,7 +669,11 @@ Behavior:
 - [ ] Every orchestrated invocation creates a persisted pending `PipelineRun` before long-running work starts
 - [ ] `POST /pipeline-runs` still returns a concrete pending `PipelineRunRead` immediately
 - [ ] Async route handlers remain non-blocking even if preparation work remains synchronous internally
+- [ ] Orchestrator-backed image generation is sync-only in this issue
+- [ ] Batch implementation remains in the codebase but is not migrated or exposed through orchestrator-backed launch paths
 - [ ] Full pipeline runs work through the orchestrator from API and CLI
+- [ ] Extraction resume semantics are preserved for partially extracted runs
+- [ ] Ranking resume semantics are preserved for partially ranked runs
 - [ ] Scene-targeted generation is supported for specific extracted scenes with an exact requested variant count
 - [ ] Any orchestrated run that creates images also creates fresh prompts for those images during the same run
 - [ ] Scene-targeted generation passes the exact prompt IDs produced for that run into image generation
