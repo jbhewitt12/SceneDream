@@ -744,6 +744,24 @@ function DocumentCard({
   const canLaunch = entry.file_exists || entry.counts.extracted > 0
   const artStyleValidationMessage =
     getPromptArtStyleValidationMessage(artStyleSelection)
+  const parsedScenesPerRun = Number.parseInt(scenesPerRunValue, 10)
+  const sceneCountSummary = Number.isFinite(parsedScenesPerRun)
+    ? `${parsedScenesPerRun} scene${parsedScenesPerRun === 1 ? "" : "s"}`
+    : "Select scene count"
+  const artStyleSummary =
+    artStyleSelection.promptArtStyleMode === "single_style"
+      ? artStyleSelection.promptArtStyleText.trim()
+        ? `Single art style: ${artStyleSelection.promptArtStyleText.trim()}`
+        : "Single art style: enter a custom art style"
+      : `Random Style Mix: ${artStyleCatalogCounts.recommended} recommended, ${artStyleCatalogCounts.other} other`
+  const launchDescription = canGenerateImages
+    ? "Generate images for the highest-ranked scenes that do not already have images."
+    : "Run the pipeline for this document with the selected settings."
+  const actionHelperText = !canLaunch
+    ? "Source file is missing and no extracted scenes exist yet."
+    : canGenerateImages
+      ? "Only scenes without images will be selected."
+      : "Runs extraction, ranking, prompt generation, and image generation as needed."
 
   return (
     <Box
@@ -799,124 +817,141 @@ function DocumentCard({
           />
         </Grid>
 
-        <Box borderWidth="1px" borderRadius="md" p={3}>
-          <Text
-            fontSize="xs"
-            textTransform="uppercase"
-            color="fg.subtle"
-            mb={2}
+        <Box borderWidth="1px" borderRadius="xl" p={{ base: 4, md: 5 }}>
+          <Grid
+            templateColumns={{ base: "1fr", xl: "minmax(0, 1fr) 320px" }}
+            gap={5}
+            alignItems="start"
           >
-            Launch Pipeline
-          </Text>
-          <Grid templateColumns={{ base: "1fr", md: "1fr 1fr auto" }} gap={3}>
-            <Box>
-              <Text fontSize="sm" color="fg.muted" mb={1}>
-                Scenes this run
-              </Text>
-              <Input
-                type="number"
-                min={1}
-                value={scenesPerRunValue}
-                onChange={(event) => onScenesPerRunChange(event.target.value)}
-              />
-            </Box>
-            <Box>
-              <PromptArtStyleControl
-                label="Art style"
-                selection={artStyleSelection}
-                recommendedCount={artStyleCatalogCounts.recommended}
-                otherCount={artStyleCatalogCounts.other}
-                randomMixManageCopy="Manage styles in Settings."
-                validationMessage={artStyleValidationMessage}
-                onModeChange={onArtStyleModeChange}
-                onTextChange={onArtStyleTextChange}
-              />
-            </Box>
-            <Flex align="flex-end">
-              <Button
-                colorScheme="blue"
-                onClick={onLaunch}
-                loading={launching || hasActiveRun}
-                disabled={!canLaunch || artStyleValidationMessage !== null}
-                gap={2}
-                w="full"
-              >
-                <FiPlay />
-                {launchLabel}
-              </Button>
-            </Flex>
-          </Grid>
-          {canGenerateImages ? (
-            <Text mt={2} fontSize="sm" color="fg.muted">
-              Generates images for the highest-ranked scenes that do not already
-              have images.
-            </Text>
-          ) : null}
-          {!canLaunch ? (
-            <Text mt={2} fontSize="sm" color="orange.300">
-              Source file is missing and no extracted scenes exist yet.
-            </Text>
-          ) : null}
-        </Box>
-
-        <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={3}>
-          <Box borderWidth="1px" borderRadius="md" p={3}>
-            <Text
-              fontSize="xs"
-              textTransform="uppercase"
-              color="fg.subtle"
-              mb={1}
-            >
-              Ingestion
-            </Text>
-            <HStack gap={2}>
-              <Badge colorScheme={statusColor(entry.ingestion_state)}>
-                {entry.ingestion_state ?? "unknown"}
-              </Badge>
-              {entry.ingestion_error ? (
-                <Text fontSize="sm" color="red.300">
-                  {entry.ingestion_error}
+            <Stack gap={4}>
+              <Stack gap={1}>
+                <Text fontSize="xs" textTransform="uppercase" color="fg.subtle">
+                  Launch Pipeline
                 </Text>
-              ) : (
                 <Text fontSize="sm" color="fg.muted">
-                  No ingestion errors.
+                  {launchDescription}
                 </Text>
-              )}
-            </HStack>
-          </Box>
+              </Stack>
 
-          <Box borderWidth="1px" borderRadius="md" p={3}>
+              <Grid
+                templateColumns={{ base: "1fr", lg: "220px minmax(0, 1fr)" }}
+                gap={4}
+                alignItems="start"
+              >
+                <Box maxW={{ base: "full", lg: "220px" }}>
+                  <Text fontSize="sm" color="fg.muted" mb={1}>
+                    Scenes this run
+                  </Text>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={scenesPerRunValue}
+                    onChange={(event) =>
+                      onScenesPerRunChange(event.target.value)
+                    }
+                  />
+                </Box>
+                <PromptArtStyleControl
+                  label="Art style"
+                  selection={artStyleSelection}
+                  recommendedCount={artStyleCatalogCounts.recommended}
+                  otherCount={artStyleCatalogCounts.other}
+                  randomMixManageCopy="Manage styles in Settings."
+                  validationMessage={artStyleValidationMessage}
+                  onModeChange={onArtStyleModeChange}
+                  onTextChange={onArtStyleTextChange}
+                />
+              </Grid>
+            </Stack>
+
+            <Box
+              borderWidth="1px"
+              borderRadius="lg"
+              p={4}
+              bg="rgba(255,255,255,0.03)"
+            >
+              <Stack gap={4} h="full" justify="space-between">
+                <Stack gap={2}>
+                  <Text
+                    fontSize="xs"
+                    textTransform="uppercase"
+                    color="fg.subtle"
+                  >
+                    This Run
+                  </Text>
+                  <Text fontSize="2xl" fontWeight="semibold">
+                    {sceneCountSummary}
+                  </Text>
+                  <Text fontSize="sm" color="fg.muted">
+                    {artStyleSummary}
+                  </Text>
+                  {hasActiveRun ? (
+                    <Badge
+                      colorScheme="blue"
+                      variant="subtle"
+                      alignSelf="start"
+                    >
+                      Pipeline currently running
+                    </Badge>
+                  ) : null}
+                </Stack>
+
+                <Stack gap={2}>
+                  <Button
+                    colorScheme="blue"
+                    onClick={onLaunch}
+                    loading={launching || hasActiveRun}
+                    disabled={!canLaunch || artStyleValidationMessage !== null}
+                    gap={2}
+                    w="full"
+                    size="lg"
+                  >
+                    <FiPlay />
+                    {launchLabel}
+                  </Button>
+                  <Text
+                    fontSize="sm"
+                    color={!canLaunch ? "orange.300" : "fg.muted"}
+                  >
+                    {actionHelperText}
+                  </Text>
+                </Stack>
+              </Stack>
+            </Box>
+          </Grid>
+
+          <Box mt={5} pt={4} borderTopWidth="1px" borderColor="whiteAlpha.200">
             <Text
               fontSize="xs"
               textTransform="uppercase"
               color="fg.subtle"
-              mb={1}
+              mb={2}
             >
               Last Run
             </Text>
             {runSummary ? (
-              <Stack gap={1}>
-                <HStack gap={2}>
+              <Stack gap={2}>
+                <Flex wrap="wrap" gap={2} align="center">
                   <Badge colorScheme={statusColor(runSummary.status)}>
                     {runSummary.status}
                   </Badge>
                   <Text fontSize="sm" color="fg.muted">
                     Stage: {runSummary.current_stage ?? "—"}
                   </Text>
+                  <Text fontSize="sm" color="fg.muted">
+                    Completed: {formatDateTime(runSummary.completed_at)}
+                  </Text>
+                  {usageText ? (
+                    <Text fontSize="sm" color="fg.muted">
+                      Usage: {usageText}
+                    </Text>
+                  ) : null}
                   {hasActiveRun ? (
                     <Badge colorScheme="blue" variant="subtle">
                       live
                     </Badge>
                   ) : null}
-                </HStack>
-                <Text fontSize="sm" color="fg.muted">
-                  Completed: {formatDateTime(runSummary.completed_at)}
-                </Text>
-                {usageText ? (
-                  <Text fontSize="sm" color="fg.muted">
-                    Usage: {usageText}
-                  </Text>
-                ) : null}
+                </Flex>
                 {runSummary.error_message ? (
                   <Text fontSize="sm" color="red.300">
                     {runSummary.error_message}
@@ -929,7 +964,7 @@ function DocumentCard({
               </Text>
             )}
           </Box>
-        </Grid>
+        </Box>
       </Stack>
     </Box>
   )
