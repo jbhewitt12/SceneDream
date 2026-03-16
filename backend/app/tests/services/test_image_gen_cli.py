@@ -7,7 +7,11 @@ from uuid import uuid4
 import pytest
 from sqlmodel import Session
 
-from app.repositories import ImagePromptRepository, SceneRankingRepository
+from app.repositories import (
+    GeneratedImageRepository,
+    ImagePromptRepository,
+    SceneRankingRepository,
+)
 from app.services.image_gen_cli import (
     _collect_matching_prompt_ids_for_image_generation,
     _count_prompt_ready_scenes_without_images,
@@ -269,3 +273,154 @@ async def test_run_prompts_rolls_back_after_scene_generation_error(
     assert stats.prompts_generated == 1
     assert len(stats.errors) == 1
     assert str(failing_scene.id) in stats.errors[0]
+
+
+@pytest.mark.anyio
+async def test_run_prompts_skips_scenes_that_already_have_images(
+    db: Session,
+    scene_factory,
+    prompt_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    book_slug = f"test-book-{uuid4()}"
+    scene_with_image = scene_factory(
+        book_slug=book_slug,
+        chapter_number=1,
+        scene_number=1,
+    )
+    scene_without_image = scene_factory(
+        book_slug=book_slug,
+        chapter_number=1,
+        scene_number=2,
+    )
+    prompt = prompt_factory(scene_with_image)
+    GeneratedImageRepository(db).create(
+        data={
+            "scene_extraction_id": scene_with_image.id,
+            "image_prompt_id": prompt.id,
+            "book_slug": scene_with_image.book_slug,
+            "chapter_number": scene_with_image.chapter_number,
+            "variant_index": prompt.variant_index,
+            "provider": "openai_gpt_image",
+            "model": "gpt-image-1.5",
+            "size": "1024x1024",
+            "quality": "standard",
+            "style": "vivid",
+            "aspect_ratio": "1:1",
+            "response_format": "b64_json",
+            "storage_path": f"img/generated/{scene_with_image.book_slug}/chapter-{scene_with_image.chapter_number}",
+            "file_name": f"scene-{scene_with_image.scene_number}-v{prompt.variant_index}.png",
+        },
+        commit=True,
+    )
+
+    rankings = [
+        SimpleNamespace(
+            scene_extraction_id=scene_with_image.id,
+            scene_extraction=scene_with_image,
+            overall_priority=9.9,
+        ),
+        SimpleNamespace(
+            scene_extraction_id=scene_without_image.id,
+            scene_extraction=scene_without_image,
+            overall_priority=9.8,
+        ),
+    ]
+
+    monkeypatch.setattr(
+        SceneRankingRepository,
+        "list_top_rankings_for_book",
+        lambda _self, **kwargs: rankings[: kwargs["limit"]],
+    )
+
+    generated_scene_ids: list[object] = []
+
+    async def fake_generate_for_scene(
+        self: ImagePromptGenerationService,
+        scene,
+        **_kwargs,
+    ):
+        generated_scene_ids.append(scene.id)
+        return [SimpleNamespace(id=uuid4())]
+
+    monkeypatch.setattr(
+        ImagePromptGenerationService,
+        "generate_for_scene",
+        fake_generate_for_scene,
+    )
+
+    stats = await _run_prompts(
+        argparse.Namespace(
+            dry_run=False,
+            prompts_per_scene=1,
+            ignore_ranking_recommendations=True,
+            book_slug=book_slug,
+            top_scenes=1,
+            overwrite=False,
+            prompt_art_style_mode=None,
+            prompt_art_style_text=None,
+        )
+    )
+
+    assert stats.prompts_generated == 1
+    assert generated_scene_ids == [scene_without_image.id]
+
+
+@pytest.mark.anyio
+async def test_run_prompts_scans_deep_enough_to_find_later_promptable_scene(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    book_slug = f"test-book-{uuid4()}"
+    scenes = [
+        SimpleNamespace(id=uuid4(), scene_number=index + 1, chapter_number=1)
+        for index in range(14)
+    ]
+    rankings = [
+        SimpleNamespace(
+            scene_extraction_id=scene.id,
+            scene_extraction=scene,
+            overall_priority=float(100 - index),
+        )
+        for index, scene in enumerate(scenes)
+    ]
+
+    monkeypatch.setattr(
+        SceneRankingRepository,
+        "list_top_rankings_for_book",
+        lambda _self, **kwargs: rankings[: kwargs["limit"]],
+    )
+
+    generated_scene_ids: list[object] = []
+
+    async def fake_generate_for_scene(
+        self: ImagePromptGenerationService,
+        scene,
+        **_kwargs,
+    ):
+        generated_scene_ids.append(scene.id)
+        if scene.id == scenes[-1].id:
+            return [SimpleNamespace(id=uuid4())]
+        return []
+
+    monkeypatch.setattr(
+        ImagePromptGenerationService,
+        "generate_for_scene",
+        fake_generate_for_scene,
+    )
+
+    stats = await _run_prompts(
+        argparse.Namespace(
+            dry_run=False,
+            prompts_per_scene=1,
+            ignore_ranking_recommendations=True,
+            book_slug=book_slug,
+            top_scenes=1,
+            overwrite=False,
+            prompt_art_style_mode=None,
+            prompt_art_style_text=None,
+        )
+    )
+
+    assert stats.prompts_generated == 1
+    assert generated_scene_ids[-1] == scenes[-1].id
+    assert len(generated_scene_ids) == len(scenes)

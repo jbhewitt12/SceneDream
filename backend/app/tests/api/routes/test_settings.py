@@ -1,7 +1,9 @@
 from typing import cast
 
+import app.api.routes.settings as settings_routes
 from fastapi.testclient import TestClient
-
+from models.app_settings import AppSettings
+from models.art_style import ArtStyle
 
 def _snapshot_style_lists(client: TestClient) -> dict[str, object]:
     response = client.get("/api/v1/settings/art-style-lists")
@@ -20,7 +22,29 @@ def _restore_style_lists(client: TestClient, snapshot: dict[str, object]) -> Non
     assert response.status_code == 200
 
 
-def test_get_settings_returns_defaults(client: TestClient) -> None:
+def test_get_settings_returns_defaults(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        settings_routes.AppSettingsRepository,
+        "get_or_create_global",
+        lambda self, **_kwargs: AppSettings(),
+    )
+    monkeypatch.setattr(
+        settings_routes.ArtStyleRepository,
+        "list_active",
+        lambda self: [
+            ArtStyle(
+                slug="test-style",
+                display_name="Test Style",
+                is_recommended=True,
+                is_active=True,
+                sort_order=0,
+            )
+        ],
+    )
+
     response = client.get("/api/v1/settings")
     assert response.status_code == 200
 

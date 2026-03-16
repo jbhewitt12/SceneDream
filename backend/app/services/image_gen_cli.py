@@ -157,7 +157,7 @@ def _count_prompt_ready_scenes_without_images(
 ) -> tuple[int, int]:
     """Count unique ranked scenes that are ready for image generation."""
 
-    fetch_limit = max(target_scenes * 50, 100)
+    fetch_limit = _resolve_ranked_scene_fetch_limit(target_scenes)
     rankings = ranking_repo.list_top_rankings_for_book(
         book_slug=book_slug,
         limit=fetch_limit,
@@ -210,6 +210,50 @@ def _build_run_prompt_generation_config(
         config_kwargs["use_ranking_recommendation"] = True
 
     return ImagePromptGenerationConfig(**config_kwargs)
+
+
+def _resolve_ranked_scene_fetch_limit(target_scenes: int | None) -> int:
+    """Return a ranking scan depth that tolerates skipped scenes."""
+
+    if isinstance(target_scenes, int) and target_scenes > 0:
+        return max(target_scenes * 50, 100)
+    return 100
+
+
+def _list_ranked_scene_candidates_without_images(
+    *,
+    ranking_repo: SceneRankingRepository,
+    image_repo: GeneratedImageRepository,
+    book_slug: str,
+    target_scenes: int | None,
+) -> list[Any]:
+    """Return ranked scene rows for unique scenes that do not already have images."""
+
+    fetch_limit = _resolve_ranked_scene_fetch_limit(target_scenes)
+    rankings = ranking_repo.list_top_rankings_for_book(
+        book_slug=book_slug,
+        limit=fetch_limit,
+        include_scene=True,
+    )
+
+    candidates: list[Any] = []
+    seen_scene_ids: set[UUID] = set()
+
+    for ranking in rankings:
+        scene = getattr(ranking, "scene_extraction", None)
+        scene_id = getattr(ranking, "scene_extraction_id", None)
+        if scene is None or not isinstance(scene_id, UUID):
+            continue
+        if scene_id in seen_scene_ids:
+            continue
+        seen_scene_ids.add(scene_id)
+
+        if image_repo.list_for_scene(scene_id, limit=1):
+            continue
+
+        candidates.append(ranking)
+
+    return candidates
 
 
 def _scene_has_matching_prompt_set(
@@ -271,7 +315,7 @@ def _collect_matching_prompt_ids_for_image_generation(
 ) -> list[UUID]:
     """Collect prompt IDs for the top-ranked scenes whose latest prompt set matches."""
 
-    fetch_limit = max(target_scenes * 50, 100)
+    fetch_limit = _resolve_ranked_scene_fetch_limit(target_scenes)
     rankings = ranking_repo.list_top_rankings_for_book(
         book_slug=book_slug,
         limit=fetch_limit,
@@ -1156,18 +1200,16 @@ async def _run_full_pipeline(
                     session, config=prompt_config
                 )
 
-                # Fetch a large batch of rankings to ensure we can find enough valid scenes
-                # Use a multiplier to account for skipped scenes
-                fetch_limit = (target_scenes * 10) if target_scenes else 100
-
-                rankings = ranking_repo.list_top_rankings_for_book(
+                image_repo = GeneratedImageRepository(session)
+                rankings = _list_ranked_scene_candidates_without_images(
+                    ranking_repo=ranking_repo,
+                    image_repo=image_repo,
                     book_slug=book_slug,
-                    limit=fetch_limit,
-                    include_scene=True,
+                    target_scenes=target_scenes,
                 )
 
                 logger.info(
-                    "Processing %d rankings to generate prompts for %s scenes",
+                    "Processing %d ranked scene candidates without images to generate prompts for %s scenes",
                     len(rankings),
                     target_scenes if target_scenes is not None else "all",
                 )
@@ -1469,19 +1511,17 @@ async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
         )
         prompt_service = ImagePromptGenerationService(session, config=prompt_config)
 
-        # Fetch a large batch of rankings to ensure we can find enough valid scenes
-        # Use a multiplier to account for skipped scenes
         target_scenes = args.top_scenes
-        fetch_limit = (target_scenes * 10) if target_scenes else 100
-
-        rankings = ranking_repo.list_top_rankings_for_book(
+        image_repo = GeneratedImageRepository(session)
+        rankings = _list_ranked_scene_candidates_without_images(
+            ranking_repo=ranking_repo,
+            image_repo=image_repo,
             book_slug=args.book_slug,
-            limit=fetch_limit,
-            include_scene=True,
+            target_scenes=target_scenes,
         )
 
         logger.info(
-            "Processing %d rankings to generate prompts for %s scenes",
+            "Processing %d ranked scene candidates without images to generate prompts for %s scenes",
             len(rankings),
             target_scenes if target_scenes is not None else "all",
         )
