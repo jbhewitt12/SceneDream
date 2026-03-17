@@ -63,6 +63,8 @@ from .scene_extraction import (
     SceneExtractionFilterOptions,
     SceneExtractionListResponse,
     SceneExtractionRead,
+    SceneGenerateRequest,
+    SceneGenerateResponse,
 )
 from .scene_ranking import (
     SceneRankingListResponse,
@@ -101,6 +103,8 @@ __all__ = [
     "SceneExtractionFilterOptions",
     "SceneExtractionListResponse",
     "SceneExtractionRead",
+    "SceneGenerateRequest",
+    "SceneGenerateResponse",
     "SceneRankingListResponse",
     "SceneRankingRead",
     "SceneRankingSceneSummary",

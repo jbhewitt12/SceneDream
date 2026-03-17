@@ -44,6 +44,7 @@ from .orchestrator_config import (
     PipelineStats,
     PreparedPipelineExecution,
     PromptExecutionOptions,
+    SceneTarget,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,9 @@ def _build_prompt_generation_config(
         kwargs["prompt_art_style_text"] = options.prompt_art_style_text
     if options.prompts_per_scene is not None:
         kwargs["variants_count"] = options.prompts_per_scene
-        kwargs["use_ranking_recommendation"] = not options.ignore_ranking_recommendations
+        kwargs[
+            "use_ranking_recommendation"
+        ] = not options.ignore_ranking_recommendations
     else:
         kwargs["use_ranking_recommendation"] = True
     return ImagePromptGenerationConfig(**kwargs)
@@ -620,6 +623,32 @@ class PipelineOrchestrator:
             )
 
         if stats.errors:
+            # For scene-targeted runs, partial success (at least one image)
+            # is still considered a successful completion.
+            is_scene_target = isinstance(config.target, SceneTarget)
+            if is_scene_target and stats.images_generated > 0:
+                logger.info(
+                    "Scene-targeted run had errors but generated %d images; "
+                    "treating as partial success.",
+                    stats.images_generated,
+                )
+            else:
+                return self._finalize_stats_failure(
+                    run_id=run_id,
+                    prepared=prepared,
+                    stats=stats,
+                    started_at=started_at,
+                    diagnostics=diagnostics,
+                )
+
+        # For scene-targeted image runs, fail if zero images were generated
+        if (
+            isinstance(config.target, SceneTarget)
+            and stages.run_image_generation
+            and stats.images_generated == 0
+            and not stats.errors  # avoid double-finalizing
+        ):
+            stats.errors.append("No images were generated for scene-targeted run")
             return self._finalize_stats_failure(
                 run_id=run_id,
                 prepared=prepared,
@@ -723,7 +752,96 @@ class PipelineOrchestrator:
         prepared: PreparedPipelineExecution,
         stats: PipelineStats,
     ) -> None:
-        """Execute prompt generation stage."""
+        """Execute prompt generation stage.
+
+        Dispatches to scene-targeted or document-targeted prompt generation
+        based on the execution target type.
+        """
+        if isinstance(prepared.config.target, SceneTarget):
+            await self._execute_scene_prompt_generation(prepared, stats)
+        else:
+            await self._execute_document_prompt_generation(prepared, stats)
+
+    async def _execute_scene_prompt_generation(
+        self,
+        prepared: PreparedPipelineExecution,
+        stats: PipelineStats,
+    ) -> None:
+        """Generate exactly N fresh prompts for each scene in a SceneTarget."""
+        target: SceneTarget = prepared.config.target  # type: ignore[assignment]
+        context = prepared.context
+        run_id = prepared.run_id
+        prompt_options = prepared.config.prompt_options
+
+        variant_count = prompt_options.scene_variant_count or 1
+        prompt_config = _build_prompt_generation_config(prompt_options)
+        # Override variants_count to produce exactly the requested number
+        prompt_config.variants_count = variant_count
+
+        with Session(engine) as session:
+            scene_repo = SceneExtractionRepository(session)
+            prompt_service = ImagePromptGenerationService(session, config=prompt_config)
+
+            for scene_id in target.scene_ids:
+                scene = scene_repo.get(scene_id)
+                if scene is None:
+                    error_msg = f"Scene {scene_id} not found during prompt generation"
+                    logger.error(error_msg)
+                    stats.errors.append(error_msg)
+                    continue
+
+                try:
+                    prompts = await prompt_service.generate_for_scene(
+                        scene,
+                        variants_count=variant_count,
+                        dry_run=False,
+                        overwrite=False,
+                        metadata={"source": "scene_target"},
+                        pipeline_run_id=run_id,
+                    )
+                    if prompts:
+                        stats.prompts_generated += len(prompts)
+                        for p in prompts:
+                            prompt_id = getattr(p, "id", None)
+                            if prompt_id is not None:
+                                context.created_prompt_ids.append(prompt_id)
+                                scene_list = (
+                                    context.created_prompt_ids_by_scene.setdefault(
+                                        scene_id, []
+                                    )
+                                )
+                                scene_list.append(prompt_id)
+                        logger.info(
+                            "Generated %d prompts for scene %s",
+                            len(prompts),
+                            scene_id,
+                        )
+                except Exception as exc:
+                    error_msg = (
+                        f"Failed to generate prompts for scene {scene_id}: {exc}"
+                    )
+                    logger.error(error_msg)
+                    try:
+                        session.rollback()
+                    except Exception:
+                        logger.exception(
+                            "Failed to rollback after prompt error for scene %s",
+                            scene_id,
+                        )
+                    stats.errors.append(error_msg)
+
+        logger.info(
+            "Scene-targeted prompt generation complete: %d prompts for %d scenes",
+            stats.prompts_generated,
+            len(target.scene_ids),
+        )
+
+    async def _execute_document_prompt_generation(
+        self,
+        prepared: PreparedPipelineExecution,
+        stats: PipelineStats,
+    ) -> None:
+        """Execute prompt generation for document-targeted runs."""
         context = prepared.context
         book_slug = context.book_slug
         run_id = prepared.run_id
@@ -741,9 +859,7 @@ class PipelineOrchestrator:
         with Session(engine) as session:
             ranking_repo = SceneRankingRepository(session)
             image_repo = GeneratedImageRepository(session)
-            prompt_service = ImagePromptGenerationService(
-                session, config=prompt_config
-            )
+            prompt_service = ImagePromptGenerationService(session, config=prompt_config)
 
             fetch_limit = _resolve_ranked_scene_fetch_limit(prompts_for_scenes)
             rankings = ranking_repo.list_top_rankings_for_book(
@@ -832,9 +948,7 @@ class PipelineOrchestrator:
 
         prompt_ids = list(context.created_prompt_ids)
         if not prompt_ids:
-            logger.warning(
-                "No prompt IDs available for image generation; skipping."
-            )
+            logger.warning("No prompt IDs available for image generation; skipping.")
             return
 
         image_config = ImageGenerationConfig(

@@ -488,15 +488,10 @@ export type PipelineRunStartRequest = {
     quality?: 'standard' | 'hd';
     style?: ('vivid' | 'natural' | null);
     aspect_ratio?: ('1:1' | '9:16' | '16:9' | null);
-    mode?: 'batch' | 'sync';
-    poll_timeout?: number;
-    poll_interval?: number;
     dry_run?: boolean;
 };
 
 export type quality = 'standard' | 'hd';
-
-export type mode = 'batch' | 'sync';
 
 /**
  * Response schema for posting status query.
@@ -586,6 +581,27 @@ export type SceneExtractionRead = {
     props?: {
         [key: string]: unknown;
     };
+};
+
+/**
+ * Request payload for scene-targeted prompt + image generation.
+ */
+export type SceneGenerateRequest = {
+    num_images: number;
+    prompt_art_style_mode?: ('random_mix' | 'single_style' | null);
+    prompt_art_style_text?: (string | null);
+    quality?: 'standard' | 'hd';
+    style?: ('vivid' | 'natural' | null);
+    aspect_ratio?: ('1:1' | '9:16' | '16:9' | null);
+};
+
+/**
+ * Response for scene-targeted generation with pipeline run tracking.
+ */
+export type SceneGenerateResponse = {
+    pipeline_run_id: string;
+    status: string;
+    message: string;
 };
 
 /**
@@ -892,6 +908,13 @@ export type SceneExtractionsGetSceneExtractionData = {
 };
 
 export type SceneExtractionsGetSceneExtractionResponse = (SceneExtractionRead);
+
+export type SceneExtractionsGenerateForSceneData = {
+    requestBody: SceneGenerateRequest;
+    sceneId: string;
+};
+
+export type SceneExtractionsGenerateForSceneResponse = (SceneGenerateResponse);
 
 export type SceneRankingsListTopSceneRankingsData = {
     bookSlug?: (string | null);

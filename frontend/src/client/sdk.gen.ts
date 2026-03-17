@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { DocumentsGetDocumentsDashboardResponse, DocumentsSyncDocumentStagesResponse, GeneratedImagesListProvidersResponse, GeneratedImagesListGeneratedImagesData, GeneratedImagesListGeneratedImagesResponse, GeneratedImagesGetGeneratedImageData, GeneratedImagesGetGeneratedImageResponse, GeneratedImagesUpdateImageApprovalData, GeneratedImagesUpdateImageApprovalResponse, GeneratedImagesStreamGeneratedImageFileData, GeneratedImagesStreamGeneratedImageFileResponse, GeneratedImagesListGeneratedImagesForSceneData, GeneratedImagesListGeneratedImagesForSceneResponse, GeneratedImagesListGeneratedImagesForPromptData, GeneratedImagesListGeneratedImagesForPromptResponse, GeneratedImagesRemixGeneratedImageData, GeneratedImagesRemixGeneratedImageResponse, GeneratedImagesCustomRemixGeneratedImageData, GeneratedImagesCustomRemixGeneratedImageResponse, GeneratedImagesTriggerImageGenerationData, GeneratedImagesTriggerImageGenerationResponse, GeneratedImagesQueueImageForPostingData, GeneratedImagesQueueImageForPostingResponse, GeneratedImagesGetImagePostingStatusData, GeneratedImagesGetImagePostingStatusResponse, GeneratedImagesRetryFailedPostsData, GeneratedImagesRetryFailedPostsResponse, GeneratedImagesCropImageData, GeneratedImagesCropImageResponse, ImagePromptsListPromptsForSceneData, ImagePromptsListPromptsForSceneResponse, ImagePromptsListPromptsData, ImagePromptsListPromptsResponse, ImagePromptsListPromptsForBookData, ImagePromptsListPromptsForBookResponse, ImagePromptsGetImagePromptData, ImagePromptsGetImagePromptResponse, ImagePromptsGenerateMetadataVariantsData, ImagePromptsGenerateMetadataVariantsResponse, ImagePromptsUpdatePromptMetadataData, ImagePromptsUpdatePromptMetadataResponse, PipelineRunsStartPipelineRunData, PipelineRunsStartPipelineRunResponse, PipelineRunsGetPipelineRunData, PipelineRunsGetPipelineRunResponse, SceneExtractionsListSceneExtractionsData, SceneExtractionsListSceneExtractionsResponse, SceneExtractionsGetFilterOptionsResponse, SceneExtractionsGetSceneExtractionData, SceneExtractionsGetSceneExtractionResponse, SceneRankingsListTopSceneRankingsData, SceneRankingsListTopSceneRankingsResponse, SceneRankingsListSceneRankingHistoryData, SceneRankingsListSceneRankingHistoryResponse, SceneRankingsGetSceneRankingData, SceneRankingsGetSceneRankingResponse, SettingsGetSettingsResponse, SettingsUpdateSettingsData, SettingsUpdateSettingsResponse, SettingsListArtStylesResponse, SettingsGetArtStyleListsResponse, SettingsUpdateArtStyleListsData, SettingsUpdateArtStyleListsResponse, SettingsResetArtStyleListsResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { DocumentsGetDocumentsDashboardResponse, DocumentsSyncDocumentStagesResponse, GeneratedImagesListProvidersResponse, GeneratedImagesListGeneratedImagesData, GeneratedImagesListGeneratedImagesResponse, GeneratedImagesGetGeneratedImageData, GeneratedImagesGetGeneratedImageResponse, GeneratedImagesUpdateImageApprovalData, GeneratedImagesUpdateImageApprovalResponse, GeneratedImagesStreamGeneratedImageFileData, GeneratedImagesStreamGeneratedImageFileResponse, GeneratedImagesListGeneratedImagesForSceneData, GeneratedImagesListGeneratedImagesForSceneResponse, GeneratedImagesListGeneratedImagesForPromptData, GeneratedImagesListGeneratedImagesForPromptResponse, GeneratedImagesRemixGeneratedImageData, GeneratedImagesRemixGeneratedImageResponse, GeneratedImagesCustomRemixGeneratedImageData, GeneratedImagesCustomRemixGeneratedImageResponse, GeneratedImagesTriggerImageGenerationData, GeneratedImagesTriggerImageGenerationResponse, GeneratedImagesQueueImageForPostingData, GeneratedImagesQueueImageForPostingResponse, GeneratedImagesGetImagePostingStatusData, GeneratedImagesGetImagePostingStatusResponse, GeneratedImagesRetryFailedPostsData, GeneratedImagesRetryFailedPostsResponse, GeneratedImagesCropImageData, GeneratedImagesCropImageResponse, ImagePromptsListPromptsForSceneData, ImagePromptsListPromptsForSceneResponse, ImagePromptsListPromptsData, ImagePromptsListPromptsResponse, ImagePromptsListPromptsForBookData, ImagePromptsListPromptsForBookResponse, ImagePromptsGetImagePromptData, ImagePromptsGetImagePromptResponse, ImagePromptsGenerateMetadataVariantsData, ImagePromptsGenerateMetadataVariantsResponse, ImagePromptsUpdatePromptMetadataData, ImagePromptsUpdatePromptMetadataResponse, PipelineRunsStartPipelineRunData, PipelineRunsStartPipelineRunResponse, PipelineRunsGetPipelineRunData, PipelineRunsGetPipelineRunResponse, SceneExtractionsListSceneExtractionsData, SceneExtractionsListSceneExtractionsResponse, SceneExtractionsGetFilterOptionsResponse, SceneExtractionsGetSceneExtractionData, SceneExtractionsGetSceneExtractionResponse, SceneExtractionsGenerateForSceneData, SceneExtractionsGenerateForSceneResponse, SceneRankingsListTopSceneRankingsData, SceneRankingsListTopSceneRankingsResponse, SceneRankingsListSceneRankingHistoryData, SceneRankingsListSceneRankingHistoryResponse, SceneRankingsGetSceneRankingData, SceneRankingsGetSceneRankingResponse, SettingsGetSettingsResponse, SettingsUpdateSettingsData, SettingsUpdateSettingsResponse, SettingsListArtStylesResponse, SettingsGetArtStyleListsResponse, SettingsUpdateArtStyleListsData, SettingsUpdateArtStyleListsResponse, SettingsResetArtStyleListsResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class DocumentsService {
     /**
@@ -707,6 +707,33 @@ export class SceneExtractionsService {
             path: {
                 scene_id: data.sceneId
             },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Generate For Scene
+     * Generate images for a specific scene.
+     *
+     * Creates a tracked pipeline run that generates fresh prompts and images
+     * for the given scene. The run executes in the background.
+     * @param data The data for the request.
+     * @param data.sceneId
+     * @param data.requestBody
+     * @returns SceneGenerateResponse Successful Response
+     * @throws ApiError
+     */
+    public static generateForScene(data: SceneExtractionsGenerateForSceneData): CancelablePromise<SceneExtractionsGenerateForSceneResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/scene-extractions/{scene_id}/generate',
+            path: {
+                scene_id: data.sceneId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: 'Validation Error'
             }

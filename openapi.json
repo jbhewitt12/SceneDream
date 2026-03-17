@@ -931,6 +931,60 @@
         }
       }
     },
+    "/api/v1/scene-extractions/{scene_id}/generate": {
+      "post": {
+        "tags": [
+          "scene-extractions"
+        ],
+        "summary": "Generate For Scene",
+        "description": "Generate images for a specific scene.\n\nCreates a tracked pipeline run that generates fresh prompts and images\nfor the given scene. The run executes in the background.",
+        "operationId": "scene-extractions-generate_for_scene",
+        "parameters": [
+          {
+            "name": "scene_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scene Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SceneGenerateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SceneGenerateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/scene-rankings/top": {
       "get": {
         "tags": [
@@ -4542,27 +4596,6 @@
             ],
             "title": "Aspect Ratio"
           },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "batch",
-              "sync"
-            ],
-            "title": "Mode",
-            "default": "sync"
-          },
-          "poll_timeout": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Poll Timeout",
-            "default": 3600
-          },
-          "poll_interval": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Poll Interval",
-            "default": 30
-          },
           "dry_run": {
             "type": "boolean",
             "title": "Dry Run",
@@ -5064,6 +5097,113 @@
         ],
         "title": "SceneExtractionRead",
         "description": "Detailed representation of a scene extraction record."
+      },
+      "SceneGenerateRequest": {
+        "properties": {
+          "num_images": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Num Images"
+          },
+          "prompt_art_style_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "random_mix",
+                  "single_style"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Art Style Mode"
+          },
+          "prompt_art_style_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Art Style Text"
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "hd"
+            ],
+            "title": "Quality",
+            "default": "standard"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "vivid",
+                  "natural"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style"
+          },
+          "aspect_ratio": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "1:1",
+                  "9:16",
+                  "16:9"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aspect Ratio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "num_images"
+        ],
+        "title": "SceneGenerateRequest",
+        "description": "Request payload for scene-targeted prompt + image generation."
+      },
+      "SceneGenerateResponse": {
+        "properties": {
+          "pipeline_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pipeline Run Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pipeline_run_id",
+          "status",
+          "message"
+        ],
+        "title": "SceneGenerateResponse",
+        "description": "Response for scene-targeted generation with pipeline run tracking."
       },
       "SceneRankingListResponse": {
         "properties": {

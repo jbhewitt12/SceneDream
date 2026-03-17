@@ -674,9 +674,22 @@ class TestOrchestratorSceneTarget:
 
     def test_scene_target_skips_extraction_and_ranking(self) -> None:
         callbacks = _CapturingCallbacks()
-        orchestrator = callbacks.build_orchestrator()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
 
         scene_id = uuid4()
+
+        async def _stub_with_image(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            stats.images_generated = 1
+            prepared.context.created_image_ids.append(uuid4())
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _stub_with_image  # type: ignore[method-assign]
+
         prepared = _make_prepared(
             run_extraction=False,
             run_ranking=False,
@@ -694,3 +707,183 @@ class TestOrchestratorSceneTarget:
         assert "ranking" not in stage_values
         assert "generating_prompts" in stage_values
         assert "generating_images" in stage_values
+
+    def test_scene_target_exact_prompt_ids_passed_to_image_generation(self) -> None:
+        """Image generation must use the exact prompt IDs created during
+        prompt generation, not a broader query."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        scene_id = uuid4()
+        prompt_ids = [uuid4(), uuid4(), uuid4()]
+        image_ids = [uuid4()]
+
+        async def _fake_prompt_gen(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            stats.prompts_generated = len(prompt_ids)
+            prepared.context.created_prompt_ids.extend(prompt_ids)
+            for pid in prompt_ids:
+                prepared.context.created_prompt_ids_by_scene.setdefault(
+                    scene_id, []
+                ).append(pid)
+
+        captured_prompt_ids: list[Any] = []
+
+        async def _fake_image_gen(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            # Capture what prompt IDs the image generation sees
+            captured_prompt_ids.extend(prepared.context.created_prompt_ids)
+            stats.images_generated = len(image_ids)
+            prepared.context.created_image_ids.extend(image_ids)
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _fake_prompt_gen  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _fake_image_gen  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=SceneTarget(scene_ids=[scene_id], book_slug="test-book"),
+        )
+        prepared.config.prompt_options.scene_variant_count = 3
+        prepared.config.prompt_options.require_exact_scene_variants = True
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        assert result.status == "completed"
+        assert captured_prompt_ids == prompt_ids
+        assert result.stats.prompts_generated == 3
+        assert result.stats.images_generated == 1
+
+    def test_scene_target_partial_success_with_errors(self) -> None:
+        """Scene-targeted run succeeds if at least one image is generated,
+        even when some prompt generation errors occurred."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        scene_id = uuid4()
+
+        async def _prompt_with_error(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            prompt_id = uuid4()
+            stats.prompts_generated = 1
+            prepared.context.created_prompt_ids.append(prompt_id)
+            stats.errors.append("Partial prompt failure for one variant")
+
+        async def _image_gen_success(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            stats.images_generated = 1
+            prepared.context.created_image_ids.append(uuid4())
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _prompt_with_error  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _image_gen_success  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=SceneTarget(scene_ids=[scene_id], book_slug="test-book"),
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        # Partial success: at least one image generated
+        assert result.status == "completed"
+
+    def test_scene_target_zero_images_is_failure(self) -> None:
+        """Scene-targeted run fails if zero images are generated."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        scene_id = uuid4()
+
+        async def _prompt_gen_empty(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            # No prompts generated
+            pass
+
+        async def _image_gen_empty(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            # No images generated
+            pass
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _prompt_gen_empty  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _image_gen_empty  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=SceneTarget(scene_ids=[scene_id], book_slug="test-book"),
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        assert result.status == "failed"
+        assert "No images were generated" in (result.error_message or "")
+
+    def test_scene_target_image_stage_does_not_fan_out(self) -> None:
+        """Image stage must consume only the prompt IDs from this run,
+        not all prompts for the scene."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        scene_id = uuid4()
+        run_prompt_id = uuid4()
+
+        async def _scene_prompt_gen(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            stats.prompts_generated = 1
+            prepared.context.created_prompt_ids.append(run_prompt_id)
+
+        image_gen_prompt_ids: list[Any] = []
+
+        async def _capturing_image_gen(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            image_gen_prompt_ids.extend(prepared.context.created_prompt_ids)
+            stats.images_generated = 1
+            prepared.context.created_image_ids.append(uuid4())
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _scene_prompt_gen  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _capturing_image_gen  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=SceneTarget(scene_ids=[scene_id], book_slug="test-book"),
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        assert result.status == "completed"
+        # Image generation must see exactly the one prompt from this run
+        assert image_gen_prompt_ids == [run_prompt_id]

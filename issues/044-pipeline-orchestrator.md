@@ -890,3 +890,46 @@ Behavior:
   - `backend/app/services/pipeline/background.py` (modified — widened coroutine type signature)
   - `backend/app/tests/api/routes/test_pipeline_runs.py` (rewritten — orchestrator-based mocking)
   - `backend/app/tests/services/test_pipeline_orchestrator.py` (modified — added stage stubbing for lifecycle tests)
+
+### Phase 6: Add scene-targeted generation
+- Status: completed
+- Summary: Added `POST /api/v1/scene-extractions/{scene_id}/generate` route for scene-targeted prompt + image generation. Implemented `SceneTarget` handling in the orchestrator with exact-count prompt generation and explicit prompt ID handoff to image generation. Added `SceneGenerateRequest` and `SceneGenerateResponse` schemas. Regenerated the frontend client.
+- Completed work:
+  - Created `SceneGenerateRequest` schema (with `num_images`, `prompt_art_style_mode`, `prompt_art_style_text`, `quality`, `style`, `aspect_ratio`) and `SceneGenerateResponse` schema (with `pipeline_run_id`, `status`, `message`) in `backend/app/schemas/scene_extraction.py`
+  - Added `POST /api/v1/scene-extractions/{scene_id}/generate` async route in `backend/app/api/routes/scene_extractions.py` that validates the scene exists, builds a `PipelineExecutionConfig` with `SceneTarget`, calls `prepare_execution()`, and spawns `PipelineOrchestrator.execute()` in the background
+  - Implemented `_execute_scene_prompt_generation()` in the orchestrator that generates exactly `scene_variant_count` fresh prompts for each scene in a `SceneTarget`, tracks created prompt IDs in `context.created_prompt_ids` and `created_prompt_ids_by_scene`
+  - Refactored `_execute_prompt_generation()` to dispatch to `_execute_scene_prompt_generation()` for `SceneTarget` or `_execute_document_prompt_generation()` (renamed from original) for `DocumentTarget`
+  - Added scene-targeted success/failure semantics: runs with `SceneTarget` and `run_image_generation=True` succeed if at least one image is generated (partial success) and fail if zero images are generated
+  - Updated `schemas/__init__.py` to export new types
+  - Added 6 route tests: pending-run creation, 404 for missing scene, num_images validation, art style options passthrough, document context derivation, task creation failure
+  - Added 5 orchestrator tests: exact prompt IDs passed to image generation, partial success with errors, zero images failure, image stage does not fan out, updated existing scene target test to produce images
+  - Regenerated frontend OpenAPI client
+- Remaining work in this phase:
+  - none
+- Deviations from plan:
+  - The plan mentions `_execute_scene_target()` as a separate top-level stage dispatch method, but the implementation instead dispatches within `_execute_prompt_generation()` based on target type. This is cleaner because image generation already works correctly via `context.created_prompt_ids` — no separate image dispatch method is needed for scene targets.
+  - The `SceneGenerateResponse` returns `pipeline_run_id`, `status`, and `message` rather than a full `PipelineRunRead`, keeping the response lightweight. Clients can poll `/api/v1/pipeline-runs/{pipeline_run_id}` for full run details.
+  - Added `model_post_init` validation on `SceneGenerateRequest` instead of `@model_validator(mode="after")` for art style validation, keeping the pattern simple.
+- Tests and verification run:
+  - `cd backend && uv run pytest app/tests/api/routes/test_scene_extractions.py -v` — 9 passed (3 existing + 6 new)
+  - `cd backend && uv run pytest app/tests/services/test_pipeline_orchestrator.py -v` — 33 passed (29 existing, 4 new, 1 updated)
+  - `cd backend && uv run pytest` — 411 passed, 7 deselected
+  - `cd backend && uv run bash scripts/lint.sh` — mypy reports 4 pre-existing errors (none introduced by this phase)
+  - `cd backend && uv run ruff check` and `ruff format` — clean on all changed files
+  - `./scripts/generate-client.sh` — frontend client regenerated
+  - `cd frontend && npm run build` — passed
+  - `cd frontend && npm run lint` — passed
+- Known issues / follow-ups for next agent:
+  - The 4 pre-existing mypy errors in `document_stage_status_service.py` are unrelated to this work
+  - The scene-targeted zero-images failure check is specific to `SceneTarget`. For full pipeline runs (`DocumentTarget`), zero images do not fail the run — this preserves existing behavior.
+  - The `_execute_scene_prompt_generation()` method uses `variants_count` parameter both in the config and as an explicit keyword to `generate_for_scene()`, which means the prompt generation service's existing `variants_count` handling applies. If the service caps or adjusts the count internally, the generated prompt count may differ from the requested count.
+- Files changed:
+  - `backend/app/schemas/scene_extraction.py` (modified — added `SceneGenerateRequest`, `SceneGenerateResponse`)
+  - `backend/app/schemas/__init__.py` (modified — added exports)
+  - `backend/app/api/routes/scene_extractions.py` (modified — added `generate_for_scene` route)
+  - `backend/app/services/pipeline/pipeline_orchestrator.py` (modified — added `_execute_scene_prompt_generation`, refactored `_execute_prompt_generation` dispatch, added scene-target success/failure logic)
+  - `backend/app/tests/api/routes/test_scene_extractions.py` (modified — added 6 route tests)
+  - `backend/app/tests/services/test_pipeline_orchestrator.py` (modified — added 4 new tests, updated 1 existing test)
+  - `openapi.json` (regenerated)
+  - `frontend/openapi.json` (regenerated)
+  - `frontend/src/client/*` (regenerated)

@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.core.prompt_art_style import (
+    PromptArtStyleMode,
+    coerce_prompt_art_style_selection,
+    normalize_prompt_art_style_text,
+)
 
 
 class SceneExtractionRead(BaseModel):
@@ -74,3 +80,34 @@ class SceneExtractionFilterOptions(BaseModel):
     refinement_decisions: list[str]
     has_refined_options: list[bool]
     date_range: SceneExtractionDateRange
+
+
+class SceneGenerateRequest(BaseModel):
+    """Request payload for scene-targeted prompt + image generation."""
+
+    num_images: int = Field(ge=1, le=20)
+    prompt_art_style_mode: PromptArtStyleMode | None = None
+    prompt_art_style_text: str | None = None
+    quality: Literal["standard", "hd"] = "standard"
+    style: Literal["vivid", "natural"] | None = None
+    aspect_ratio: Literal["1:1", "9:16", "16:9"] | None = None
+
+    @field_validator("prompt_art_style_text")
+    @classmethod
+    def _normalize_prompt_art_style_text(cls, value: str | None) -> str | None:
+        return normalize_prompt_art_style_text(value)
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.prompt_art_style_mode is not None:
+            coerce_prompt_art_style_selection(
+                mode=self.prompt_art_style_mode,
+                text=self.prompt_art_style_text,
+            )
+
+
+class SceneGenerateResponse(BaseModel):
+    """Response for scene-targeted generation with pipeline run tracking."""
+
+    pipeline_run_id: UUID
+    status: str
+    message: str
