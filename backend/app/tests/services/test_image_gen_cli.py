@@ -130,8 +130,14 @@ class TestRunCommandDelegation:
         mock_orchestrator.execute = AsyncMock(return_value=execute_result)
 
         with (
-            patch("app.services.pipeline.PipelineRunStartService", return_value=mock_service),
-            patch("app.services.pipeline.PipelineOrchestrator", return_value=mock_orchestrator),
+            patch(
+                "app.services.pipeline.PipelineRunStartService",
+                return_value=mock_service,
+            ),
+            patch(
+                "app.services.pipeline.PipelineOrchestrator",
+                return_value=mock_orchestrator,
+            ),
             patch("app.services.image_gen_cli.Session"),
         ):
             args = _make_run_args()
@@ -156,14 +162,22 @@ class TestRunCommandDelegation:
         )
 
         with (
-            patch("app.services.pipeline.PipelineRunStartService", return_value=mock_service),
-            patch("app.services.pipeline.PipelineOrchestrator", return_value=mock_orchestrator),
+            patch(
+                "app.services.pipeline.PipelineRunStartService",
+                return_value=mock_service,
+            ),
+            patch(
+                "app.services.pipeline.PipelineOrchestrator",
+                return_value=mock_orchestrator,
+            ),
             patch("app.services.image_gen_cli.Session"),
         ):
             args = _make_run_args(skip_extraction=True, skip_ranking=True)
             asyncio.run(_run_full_pipeline(args))
 
-        config_arg: PipelineExecutionConfig = mock_service.prepare_execution.call_args[0][0]
+        config_arg: PipelineExecutionConfig = mock_service.prepare_execution.call_args[
+            0
+        ][0]
         assert config_arg.stages.run_extraction is False
         assert config_arg.stages.run_ranking is False
 
@@ -173,8 +187,14 @@ class TestRunCommandDelegation:
         mock_orchestrator = MagicMock()
 
         with (
-            patch("app.services.pipeline.PipelineRunStartService", return_value=mock_service),
-            patch("app.services.pipeline.PipelineOrchestrator", return_value=mock_orchestrator),
+            patch(
+                "app.services.pipeline.PipelineRunStartService",
+                return_value=mock_service,
+            ),
+            patch(
+                "app.services.pipeline.PipelineOrchestrator",
+                return_value=mock_orchestrator,
+            ),
             patch("app.services.image_gen_cli.Session"),
         ):
             args = _make_run_args(dry_run=True)
@@ -200,8 +220,14 @@ class TestRunCommandDelegation:
         mock_orchestrator.execute = AsyncMock(return_value=execute_result)
 
         with (
-            patch("app.services.pipeline.PipelineRunStartService", return_value=mock_service),
-            patch("app.services.pipeline.PipelineOrchestrator", return_value=mock_orchestrator),
+            patch(
+                "app.services.pipeline.PipelineRunStartService",
+                return_value=mock_service,
+            ),
+            patch(
+                "app.services.pipeline.PipelineOrchestrator",
+                return_value=mock_orchestrator,
+            ),
             patch("app.services.image_gen_cli.Session"),
         ):
             args = _make_run_args()
@@ -224,8 +250,14 @@ class TestRunCommandDelegation:
         )
 
         with (
-            patch("app.services.pipeline.PipelineRunStartService", return_value=mock_service),
-            patch("app.services.pipeline.PipelineOrchestrator", return_value=mock_orchestrator),
+            patch(
+                "app.services.pipeline.PipelineRunStartService",
+                return_value=mock_service,
+            ),
+            patch(
+                "app.services.pipeline.PipelineOrchestrator",
+                return_value=mock_orchestrator,
+            ),
             patch("app.services.image_gen_cli.Session"),
         ):
             args = _make_run_args(
@@ -234,7 +266,9 @@ class TestRunCommandDelegation:
             )
             asyncio.run(_run_full_pipeline(args))
 
-        config_arg: PipelineExecutionConfig = mock_service.prepare_execution.call_args[0][0]
+        config_arg: PipelineExecutionConfig = mock_service.prepare_execution.call_args[
+            0
+        ][0]
         assert isinstance(config_arg.target, DocumentTarget)
         assert config_arg.target.book_slug == "my-book"
         assert config_arg.target.book_path == "/tmp/my-book.epub"

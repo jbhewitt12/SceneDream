@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Generator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -20,15 +20,10 @@ from app.repositories import (
 from app.services.pipeline import (
     PipelineExecutionResult,
     PipelineOrchestrator,
-    PipelineRunStartService,
     PipelineStats,
-    PreparedPipelineExecution,
 )
 from app.services.pipeline.orchestrator_config import (
     DocumentTarget,
-    PipelineExecutionConfig,
-    PipelineExecutionContext,
-    PipelineStagePlan,
 )
 from models.document import Document
 
@@ -665,7 +660,7 @@ def test_start_pipeline_run_no_batch_fields_in_request(
     client: TestClient,
 ) -> None:
     """Verify mode/poll_timeout/poll_interval are no longer accepted."""
-    response = client.post(
+    client.post(
         "/api/v1/pipeline-runs",
         json={
             "book_slug": "test",
@@ -683,9 +678,7 @@ def test_start_pipeline_run_no_batch_fields_in_request(
     # The important thing is the schema no longer exposes them.
     from app.schemas.pipeline_run import PipelineRunStartRequest
 
-    assert not hasattr(
-        PipelineRunStartRequest.model_fields, "mode"
-    )
+    assert not hasattr(PipelineRunStartRequest.model_fields, "mode")
     assert "mode" not in PipelineRunStartRequest.model_fields
     assert "poll_timeout" not in PipelineRunStartRequest.model_fields
     assert "poll_interval" not in PipelineRunStartRequest.model_fields

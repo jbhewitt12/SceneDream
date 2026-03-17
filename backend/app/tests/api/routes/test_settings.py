@@ -1,9 +1,11 @@
 from typing import cast
 
-import app.api.routes.settings as settings_routes
 from fastapi.testclient import TestClient
+
+import app.api.routes.settings as settings_routes
 from models.app_settings import AppSettings
 from models.art_style import ArtStyle
+
 
 def _snapshot_style_lists(client: TestClient) -> dict[str, object]:
     response = client.get("/api/v1/settings/art-style-lists")

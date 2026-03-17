@@ -46,7 +46,9 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.exception("Failed to synchronize document stage statuses on startup")
     else:
-        logger.info("Synchronized document stage statuses on startup: synced=%d", synced)
+        logger.info(
+            "Synchronized document stage statuses on startup: synced=%d", synced
+        )
 
     await start_scheduler()
     await start_batch_scheduler()

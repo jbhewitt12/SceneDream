@@ -212,7 +212,9 @@ def fetch_prompt_records(
                 comma_count=prompt_text.count(","),
                 colon_count=prompt_text.count(":"),
                 label_count=len(LABEL_RE.findall(prompt_text)),
-                no_phrase_count=len(re.findall(r"\bno\s+[a-z]", prompt_text, re.IGNORECASE)),
+                no_phrase_count=len(
+                    re.findall(r"\bno\s+[a-z]", prompt_text, re.IGNORECASE)
+                ),
             )
         )
 
@@ -241,7 +243,9 @@ def tokenize(text: str) -> list[str]:
 
 
 def document_terms(text: str) -> tuple[set[str], set[str]]:
-    tokens = [token for token in tokenize(text) if token not in STOPWORDS and len(token) > 2]
+    tokens = [
+        token for token in tokenize(text) if token not in STOPWORDS and len(token) > 2
+    ]
     unigrams = set(tokens)
     bigrams = {" ".join(pair) for pair in zip(tokens, tokens[1:], strict=False)}
     return unigrams, bigrams
@@ -294,7 +298,9 @@ def distinctive_terms(
 
 
 def bucket_pattern_counts(records: list[PromptRecord]) -> dict[str, dict[str, int]]:
-    results: dict[str, dict[str, int]] = defaultdict(lambda: {"approved": 0, "rejected": 0})
+    results: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"approved": 0, "rejected": 0}
+    )
     for record in records:
         lowered = record.prompt_text.lower()
         bucket = "approved" if record.approved else "rejected"
@@ -304,7 +310,9 @@ def bucket_pattern_counts(records: list[PromptRecord]) -> dict[str, dict[str, in
     return dict(results)
 
 
-def print_metric_block(title: str, approved: list[PromptRecord], rejected: list[PromptRecord]) -> None:
+def print_metric_block(
+    title: str, approved: list[PromptRecord], rejected: list[PromptRecord]
+) -> None:
     print(f"\n{title}")
     print("-" * len(title))
     for attr, label in (
@@ -314,7 +322,7 @@ def print_metric_block(title: str, approved: list[PromptRecord], rejected: list[
         ("comma_count", "Commas"),
         ("colon_count", "Colons"),
         ("label_count", "Labeled sections"),
-        ("no_phrase_count", "\"No ...\" constraints"),
+        ("no_phrase_count", '"No ..." constraints'),
     ):
         approved_stats = metric_summary(approved, attr)
         rejected_stats = metric_summary(rejected, attr)
@@ -390,10 +398,14 @@ def print_pattern_counts(records: list[PromptRecord]) -> None:
         )
 
 
-def print_distinctive_terms(records: list[PromptRecord], min_doc_frequency: int) -> None:
+def print_distinctive_terms(
+    records: list[PromptRecord], min_doc_frequency: int
+) -> None:
     approved_records = [record for record in records if record.approved]
     rejected_records = [record for record in records if not record.approved]
-    approved_uni, rejected_uni, approved_bi, rejected_bi = collect_doc_frequencies(records)
+    approved_uni, rejected_uni, approved_bi, rejected_bi = collect_doc_frequencies(
+        records
+    )
 
     print("\nDistinctive vocabulary")
     print("---------------------")

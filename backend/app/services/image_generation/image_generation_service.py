@@ -430,7 +430,9 @@ class ImageGenerationService:
             return []
 
         # Execute tasks with concurrency control
-        results = await self._execute_tasks(tasks, config, pipeline_run_id=pipeline_run_id)
+        results = await self._execute_tasks(
+            tasks, config, pipeline_run_id=pipeline_run_id
+        )
 
         # Collect successful generation IDs
         generated_ids = [
@@ -774,7 +776,9 @@ class ImageGenerationService:
 
         async def bounded_generate(task: GenerationTask) -> GenerationResult:
             async with semaphore:
-                return await self._generate_single(task, config, pipeline_run_id=pipeline_run_id)
+                return await self._generate_single(
+                    task, config, pipeline_run_id=pipeline_run_id
+                )
 
         # Execute all tasks concurrently (bounded by semaphore)
         results = await asyncio.gather(

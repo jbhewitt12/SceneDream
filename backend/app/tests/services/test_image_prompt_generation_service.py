@@ -243,8 +243,9 @@ def test_generate_for_scene_dry_run_returns_previews(
     assert preview.raw_response["service"]["prompt_art_style_text"] is None
     assert preview.raw_response["service"]["prompt_art_style"]["mode"] == "random_mix"
     assert preview.raw_response["service"]["prompt_art_style"]["style_text"] is None
-    assert preview.raw_response["service"]["prompt_art_style"]["sampled_styles"] == (
-        preview.raw_response["service"]["sampled_styles"]
+    assert (
+        preview.raw_response["service"]["prompt_art_style"]["sampled_styles"]
+        == (preview.raw_response["service"]["sampled_styles"])
     )
     repository = ImagePromptRepository(db)
     assert repository.list_for_scene(scene.id) == []
@@ -908,7 +909,10 @@ def test_gpt_image_strategy_creative_guidance_preserves_style_anchoring() -> Non
 
     assert "clear central subject" in guidance
     assert "composition, perspective, palette" in guidance
-    assert "Explicitly weave the chosen medium or art era into prompt_text and style_tags" in random_mix_guidance
+    assert (
+        "Explicitly weave the chosen medium or art era into prompt_text and style_tags"
+        in random_mix_guidance
+    )
 
 
 @pytest.mark.skipif(not EXCESSION_EPUB.exists(), reason="Test EPUB not available")

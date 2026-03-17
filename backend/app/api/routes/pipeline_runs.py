@@ -113,7 +113,9 @@ async def start_pipeline_run(
     run_repo = PipelineRunRepository(session)
     run = run_repo.get(prepared.run_id)
     if run is None:  # pragma: no cover
-        raise HTTPException(status_code=500, detail="Pipeline run not found after creation")
+        raise HTTPException(
+            status_code=500, detail="Pipeline run not found after creation"
+        )
     return PipelineRunRead.model_validate(run)
 
 

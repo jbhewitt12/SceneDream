@@ -103,9 +103,7 @@ def test_ranking_persists_pipeline_run_id(
     monkeypatch.setattr(gemini_api, "json_output", fake_json_output)
 
     service = SceneRankingService(db)
-    result = asyncio.run(
-        service.rank_scene(scene, pipeline_run_id=pipeline_run.id)
-    )
+    result = asyncio.run(service.rank_scene(scene, pipeline_run_id=pipeline_run.id))
 
     assert result is not None
     assert result.pipeline_run_id == pipeline_run.id
@@ -174,7 +172,14 @@ def _stub_prompt_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
             title = (getattr(prompt, "title", None) or "Test Title").strip()
             flavour = "Test flavour."
             if dry_run:
-                results.append({"prompt_id": str(getattr(prompt, "id", uuid4())), "title": title, "flavour_text": flavour, "skipped": False})
+                results.append(
+                    {
+                        "prompt_id": str(getattr(prompt, "id", uuid4())),
+                        "title": title,
+                        "flavour_text": flavour,
+                        "skipped": False,
+                    }
+                )
             else:
                 prompt.title = title
                 prompt.flavour_text = flavour
@@ -335,7 +340,6 @@ def test_custom_remix_persists_pipeline_run_id(
     scene_factory: Callable[..., SceneExtraction],
     prompt_factory: Callable[..., ImagePrompt],
     pipeline_run: PipelineRun,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """create_custom_remix_variant with pipeline_run_id should persist it."""
     scene = scene_factory()
@@ -467,7 +471,6 @@ async def test_failed_image_record_persists_pipeline_run_id(
     scene_factory: Callable[..., SceneExtraction],
     prompt_factory: Callable[..., ImagePrompt],
     pipeline_run: PipelineRun,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Failed image records should carry pipeline_run_id."""
     scene = scene_factory()
