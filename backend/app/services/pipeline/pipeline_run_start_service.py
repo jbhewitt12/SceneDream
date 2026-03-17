@@ -25,7 +25,6 @@ from app.repositories import (
 )
 from app.schemas import PipelineRunStartRequest
 from app.services.books.book_content_service import BookContentService
-from app.services.image_gen_cli import _resolve_default_scenes_per_run
 from models.document import Document
 from models.pipeline_run import PipelineRun
 
@@ -800,7 +799,15 @@ class PipelineRunStartService:
         )
 
     def _resolve_default_scenes_per_run(self) -> int:
-        return _resolve_default_scenes_per_run()
+        try:
+            repository = AppSettingsRepository(self._session)
+            return repository.default_scenes_per_run()
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.warning(
+                "Failed to read app settings default_scenes_per_run; falling back to 5: %s",
+                exc,
+            )
+            return 5
 
     def _resolve_prompt_art_style(
         self,

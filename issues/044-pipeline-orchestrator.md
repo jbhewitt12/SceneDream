@@ -971,3 +971,31 @@ Behavior:
   - `backend/app/api/routes/generated_images.py` (modified — rewrote remix/custom-remix routes to use orchestrator, removed legacy background task functions, added `_fail_pending_run` helper)
   - `backend/app/tests/services/test_pipeline_orchestrator.py` (modified — added 11 new tests for remix and custom-remix orchestrator paths)
   - `backend/app/tests/api/routes/test_generated_images.py` (modified — rewrote remix/custom-remix route tests for orchestrator-based mocking)
+
+### Phase 8: Remove legacy CLI orchestration commands
+- Status: completed
+- Summary: Removed the `prompts`, `images`, `refresh`, and `backfill` CLI subcommands. Cleaned up all utility functions, helpers, and imports that were exclusively used by those commands. Inlined the `_resolve_default_scenes_per_run` logic into `PipelineRunStartService` to remove the last dependency from the service layer back into the CLI module. Updated the test file to verify the removed commands are no longer exposed and that the supported commands (`run`, `extract`, `rank`) still work.
+- Completed work:
+  - Removed `prompts`, `images`, `refresh`, `backfill` subparser registrations from `_build_parser()`
+  - Removed handler functions: `_run_prompts()`, `_run_images()`, `_run_backfill()`, `_run_refresh()`
+  - Removed utility functions only used by removed handlers: `_emit_stage_update`, `_count_prompt_ready_scenes_without_images`, `_build_run_prompt_generation_config`, `_resolve_ranked_scene_fetch_limit`, `_list_ranked_scene_candidates_without_images`, `_scene_has_matching_prompt_set`, `_get_matching_prompt_set_for_scene`, `_collect_matching_prompt_ids_for_image_generation`, `_rollback_session_after_scene_error`, `_build_prompt_generation_config_kwargs`, `_resolve_default_scenes_per_run`, `_add_mode_args`
+  - Removed unused imports: `random`, `datetime`, `timezone`, `uuid4`, `Any`, `BatchImageGenerationService`, `ImageGenerationConfig`, `ImageGenerationService`, `ImagePromptGenerationConfig`, `ImagePromptGenerationService`, `AppSettingsRepository`, `GeneratedImageRepository`, `ImagePromptRepository`, `load_dotenv`, `coerce_prompt_art_style_selection`, `Awaitable`, `Callable`, `StageCallback`, `UUID`
+  - Removed `from app.services.image_gen_cli import _resolve_default_scenes_per_run` from `pipeline_run_start_service.py` and replaced the wrapper method with an inline implementation using `AppSettingsRepository` (already imported)
+  - Rewrote `test_image_gen_cli.py`: removed all 6 old tests (which tested now-deleted functions), replaced with 7 new tests asserting the 4 removed commands are not exposed and the 3 remaining commands (`run`, `extract`, `rank`) parse correctly
+  - Updated module docstring to remove references to removed commands
+  - Updated `async_main()` to remove `elif` branches for removed commands
+- Remaining work in this phase:
+  - none
+- Deviations from plan:
+  - `pipeline_run_start_service.py` had a thin wrapper `_resolve_default_scenes_per_run()` that delegated to the CLI module function. Rather than keeping the CLI function and adding a re-export, the logic was inlined directly in the service method, which is the correct location. This removes the circular dependency direction (service → CLI).
+- Tests and verification run:
+  - `cd backend && uv run pytest app/tests/services/test_image_gen_cli.py -v` — 7 passed
+  - `cd backend && uv run pytest` — 421 passed, 7 deselected
+  - `cd backend && uv run bash scripts/lint.sh` — mypy reports 4 pre-existing errors in `document_stage_status_service.py` (none introduced by this phase); ruff clean
+- Known issues / follow-ups for next agent:
+  - The 4 pre-existing mypy errors in `document_stage_status_service.py` are unrelated to this work
+  - Phase 9 is the next and final phase: test completion and cleanup
+- Files changed:
+  - `backend/app/services/image_gen_cli.py` (modified — removed 4 commands and ~1000 lines of legacy orchestration code)
+  - `backend/app/services/pipeline/pipeline_run_start_service.py` (modified — removed CLI import, inlined `_resolve_default_scenes_per_run` logic)
+  - `backend/app/tests/services/test_image_gen_cli.py` (rewritten — 7 new tests replacing 6 old tests)

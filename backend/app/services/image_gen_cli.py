@@ -15,29 +15,11 @@ Usage examples:
     # Run full pipeline for top 10 scenes only (prompts and images)
     uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "documents/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --prompts-for-scenes 10 --images-for-scenes 10
 
-    # Generate prompts using scene complexity recommendations (default behavior)
-    uv run python -m app.services.image_gen_cli prompts --book-slug look-to-windward-iain-m-banks --top-scenes 10
-
-    # Override with fixed count for all scenes
-    uv run python -m app.services.image_gen_cli prompts --book-slug look-to-windward-iain-m-banks --top-scenes 10 --prompts-per-scene 5 --ignore-ranking-recommendations
-
     # Extract and refine only
     uv run python -m app.services.image_gen_cli extract --book-slug look-to-windward-iain-m-banks --book-path "documents/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub"
 
     # Rank existing scenes (no book-path needed, works from database)
     uv run python -m app.services.image_gen_cli rank --book-slug look-to-windward-iain-m-banks
-
-    # Generate images for top 5 scenes (no book-path needed, works from database)
-    uv run python -m app.services.image_gen_cli images --book-slug look-to-windward-iain-m-banks --top-scenes 5
-
-    # Create new prompt variants and images for top 3 ranked scenes
-    uv run python -m app.services.image_gen_cli refresh --book-slug look-to-windward-iain-m-banks --top-scenes 3
-
-    # Backfill prompts/images for top 5 ranked scenes in a specific book missing images
-    uv run python -m app.services.image_gen_cli backfill --book-slug look-to-windward-iain-m-banks --top-scenes 5
-
-    # Backfill globally for top 5 scenes missing images
-    uv run python -m app.services.image_gen_cli backfill --top-scenes 5
 
     # Dry run to preview what would happen
     uv run python -m app.services.image_gen_cli run --book-slug look-to-windward-iain-m-banks --book-path "documents/Iain Banks/Look to Windward/Look to Windward - Iain M. Banks.epub" --images-for-scenes 3 --dry-run
@@ -52,38 +34,17 @@ import argparse
 import asyncio
 import json
 import logging
-import random
-from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
-from uuid import UUID, uuid4
 
-from dotenv import load_dotenv
 from sqlmodel import Session
 
 from app.core.db import engine
 from app.core.prompt_art_style import (
     PROMPT_ART_STYLE_MODE_RANDOM_MIX,
     PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
-    coerce_prompt_art_style_selection,
 )
-from app.repositories.app_settings import AppSettingsRepository
-from app.repositories.generated_image import GeneratedImageRepository
-from app.repositories.image_prompt import ImagePromptRepository
 from app.repositories.scene_extraction import SceneExtractionRepository
 from app.repositories.scene_ranking import SceneRankingRepository
-from app.services.image_generation.batch_image_generation_service import (
-    BatchImageGenerationService,
-)
-from app.services.image_generation.image_generation_service import (
-    ImageGenerationConfig,
-    ImageGenerationService,
-)
-from app.services.image_prompt_generation.image_prompt_generation_service import (
-    ImagePromptGenerationConfig,
-    ImagePromptGenerationService,
-)
 from app.services.pipeline.orchestrator_config import PipelineStats as PipelineStats
 from app.services.scene_extraction.scene_extraction import (
     SceneExtractionConfig,
@@ -97,22 +58,6 @@ from models.scene_extraction import SceneExtraction
 
 logger = logging.getLogger(__name__)
 
-StageCallback = Callable[[str], Awaitable[None] | None]
-
-
-async def _emit_stage_update(
-    stage_callback: StageCallback | None,
-    *,
-    stage: str,
-) -> None:
-    """Emit a stage-transition notification when a callback is provided."""
-
-    if stage_callback is None:
-        return
-    result = stage_callback(stage)
-    if result is not None:
-        await result
-
 
 def _extract_book_with_session(
     config: SceneExtractionConfig,
@@ -123,575 +68,6 @@ def _extract_book_with_session(
         stats = extractor.extract_book(book_path)
         session.commit()
         return stats
-
-
-def _count_prompt_ready_scenes_without_images(
-    *,
-    ranking_repo: SceneRankingRepository,
-    prompt_repo: ImagePromptRepository,
-    image_repo: GeneratedImageRepository,
-    book_slug: str,
-    target_scenes: int,
-    scene_has_ready_prompts: Callable[[UUID], bool] | None = None,
-) -> tuple[int, int]:
-    """Count unique ranked scenes that are ready for image generation."""
-
-    fetch_limit = _resolve_ranked_scene_fetch_limit(target_scenes)
-    rankings = ranking_repo.list_top_rankings_for_book(
-        book_slug=book_slug,
-        limit=fetch_limit,
-        include_scene=True,
-    )
-
-    ready_scenes = 0
-    scenes_missing_prompts = 0
-    seen_scene_ids: set[object] = set()
-
-    for ranking in rankings:
-        scene_id = ranking.scene_extraction_id
-        if scene_id in seen_scene_ids:
-            continue
-        seen_scene_ids.add(scene_id)
-
-        if image_repo.list_for_scene(scene_id, limit=1):
-            continue
-
-        has_ready_prompts = (
-            scene_has_ready_prompts(scene_id)
-            if scene_has_ready_prompts is not None
-            else prompt_repo.has_any_for_scene(scene_id)
-        )
-        if has_ready_prompts:
-            ready_scenes += 1
-        else:
-            scenes_missing_prompts += 1
-
-        if ready_scenes >= target_scenes:
-            break
-
-    return ready_scenes, scenes_missing_prompts
-
-
-def _build_run_prompt_generation_config(
-    args: argparse.Namespace,
-) -> ImagePromptGenerationConfig:
-    """Build the effective prompt-generation config for pipeline runs."""
-
-    config_kwargs = _build_prompt_generation_config_kwargs(args)
-
-    if hasattr(args, "prompts_per_scene") and args.prompts_per_scene is not None:
-        config_kwargs["variants_count"] = args.prompts_per_scene
-        config_kwargs["use_ranking_recommendation"] = not (
-            hasattr(args, "ignore_ranking_recommendations")
-            and args.ignore_ranking_recommendations
-        )
-    else:
-        config_kwargs["use_ranking_recommendation"] = True
-
-    return ImagePromptGenerationConfig(**config_kwargs)
-
-
-def _resolve_ranked_scene_fetch_limit(target_scenes: int | None) -> int:
-    """Return a ranking scan depth that tolerates skipped scenes."""
-
-    if isinstance(target_scenes, int) and target_scenes > 0:
-        return max(target_scenes * 50, 100)
-    return 100
-
-
-def _list_ranked_scene_candidates_without_images(
-    *,
-    ranking_repo: SceneRankingRepository,
-    image_repo: GeneratedImageRepository,
-    book_slug: str,
-    target_scenes: int | None,
-) -> list[Any]:
-    """Return ranked scene rows for unique scenes that do not already have images."""
-
-    fetch_limit = _resolve_ranked_scene_fetch_limit(target_scenes)
-    rankings = ranking_repo.list_top_rankings_for_book(
-        book_slug=book_slug,
-        limit=fetch_limit,
-        include_scene=True,
-    )
-
-    candidates: list[Any] = []
-    seen_scene_ids: set[UUID] = set()
-
-    for ranking in rankings:
-        scene = getattr(ranking, "scene_extraction", None)
-        scene_id = getattr(ranking, "scene_extraction_id", None)
-        if scene is None or not isinstance(scene_id, UUID):
-            continue
-        if scene_id in seen_scene_ids:
-            continue
-        seen_scene_ids.add(scene_id)
-
-        if image_repo.list_for_scene(scene_id, limit=1):
-            continue
-
-        candidates.append(ranking)
-
-    return candidates
-
-
-def _scene_has_matching_prompt_set(
-    *,
-    prompt_repo: ImagePromptRepository,
-    prompt_service: ImagePromptGenerationService,
-    scene_id: UUID,
-) -> bool:
-    """Return True when the latest stored prompt set matches the requested run config."""
-
-    return bool(
-        _get_matching_prompt_set_for_scene(
-            prompt_repo=prompt_repo,
-            prompt_service=prompt_service,
-            scene_id=scene_id,
-        )
-    )
-
-
-def _get_matching_prompt_set_for_scene(
-    *,
-    prompt_repo: ImagePromptRepository,
-    prompt_service: ImagePromptGenerationService,
-    scene_id: UUID,
-) -> list[Any]:
-    """Return the latest prompt set for a scene when it matches the run config."""
-
-    config = prompt_service._config
-    effective_variants_count = config.variants_count
-    if config.use_ranking_recommendation:
-        ranking = prompt_service._ranking_repo.get_latest_for_scene(scene_id)
-        if ranking and ranking.recommended_prompt_count is not None:
-            effective_variants_count = ranking.recommended_prompt_count
-
-    resolved_config = config.copy_with(variants_count=effective_variants_count)
-    existing_prompts = prompt_repo.get_latest_generated_set_for_scene(
-        scene_id,
-    )
-    if not existing_prompts:
-        return []
-
-    if not prompt_service._existing_prompt_set_matches_config(
-        existing_prompts,
-        resolved_config,
-    ):
-        return []
-
-    return existing_prompts
-
-
-def _collect_matching_prompt_ids_for_image_generation(
-    *,
-    ranking_repo: SceneRankingRepository,
-    prompt_repo: ImagePromptRepository,
-    image_repo: GeneratedImageRepository,
-    prompt_service: ImagePromptGenerationService,
-    book_slug: str,
-    target_scenes: int,
-) -> list[UUID]:
-    """Collect prompt IDs for the top-ranked scenes whose latest prompt set matches."""
-
-    fetch_limit = _resolve_ranked_scene_fetch_limit(target_scenes)
-    rankings = ranking_repo.list_top_rankings_for_book(
-        book_slug=book_slug,
-        limit=fetch_limit,
-        include_scene=True,
-    )
-
-    prompt_ids: list[UUID] = []
-    seen_scene_ids: set[UUID] = set()
-    matched_scenes = 0
-
-    for ranking in rankings:
-        scene_id = ranking.scene_extraction_id
-        if scene_id in seen_scene_ids:
-            continue
-        seen_scene_ids.add(scene_id)
-
-        if image_repo.list_for_scene(scene_id, limit=1):
-            continue
-
-        matching_prompts = _get_matching_prompt_set_for_scene(
-            prompt_repo=prompt_repo,
-            prompt_service=prompt_service,
-            scene_id=scene_id,
-        )
-        if not matching_prompts:
-            continue
-
-        prompt_ids.extend(prompt.id for prompt in matching_prompts)
-        matched_scenes += 1
-        if matched_scenes >= target_scenes:
-            break
-
-    return prompt_ids
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Orchestrate the complete image generation pipeline"
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    # Full pipeline command
-    run = subparsers.add_parser(
-        "run",
-        help="Run the complete pipeline: extract -> rank -> prompts -> images",
-    )
-    _add_book_args(run)
-    run.add_argument(
-        "--prompts-per-scene",
-        type=int,
-        help="Override number of prompt variants per scene (ignores ranking recommendations when provided)",
-    )
-    run.add_argument(
-        "--ignore-ranking-recommendations",
-        action="store_true",
-        help="Always use --prompts-per-scene value, ignoring scene complexity analysis",
-    )
-    run.add_argument(
-        "--prompts-for-scenes",
-        type=int,
-        help="Number of top-ranked scenes to generate prompts for (default: match --images-for-scenes)",
-    )
-    run.add_argument(
-        "--images-for-scenes",
-        type=int,
-        default=None,
-        help="Number of top-ranked scenes to generate images for (default: app settings value)",
-    )
-    run.add_argument(
-        "--skip-extraction",
-        action="store_true",
-        help="Skip scene extraction (use existing scenes)",
-    )
-    run.add_argument(
-        "--skip-ranking",
-        action="store_true",
-        help="Skip scene ranking (use existing rankings)",
-    )
-    run.add_argument(
-        "--skip-prompts",
-        action="store_true",
-        help="Skip prompt generation (use existing prompts)",
-    )
-    _add_quality_args(run)
-    _add_prompt_art_style_args(run)
-    _add_common_args(run)
-
-    # Extract-only command
-    extract = subparsers.add_parser(
-        "extract",
-        help="Extract and refine scenes from a book",
-    )
-    _add_book_args(extract)
-    extract.add_argument(
-        "--no-refine",
-        action="store_true",
-        help="Disable scene refinement",
-    )
-    _add_common_args(extract)
-
-    # Rank-only command
-    rank = subparsers.add_parser(
-        "rank",
-        help="Rank extracted scenes",
-    )
-    rank.add_argument(
-        "--book-slug",
-        required=True,
-        help="Book slug to rank scenes for",
-    )
-    rank.add_argument(
-        "--limit",
-        type=int,
-        help="Maximum number of scenes to rank",
-    )
-    rank.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Re-rank scenes even if they already have rankings",
-    )
-    _add_common_args(rank)
-
-    # Prompts-only command
-    prompts = subparsers.add_parser(
-        "prompts",
-        help="Generate image prompts for ranked scenes",
-    )
-    prompts.add_argument(
-        "--book-slug",
-        required=True,
-        help="Book slug to generate prompts for",
-    )
-    prompts.add_argument(
-        "--prompts-per-scene",
-        type=int,
-        help="Override number of prompt variants per scene (ignores ranking recommendations when provided)",
-    )
-    prompts.add_argument(
-        "--ignore-ranking-recommendations",
-        action="store_true",
-        help="Always use --prompts-per-scene value, ignoring scene complexity analysis",
-    )
-    prompts.add_argument(
-        "--top-scenes",
-        type=int,
-        help="Only generate prompts for top N ranked scenes",
-    )
-    prompts.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Regenerate prompts even if they exist",
-    )
-    _add_prompt_art_style_args(prompts)
-    _add_common_args(prompts)
-
-    # Images-only command
-    images = subparsers.add_parser(
-        "images",
-        help="Generate images from prompts",
-    )
-    images.add_argument(
-        "--book-slug",
-        required=True,
-        help="Book slug to generate images for",
-    )
-    images.add_argument(
-        "--top-scenes",
-        type=int,
-        required=True,
-        help="Number of top-ranked scenes to generate images for",
-    )
-    _add_quality_args(images)
-    _add_mode_args(images)
-    images.add_argument(
-        "--concurrency",
-        type=int,
-        default=3,
-        help="Number of concurrent image generation tasks (default: 3)",
-    )
-    _add_common_args(images)
-
-    # Refresh command - regenerate prompts and images for top scenes
-    refresh = subparsers.add_parser(
-        "refresh",
-        help="Regenerate prompt variants and images for top-ranked scenes",
-    )
-    refresh.add_argument(
-        "--book-slug",
-        required=True,
-        help="Book slug to refresh prompts and images for",
-    )
-    refresh.add_argument(
-        "--top-scenes",
-        type=int,
-        required=True,
-        help="Number of top-ranked scenes to refresh",
-    )
-    refresh.add_argument(
-        "--prompts-per-scene",
-        type=int,
-        help="Override number of prompt variants per scene",
-    )
-    refresh.add_argument(
-        "--ignore-ranking-recommendations",
-        action="store_true",
-        help="Always use --prompts-per-scene value, ignoring scene complexity analysis",
-    )
-    refresh.add_argument(
-        "--prompt-version",
-        help="Optional prompt version identifier to store the regenerated variants under (defaults to timestamped suffix)",
-    )
-    _add_quality_args(refresh)
-    refresh.add_argument(
-        "--concurrency",
-        type=int,
-        default=3,
-        help="Number of concurrent image generation tasks (default: 3)",
-    )
-    _add_prompt_art_style_args(refresh)
-    _add_common_args(refresh)
-
-    # Backfill command - fill gaps for scenes without prompts/images
-    backfill = subparsers.add_parser(
-        "backfill",
-        help="Generate prompt variants and images for top-ranked scenes missing assets",
-    )
-    backfill.add_argument(
-        "--book-slug",
-        help="Optional book slug to limit the backfill (default: scan all books)",
-    )
-    backfill.add_argument(
-        "--top-scenes",
-        type=int,
-        required=True,
-        help="Number of top-ranked scenes to inspect for missing assets",
-    )
-    backfill.add_argument(
-        "--prompts-per-scene",
-        type=int,
-        help="Override number of prompt variants per scene (ignores ranking recommendations when provided)",
-    )
-    backfill.add_argument(
-        "--ignore-ranking-recommendations",
-        action="store_true",
-        help="Always use --prompts-per-scene value, ignoring scene complexity analysis",
-    )
-    _add_quality_args(backfill)
-    _add_mode_args(backfill)
-    backfill.add_argument(
-        "--concurrency",
-        type=int,
-        default=3,
-        help="Number of concurrent image generation tasks (default: 3)",
-    )
-    _add_prompt_art_style_args(backfill)
-    _add_common_args(backfill)
-
-    return parser
-
-
-def _add_book_args(parser: argparse.ArgumentParser) -> None:
-    """Add book-related arguments."""
-    parser.add_argument(
-        "--book-slug",
-        help="Book slug (e.g., look-to-windward-iain-m-banks). If provided without --book-path, book extraction will be skipped.",
-    )
-    parser.add_argument(
-        "--book-path",
-        help="Path to source document file for scene extraction. Can be absolute or relative to project root.",
-    )
-
-
-def _add_quality_args(parser: argparse.ArgumentParser) -> None:
-    """Add image quality arguments."""
-    parser.add_argument(
-        "--quality",
-        choices=["standard", "hd"],
-        default="standard",
-        help="Image quality (default: standard)",
-    )
-    parser.add_argument(
-        "--style",
-        choices=["vivid", "natural"],
-        help="Image style preference",
-    )
-    parser.add_argument(
-        "--aspect-ratio",
-        choices=["1:1", "9:16", "16:9"],
-        help="Image aspect ratio",
-    )
-
-
-def _add_prompt_art_style_args(parser: argparse.ArgumentParser) -> None:
-    """Add prompt art style mode/text arguments."""
-    parser.add_argument(
-        "--prompt-art-style-mode",
-        choices=[
-            PROMPT_ART_STYLE_MODE_RANDOM_MIX,
-            PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
-        ],
-        help="Prompt art style mode: random mix or one fixed style for all variants",
-    )
-    parser.add_argument(
-        "--prompt-art-style-text",
-        help="Required when --prompt-art-style-mode is single_style",
-    )
-
-
-def _add_mode_args(parser: argparse.ArgumentParser) -> None:
-    """Add image generation mode arguments."""
-    from app.core.config import settings
-
-    parser.add_argument(
-        "--mode",
-        choices=["batch", "sync"],
-        default=settings.IMAGE_GENERATION_MODE,
-        help=f"Generation mode: 'batch' for OpenAI Batch API (50%% cheaper), 'sync' for immediate (default: {settings.IMAGE_GENERATION_MODE})",
-    )
-    parser.add_argument(
-        "--poll-timeout",
-        type=int,
-        default=3600,
-        help="Batch mode: max seconds to poll before deferring to background scheduler (default: 3600)",
-    )
-    parser.add_argument(
-        "--poll-interval",
-        type=int,
-        default=30,
-        help="Batch mode: seconds between poll requests (default: 30)",
-    )
-
-
-def _add_common_args(parser: argparse.ArgumentParser) -> None:
-    """Add common arguments."""
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be done without executing",
-    )
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Enable verbose logging",
-    )
-
-
-def _resolve_default_scenes_per_run() -> int:
-    """Resolve the scenes-per-run default from persisted app settings."""
-    try:
-        with Session(engine) as session:
-            repository = AppSettingsRepository(session)
-            return repository.default_scenes_per_run()
-    except Exception as exc:  # pragma: no cover - defensive fallback
-        logger.warning(
-            "Failed to read app settings default_scenes_per_run; falling back to 5: %s",
-            exc,
-        )
-        return 5
-
-
-def _build_prompt_generation_config_kwargs(
-    args: argparse.Namespace,
-) -> dict[str, Any]:
-    """Build normalized prompt-generation style config from CLI args."""
-
-    raw_mode = getattr(args, "prompt_art_style_mode", None)
-    raw_text = getattr(args, "prompt_art_style_text", None)
-    if raw_mode is None and raw_text is None:
-        return {}
-
-    mode, text = coerce_prompt_art_style_selection(
-        mode=raw_mode,
-        text=raw_text,
-    )
-    config_kwargs: dict[str, Any] = {
-        "prompt_art_style_mode": mode,
-        "prompt_art_style_text": text,
-    }
-    if mode == PROMPT_ART_STYLE_MODE_SINGLE_STYLE and text is not None:
-        logger.info("Using fixed prompt art style for all variants: %s", text)
-    else:
-        logger.info("Using random prompt art style mix")
-    return config_kwargs
-
-
-def _rollback_session_after_scene_error(
-    session: Session,
-    *,
-    context: str,
-) -> None:
-    """Clear a failed transaction before continuing the current batch."""
-
-    try:
-        session.rollback()
-    except Exception:
-        logger.exception("Failed to roll back session after %s", context)
 
 
 def _filter_scenes_for_ranking(
@@ -926,694 +302,157 @@ async def _run_rank(args: argparse.Namespace) -> PipelineStats:
     return stats
 
 
-async def _run_prompts(args: argparse.Namespace) -> PipelineStats:
-    """Generate prompts for ranked scenes."""
-    stats = PipelineStats()
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Orchestrate the complete image generation pipeline"
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    if args.dry_run:
-        if args.prompts_per_scene is not None:
-            if args.ignore_ranking_recommendations:
-                logger.info(
-                    "DRY RUN: Would generate %d prompts per scene for book: %s (ignoring ranking recommendations)",
-                    args.prompts_per_scene,
-                    args.book_slug,
-                )
-            else:
-                logger.info(
-                    "DRY RUN: Would generate prompts using ranking recommendations (fallback: %d) for book: %s",
-                    args.prompts_per_scene,
-                    args.book_slug,
-                )
-        else:
-            logger.info(
-                "DRY RUN: Would generate prompts using ranking recommendations (fallback: 4) for book: %s",
-                args.book_slug,
-            )
-        return stats
+    # Full pipeline command
+    run = subparsers.add_parser(
+        "run",
+        help="Run the complete pipeline: extract -> rank -> prompts -> images",
+    )
+    _add_book_args(run)
+    run.add_argument(
+        "--prompts-per-scene",
+        type=int,
+        help="Override number of prompt variants per scene (ignores ranking recommendations when provided)",
+    )
+    run.add_argument(
+        "--ignore-ranking-recommendations",
+        action="store_true",
+        help="Always use --prompts-per-scene value, ignoring scene complexity analysis",
+    )
+    run.add_argument(
+        "--prompts-for-scenes",
+        type=int,
+        help="Number of top-ranked scenes to generate prompts for (default: match --images-for-scenes)",
+    )
+    run.add_argument(
+        "--images-for-scenes",
+        type=int,
+        default=None,
+        help="Number of top-ranked scenes to generate images for (default: app settings value)",
+    )
+    run.add_argument(
+        "--skip-extraction",
+        action="store_true",
+        help="Skip scene extraction (use existing scenes)",
+    )
+    run.add_argument(
+        "--skip-ranking",
+        action="store_true",
+        help="Skip scene ranking (use existing rankings)",
+    )
+    run.add_argument(
+        "--skip-prompts",
+        action="store_true",
+        help="Skip prompt generation (use existing prompts)",
+    )
+    _add_quality_args(run)
+    _add_prompt_art_style_args(run)
+    _add_common_args(run)
 
-    with Session(engine) as session:
-        ranking_repo = SceneRankingRepository(session)
-        prompt_repo = ImagePromptRepository(session)
+    # Extract-only command
+    extract = subparsers.add_parser(
+        "extract",
+        help="Extract and refine scenes from a book",
+    )
+    _add_book_args(extract)
+    extract.add_argument(
+        "--no-refine",
+        action="store_true",
+        help="Disable scene refinement",
+    )
+    _add_common_args(extract)
 
-        # Determine config based on flags
-        config_kwargs = {}
+    # Rank-only command
+    rank = subparsers.add_parser(
+        "rank",
+        help="Rank extracted scenes",
+    )
+    rank.add_argument(
+        "--book-slug",
+        required=True,
+        help="Book slug to rank scenes for",
+    )
+    rank.add_argument(
+        "--limit",
+        type=int,
+        help="Maximum number of scenes to rank",
+    )
+    rank.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Re-rank scenes even if they already have rankings",
+    )
+    _add_common_args(rank)
 
-        if args.prompts_per_scene is not None and args.ignore_ranking_recommendations:
-            # Explicit override mode
-            config_kwargs["variants_count"] = args.prompts_per_scene
-            config_kwargs["use_ranking_recommendation"] = False
-            logger.info(
-                "Using fixed variant count: %d (ignoring rankings)",
-                args.prompts_per_scene,
-            )
-        elif args.prompts_per_scene is not None:
-            # Fallback for scenes without rankings
-            config_kwargs["variants_count"] = args.prompts_per_scene
-            config_kwargs["use_ranking_recommendation"] = True
-            logger.info(
-                "Using ranking recommendations (fallback: %d variants)",
-                args.prompts_per_scene,
-            )
-        else:
-            # Full auto mode (use recommendations, fallback to default of 4)
-            config_kwargs["use_ranking_recommendation"] = True
-            logger.info("Using ranking recommendations (fallback: 4 variants)")
-
-        prompt_config = ImagePromptGenerationConfig(
-            **{
-                **config_kwargs,
-                **_build_prompt_generation_config_kwargs(args),
-            }
-        )
-        prompt_service = ImagePromptGenerationService(session, config=prompt_config)
-
-        target_scenes = args.top_scenes
-        image_repo = GeneratedImageRepository(session)
-        rankings = _list_ranked_scene_candidates_without_images(
-            ranking_repo=ranking_repo,
-            image_repo=image_repo,
-            book_slug=args.book_slug,
-            target_scenes=target_scenes,
-        )
-
-        logger.info(
-            "Processing %d ranked scene candidates without images to generate prompts for %s scenes",
-            len(rankings),
-            target_scenes if target_scenes is not None else "all",
-        )
-
-        scenes_with_prompts_generated = 0
-
-        for ranking in rankings:
-            # Check if we've reached the target
-            if (
-                target_scenes is not None
-                and scenes_with_prompts_generated >= target_scenes
-            ):
-                logger.info(
-                    "Reached target of %d scenes with prompts generated",
-                    target_scenes,
-                )
-                break
-
-            if ranking.scene_extraction:
-                scene = ranking.scene_extraction
-                scene_id = scene.id
-
-                # Check if scene already has prompts (unless overwrite is enabled)
-                if not args.overwrite:
-                    existing_prompts = prompt_repo.has_any_for_scene(scene_id)
-                    if existing_prompts:
-                        logger.debug(
-                            "Scene %s already has prompts, skipping",
-                            scene_id,
-                        )
-                        continue
-
-                try:
-                    prompts = await prompt_service.generate_for_scene(
-                        scene,
-                        dry_run=False,
-                        overwrite=args.overwrite,
-                        metadata={"cli": "image_gen_cli"},
-                    )
-                    if prompts:
-                        stats.prompts_generated += len(prompts)
-                        scenes_with_prompts_generated += 1
-                        logger.info(
-                            "Generated %d prompts for scene %d (chapter %d)",
-                            len(prompts),
-                            scene.scene_number,
-                            scene.chapter_number,
-                        )
-                except Exception as exc:
-                    error_msg = (
-                        f"Failed to generate prompts for scene {scene_id}: {exc}"
-                    )
-                    logger.error(error_msg)
-                    _rollback_session_after_scene_error(
-                        session,
-                        context=f"prompt generation failure for scene {scene_id}",
-                    )
-                    stats.errors.append(error_msg)
-
-        logger.info(
-            "Prompt generation complete: %d prompts for %d scenes",
-            stats.prompts_generated,
-            scenes_with_prompts_generated,
-        )
-
-    return stats
+    return parser
 
 
-async def _run_images(args: argparse.Namespace) -> PipelineStats:
-    """Generate images from prompts."""
-    stats = PipelineStats()
-
-    if args.dry_run:
-        logger.info(
-            "DRY RUN: Would generate images for top %d scenes from book: %s",
-            args.top_scenes,
-            args.book_slug,
-        )
-        return stats
-
-    image_config = ImageGenerationConfig(
-        quality=args.quality,
-        preferred_style=args.style,
-        aspect_ratio=args.aspect_ratio,
-        concurrency=getattr(args, "concurrency", 3),
+def _add_book_args(parser: argparse.ArgumentParser) -> None:
+    """Add book-related arguments."""
+    parser.add_argument(
+        "--book-slug",
+        help="Book slug (e.g., look-to-windward-iain-m-banks). If provided without --book-path, book extraction will be skipped.",
+    )
+    parser.add_argument(
+        "--book-path",
+        help="Path to source document file for scene extraction. Can be absolute or relative to project root.",
     )
 
-    with Session(engine) as session:
-        mode = getattr(args, "mode", "sync")
-        if mode == "batch":
-            image_service: ImageGenerationService | BatchImageGenerationService = (
-                BatchImageGenerationService(
-                    session,
-                    config=image_config,
-                    poll_timeout=getattr(args, "poll_timeout", 3600),
-                    poll_interval=getattr(args, "poll_interval", 30),
-                )
-            )
-            logger.info("Using batch generation mode (50%% cost reduction)")
-        else:
-            image_service = ImageGenerationService(session, config=image_config)
-            logger.info("Using sync generation mode")
 
-        try:
-            generated_ids = await image_service.generate_for_selection(
-                book_slug=args.book_slug,
-                top_scenes=args.top_scenes,
-                quality=args.quality,
-                preferred_style=args.style,
-                aspect_ratio=args.aspect_ratio,
-                dry_run=False,
-            )
-            stats.images_generated = len(generated_ids)
-            logger.info("Image generation complete: %d images", stats.images_generated)
-        except Exception as exc:
-            error_msg = f"Failed to generate images: {exc}"
-            logger.error(error_msg)
-            stats.errors.append(error_msg)
-
-    return stats
-
-
-async def _run_backfill(args: argparse.Namespace) -> PipelineStats:
-    """Create prompts and images for scenes missing both."""
-    stats = PipelineStats()
-
-    if args.top_scenes <= 0:
-        raise ValueError("--top-scenes must be a positive integer")
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    backfill_run_id = f"backfill-{timestamp}-{uuid4().hex[:8]}"
-
-    if args.prompts_per_scene is None:
-        if args.ignore_ranking_recommendations:
-            variant_msg = "ranking recommendations disabled; default prompt count"
-        else:
-            variant_msg = "using ranking recommendations (fallback: 4)"
-    else:
-        variant_msg = f"{args.prompts_per_scene} prompt variants per scene"
-        if args.ignore_ranking_recommendations:
-            variant_msg += " (ignoring ranking recommendations)"
-
-    target_scope = f"book '{args.book_slug}'" if args.book_slug else "all ranked books"
-
-    if args.dry_run:
-        logger.info(
-            "DRY RUN: Would backfill prompts/images for up to %d top-ranked scenes from %s missing images [%s]",
-            args.top_scenes,
-            target_scope,
-            variant_msg,
-        )
-        logger.info(
-            "DRY RUN: Would generate images for new prompts with quality=%s, style=%s, aspect_ratio=%s, concurrency=%d",
-            args.quality,
-            args.style or "auto",
-            args.aspect_ratio or "auto",
-            args.concurrency,
-        )
-        return stats
-
-    logger.info("\n" + "=" * 60)
-    logger.info("BACKFILL: Generating prompts and images for missing scenes")
-    logger.info("Target scope: %s", target_scope)
-    logger.info("=" * 60)
-
-    load_dotenv()
-
-    with Session(engine) as session:
-        ranking_repo = SceneRankingRepository(session)
-        prompt_repo = ImagePromptRepository(session)
-        image_repo = GeneratedImageRepository(session)
-
-        prompt_config_kwargs: dict[str, Any] = {}
-        if args.prompts_per_scene is not None:
-            prompt_config_kwargs["variants_count"] = args.prompts_per_scene
-        if args.ignore_ranking_recommendations:
-            prompt_config_kwargs["use_ranking_recommendation"] = False
-
-        prompt_config = ImagePromptGenerationConfig(
-            **{
-                **prompt_config_kwargs,
-                **_build_prompt_generation_config_kwargs(args),
-            }
-        )
-        prompt_service = ImagePromptGenerationService(
-            session,
-            config=prompt_config,
-        )
-
-        blocked_warning_lookup = {
-            (warning or "").lower() for warning in prompt_config.blocked_warnings
-        }
-
-        def _blocked_warning_hits(ranking_warnings: list[str] | None) -> list[str]:
-            if not ranking_warnings:
-                return []
-            hits: list[str] = []
-            for warning in ranking_warnings:
-                normalized = str(warning or "").lower()
-                if normalized in blocked_warning_lookup:
-                    hits.append(str(warning))
-            return hits
-
-        # Fetch all rankings to determine the top 20% pool
-        if args.book_slug:
-            all_rankings = ranking_repo.list_top_rankings_for_book(
-                book_slug=args.book_slug,
-                limit=10000,  # Large limit to get all rankings
-                include_scene=True,
-            )
-        else:
-            all_rankings = ranking_repo.list_top_rankings(
-                limit=10000,
-                include_scene=True,
-            )
-
-        if not all_rankings:
-            logger.warning(
-                "No rankings found for %s - cannot backfill scenes", target_scope
-            )
-            return stats
-
-        # Build list of eligible rankings (scenes without images, not blocked by warnings)
-        eligible_rankings: list[Any] = []
-        seen_scene_ids: set[Any] = set()
-
-        for ranking in all_rankings:
-            scene = ranking.scene_extraction
-            if not scene:
-                continue
-
-            if scene.id in seen_scene_ids:
-                continue
-            seen_scene_ids.add(scene.id)
-
-            if prompt_config.skip_scenes_with_warnings and blocked_warning_lookup:
-                warning_hits = _blocked_warning_hits(getattr(ranking, "warnings", None))
-                if warning_hits:
-                    logger.debug(
-                        "Skipping scene %s (priority=%.3f) due to content warnings: %s",
-                        scene.id,
-                        ranking.overall_priority or 0.0,
-                        ", ".join(warning_hits),
-                    )
-                    continue
-
-            existing_images = image_repo.list_for_scene(scene.id, limit=1)
-            if existing_images:
-                logger.debug(
-                    "Skipping scene %s (priority=%.3f) - images already exist",
-                    scene.id,
-                    ranking.overall_priority or 0.0,
-                )
-                continue
-
-            eligible_rankings.append(ranking)
-
-        if not eligible_rankings:
-            logger.info(
-                "No scenes without images found after scanning %d rankings",
-                len(all_rankings),
-            )
-            return stats
-
-        # Calculate top 20% pool (minimum of 1 to handle small sets)
-        top_20_percent_count = max(1, len(eligible_rankings) // 5)
-        top_20_percent_pool = eligible_rankings[:top_20_percent_count]
-
-        logger.info(
-            "Found %d eligible scene(s) without images; selecting randomly from top 20%% (%d scenes)",
-            len(eligible_rankings),
-            len(top_20_percent_pool),
-        )
-
-        # Randomly select from the top 20% pool
-        num_to_select = min(args.top_scenes, len(top_20_percent_pool))
-        candidate_rankings = random.sample(top_20_percent_pool, num_to_select)
-
-        logger.info(
-            "Randomly selected %d scene(s) from top 20%% pool for backfill",
-            len(candidate_rankings),
-        )
-
-        if len(candidate_rankings) < args.top_scenes:
-            logger.warning(
-                "Only %d scene(s) available in top 20%% pool (requested %d)",
-                len(candidate_rankings),
-                args.top_scenes,
-            )
-
-        logger.info(
-            "Backfilling %d scene(s) using prompt version '%s'",
-            len(candidate_rankings),
-            prompt_config.prompt_version,
-        )
-
-        new_prompts: list[Any] = []
-        prompts_for_imaging: list[Any] = []
-        scenes_targeted: set[Any] = set()
-        base_metadata = {
-            "cli": "image_gen_cli.backfill",
-            "backfill_run_id": backfill_run_id,
-            "prompt_version": prompt_config.prompt_version,
-        }
-
-        for ranking in candidate_rankings:
-            scene = ranking.scene_extraction
-            if not scene:
-                continue
-
-            scenes_targeted.add(scene.id)
-
-            existing_prompts = prompt_repo.list_for_scene(
-                scene.id,
-                include_scene=True,
-            )
-            if existing_prompts:
-                prompts_for_imaging.extend(existing_prompts)
-                logger.info(
-                    "Reusing %d existing prompt(s) for scene %d (chapter %d, priority %.3f)",
-                    len(existing_prompts),
-                    scene.scene_number,
-                    scene.chapter_number,
-                    ranking.overall_priority or 0.0,
-                )
-                continue
-
-            logger.info(
-                "Generating prompts for scene %d (chapter %d, priority %.3f)",
-                scene.scene_number,
-                scene.chapter_number,
-                ranking.overall_priority or 0.0,
-            )
-
-            metadata: dict[str, Any] = dict(base_metadata)
-            metadata["scene_ranking_id"] = str(ranking.id)
-            if ranking.overall_priority is not None:
-                metadata["ranking_priority"] = ranking.overall_priority
-            scene_id = scene.id
-
-            try:
-                prompts = await prompt_service.generate_for_scene(
-                    scene,
-                    overwrite=False,
-                    dry_run=False,
-                    metadata=metadata,
-                )
-            except Exception as exc:
-                error_msg = f"Failed to generate prompts for scene {scene_id}: {exc}"
-                logger.error(error_msg)
-                _rollback_session_after_scene_error(
-                    session,
-                    context=f"prompt generation failure for scene {scene_id}",
-                )
-                stats.errors.append(error_msg)
-                continue
-
-            if not prompts:
-                logger.warning(
-                    "Prompt generation returned no variants for scene %s", scene.id
-                )
-                continue
-
-            stats.prompts_generated += len(prompts)
-            new_prompts.extend(prompts)
-            prompts_for_imaging.extend(prompts)
-
-        if not prompts_for_imaging:
-            logger.warning(
-                "No prompts available for candidate scenes after backfill - skipping images"
-            )
-            return stats
-
-        logger.info(
-            "Preparing %d prompt variant(s) across %d scene(s); %d new prompt(s) generated",
-            len(prompts_for_imaging),
-            len(scenes_targeted),
-            stats.prompts_generated,
-        )
-
-        prompt_ids: list[Any] = []
-        seen_prompt_ids: set[Any] = set()
-        for prompt in prompts_for_imaging:
-            if prompt.id in seen_prompt_ids:
-                continue
-            seen_prompt_ids.add(prompt.id)
-            prompt_ids.append(prompt.id)
-
-        image_config = ImageGenerationConfig(
-            quality=args.quality,
-            preferred_style=args.style,
-            aspect_ratio=args.aspect_ratio,
-            concurrency=args.concurrency,
-        )
-
-        mode = getattr(args, "mode", "sync")
-        if mode == "batch":
-            image_service: ImageGenerationService | BatchImageGenerationService = (
-                BatchImageGenerationService(
-                    session,
-                    config=image_config,
-                    poll_timeout=getattr(args, "poll_timeout", 3600),
-                    poll_interval=getattr(args, "poll_interval", 30),
-                )
-            )
-            logger.info("Using batch generation mode (50%% cost reduction)")
-        else:
-            image_service = ImageGenerationService(session, config=image_config)
-            logger.info("Using sync generation mode")
-
-        try:
-            generated_ids = await image_service.generate_for_selection(
-                prompt_ids=prompt_ids,
-                quality=args.quality,
-                preferred_style=args.style,
-                aspect_ratio=args.aspect_ratio,
-                concurrency=args.concurrency,
-            )
-            stats.images_generated = len(generated_ids)
-        except Exception as exc:
-            error_msg = f"Failed to generate images for backfilled prompts: {exc}"
-            logger.error(error_msg)
-            stats.errors.append(error_msg)
-
-    return stats
-
-
-async def _run_refresh(args: argparse.Namespace) -> PipelineStats:
-    """Regenerate prompts and images for top-ranked scenes."""
-    stats = PipelineStats()
-
-    if args.top_scenes <= 0:
-        raise ValueError("--top-scenes must be a positive integer")
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    default_prompt_version = ImagePromptGenerationConfig().prompt_version
-    prompt_version = (
-        args.prompt_version or f"{default_prompt_version}-refresh-{timestamp}"
+def _add_quality_args(parser: argparse.ArgumentParser) -> None:
+    """Add image quality arguments."""
+    parser.add_argument(
+        "--quality",
+        choices=["standard", "hd"],
+        default="standard",
+        help="Image quality (default: standard)",
     )
-    refresh_run_id = f"refresh-{timestamp}-{uuid4().hex[:8]}"
-
-    if args.dry_run:
-        variant_msg = f"{args.prompts_per_scene or 'auto'} prompt variants per scene"
-        if args.prompts_per_scene is None:
-            if args.ignore_ranking_recommendations:
-                variant_msg = "ranking recommendations disabled; default prompt count"
-            else:
-                variant_msg = "using ranking recommendations (fallback: 4)"
-        elif args.ignore_ranking_recommendations:
-            variant_msg = f"{args.prompts_per_scene} prompt variants per scene (ignoring ranking recommendations)"
-
-        logger.info(
-            "DRY RUN: Would refresh prompts (prompt_version=%s) for top %d scenes of '%s' [%s]",
-            prompt_version,
-            args.top_scenes,
-            args.book_slug,
-            variant_msg,
-        )
-        logger.info(
-            "DRY RUN: Would generate images for new prompts with quality=%s, style=%s, aspect_ratio=%s, concurrency=%d",
-            args.quality,
-            args.style or "auto",
-            args.aspect_ratio or "auto",
-            args.concurrency,
-        )
-        return stats
-
-    logger.info("\n" + "=" * 60)
-    logger.info("REFRESH: Regenerating prompts and images")
-    logger.info("=" * 60)
-    logger.info(
-        "Using prompt version '%s' with run id %s",
-        prompt_version,
-        refresh_run_id,
+    parser.add_argument(
+        "--style",
+        choices=["vivid", "natural"],
+        help="Image style preference",
+    )
+    parser.add_argument(
+        "--aspect-ratio",
+        choices=["1:1", "9:16", "16:9"],
+        help="Image aspect ratio",
     )
 
-    with Session(engine) as session:
-        ranking_repo = SceneRankingRepository(session)
 
-        # Ensure environment variables from .env are available before instantiating services
-        load_dotenv()
+def _add_prompt_art_style_args(parser: argparse.ArgumentParser) -> None:
+    """Add prompt art style mode/text arguments."""
+    parser.add_argument(
+        "--prompt-art-style-mode",
+        choices=[
+            PROMPT_ART_STYLE_MODE_RANDOM_MIX,
+            PROMPT_ART_STYLE_MODE_SINGLE_STYLE,
+        ],
+        help="Prompt art style mode: random mix or one fixed style for all variants",
+    )
+    parser.add_argument(
+        "--prompt-art-style-text",
+        help="Required when --prompt-art-style-mode is single_style",
+    )
 
-        prompt_config_kwargs: dict[str, Any] = {}
-        if args.prompts_per_scene is not None:
-            prompt_config_kwargs["variants_count"] = args.prompts_per_scene
-        if args.ignore_ranking_recommendations:
-            prompt_config_kwargs["use_ranking_recommendation"] = False
 
-        prompt_service = ImagePromptGenerationService(
-            session,
-            config=ImagePromptGenerationConfig(
-                **{
-                    **prompt_config_kwargs,
-                    **_build_prompt_generation_config_kwargs(args),
-                }
-            ),
-        )
-
-        fetch_limit = max(args.top_scenes * 5, args.top_scenes)
-        rankings = ranking_repo.list_top_rankings_for_book(
-            book_slug=args.book_slug,
-            limit=fetch_limit,
-            include_scene=True,
-        )
-
-        if not rankings:
-            logger.warning(
-                "No rankings found for book '%s' - nothing to refresh",
-                args.book_slug,
-            )
-            return stats
-
-        base_metadata = {
-            "cli": "image_gen_cli.refresh",
-            "refresh_run_id": refresh_run_id,
-            "prompt_version": prompt_version,
-        }
-
-        seen_scene_ids: set[Any] = set()
-        refreshed_scene_ids: set[Any] = set()
-        refreshed_prompts: list[Any] = []
-
-        for ranking in rankings:
-            if len(refreshed_scene_ids) >= args.top_scenes:
-                break
-
-            scene = ranking.scene_extraction
-            if not scene:
-                logger.debug("Ranking %s has no scene attached, skipping", ranking.id)
-                continue
-
-            if scene.id in seen_scene_ids:
-                continue
-
-            seen_scene_ids.add(scene.id)
-
-            logger.info(
-                "Generating new prompts for scene %d (chapter %d, priority %.3f)",
-                scene.scene_number,
-                scene.chapter_number,
-                ranking.overall_priority or 0.0,
-            )
-
-            metadata: dict[str, Any] = dict(base_metadata)
-            metadata["scene_ranking_id"] = str(ranking.id)
-            if ranking.overall_priority is not None:
-                metadata["ranking_priority"] = ranking.overall_priority
-            scene_id = scene.id
-
-            try:
-                new_variants = await prompt_service.generate_for_scene(
-                    scene,
-                    prompt_version=prompt_version,
-                    overwrite=False,
-                    dry_run=False,
-                    metadata=metadata,
-                )
-            except Exception as exc:
-                error_msg = f"Failed to regenerate prompts for scene {scene_id}: {exc}"
-                logger.error(error_msg)
-                _rollback_session_after_scene_error(
-                    session,
-                    context=f"prompt regeneration failure for scene {scene_id}",
-                )
-                stats.errors.append(error_msg)
-                continue
-
-            if not new_variants:
-                logger.warning(
-                    "Prompt generation returned no variants for scene %s",
-                    scene.id,
-                )
-                continue
-
-            stats.prompts_generated += len(new_variants)
-            refreshed_scene_ids.add(scene.id)
-            refreshed_prompts.extend(new_variants)
-
-        if not refreshed_prompts:
-            logger.warning("No new prompts were generated - skipping image generation")
-            return stats
-
-        if len(refreshed_scene_ids) < args.top_scenes:
-            logger.warning(
-                "Generated new prompts for %d scenes (requested %d). Consider increasing ranking depth.",
-                len(refreshed_scene_ids),
-                args.top_scenes,
-            )
-
-        prompt_ids = [prompt.id for prompt in refreshed_prompts]
-
-        image_service = ImageGenerationService(
-            session,
-            config=ImageGenerationConfig(
-                quality=args.quality,
-                preferred_style=args.style,
-                aspect_ratio=args.aspect_ratio,
-                concurrency=args.concurrency,
-            ),
-        )
-
-        try:
-            generated_ids = await image_service.generate_for_selection(
-                prompt_ids=prompt_ids,
-                quality=args.quality,
-                preferred_style=args.style,
-                aspect_ratio=args.aspect_ratio,
-                concurrency=args.concurrency,
-            )
-            stats.images_generated = len(generated_ids)
-        except Exception as exc:
-            error_msg = f"Failed to generate images for refreshed prompts: {exc}"
-            logger.error(error_msg)
-            stats.errors.append(error_msg)
-
-    return stats
+def _add_common_args(parser: argparse.ArgumentParser) -> None:
+    """Add common arguments."""
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without executing",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose logging",
+    )
 
 
 async def async_main(argv: list[str] | None = None) -> int:
@@ -1635,14 +474,6 @@ async def async_main(argv: list[str] | None = None) -> int:
         stats = await _run_extract(args)
     elif args.command == "rank":
         stats = await _run_rank(args)
-    elif args.command == "prompts":
-        stats = await _run_prompts(args)
-    elif args.command == "images":
-        stats = await _run_images(args)
-    elif args.command == "refresh":
-        stats = await _run_refresh(args)
-    elif args.command == "backfill":
-        stats = await _run_backfill(args)
     else:
         parser.error(f"Unknown command: {args.command}")
         return 2
