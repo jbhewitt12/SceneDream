@@ -999,3 +999,29 @@ Behavior:
   - `backend/app/services/image_gen_cli.py` (modified — removed 4 commands and ~1000 lines of legacy orchestration code)
   - `backend/app/services/pipeline/pipeline_run_start_service.py` (modified — removed CLI import, inlined `_resolve_default_scenes_per_run` logic)
   - `backend/app/tests/services/test_image_gen_cli.py` (rewritten — 7 new tests replacing 6 old tests)
+
+### Phase 9: Test completion and cleanup
+- Status: completed
+- Summary: Added CLI delegation tests to verify the `run` command calls `prepare_execution()` and `PipelineOrchestrator.execute()`. All other Phase 9 coverage items (config validation, preparation service, orchestrator lifecycle, scene-targeted/remix/custom-remix orchestrator paths, `pipeline_run_id` propagation, route tests) were completed in earlier phases and no additional coverage gaps were found.
+- Completed work:
+  - Added `TestRunCommandDelegation` class with 5 tests to `backend/app/tests/services/test_image_gen_cli.py`:
+    - `test_run_delegates_to_prepare_execution_and_orchestrator` — verifies `prepare_execution()` and `PipelineOrchestrator.execute()` are called for non-dry-run `run` command
+    - `test_run_passes_skip_flags_to_stage_plan` — verifies `--skip-extraction`/`--skip-ranking` CLI flags translate to `run_extraction=False`/`run_ranking=False` in the stage plan passed to `prepare_execution()`
+    - `test_run_dry_run_returns_stats_without_calling_orchestrator` — verifies dry-run mode returns empty stats without calling `prepare_execution` or `execute`
+    - `test_run_returns_stats_from_orchestrator_result` — verifies the returned stats come from `result.stats` on the orchestrator result
+    - `test_run_builds_document_target_from_args` — verifies a `DocumentTarget` is constructed with `book_slug` and `book_path` from CLI args
+  - Added helper functions `_make_prepared()` and `_make_run_args()` shared by delegation tests
+  - Expanded imports in `test_image_gen_cli.py` to include `_run_full_pipeline` and config types
+- Remaining work in this phase:
+  - none
+- Deviations from plan:
+  - All coverage items in Phase 9 except CLI delegation tests were already completed in Phases 1–8. The plan listed them as Phase 9 work but they were implemented incrementally as each feature phase landed. Phase 9 is therefore narrowly scoped to the delegation tests that were explicitly deferred.
+- Tests and verification run:
+  - `cd backend && uv run pytest app/tests/services/test_image_gen_cli.py -v` — 12 passed (7 existing + 5 new)
+  - `cd backend && uv run pytest` — 426 passed, 7 deselected
+  - `cd backend && uv run bash scripts/lint.sh` — mypy reports 4 pre-existing errors in `document_stage_status_service.py` (none introduced by this phase); ruff clean
+- Known issues / follow-ups for next agent:
+  - The 4 pre-existing mypy errors in `document_stage_status_service.py` are unrelated to this work
+  - All acceptance criteria from the issue are now met
+- Files changed:
+  - `backend/app/tests/services/test_image_gen_cli.py` (modified — added 5 CLI delegation tests and shared helpers)
