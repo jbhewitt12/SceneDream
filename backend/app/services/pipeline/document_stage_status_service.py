@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.repositories import DocumentRepository, SceneRankingRepository
 from app.services.scene_extraction.scene_extraction import (
@@ -191,7 +191,7 @@ class DocumentStageStatusService:
     def sync_all_documents(self) -> int:
         """Recompute extraction/ranking statuses for every document."""
 
-        statement = select(Document).order_by(Document.created_at.asc())
+        statement = select(Document).order_by(col(Document.created_at).asc())
         documents = list(self._session.exec(statement))
         for document in documents:
             self.sync_document(document=document)
@@ -228,8 +228,8 @@ class DocumentStageStatusService:
                 & (PipelineRun.status == STAGE_STATUS_COMPLETED)
             )
             .order_by(
-                PipelineRun.completed_at.desc(),
-                PipelineRun.created_at.desc(),
+                col(PipelineRun.completed_at).desc(),
+                col(PipelineRun.created_at).desc(),
             )
         )
         for run in self._session.exec(statement):
