@@ -11,8 +11,12 @@ The stack is FastAPI + SQLModel on the backend, React + Chakra UI + TanStack Rou
 - `backend/app/services/scene_ranking/scene_ranking_service.py` - ranks extracted scenes and persists weighted scoring output.
 - `backend/app/services/image_prompt_generation/image_prompt_generation_service.py` - builds prompt-generation configs, resolves `random_mix` vs `single_style` art-style behavior, and persists prompt variants plus metadata.
 - `backend/app/services/image_generation/image_generation_service.py` - synchronous image generation orchestration across registered providers.
-- `backend/app/services/image_generation/batch_image_generation_service.py` - OpenAI Batch API image generation flow with persisted batch tracking.
-- `backend/app/services/pipeline/pipeline_run_start_service.py` - service-layer entry point for resolving pipeline launch requests, defaults, skip flags, and prompt art-style settings.
+- `backend/app/services/image_generation/batch_image_generation_service.py` - OpenAI Batch API image generation flow with persisted batch tracking (kept in codebase but not wired to orchestrator-backed launch surfaces).
+- `backend/app/services/pipeline/pipeline_orchestrator.py` - unified execution entry point for all orchestrated pipeline work; handles full-document runs, prompt-plus-image runs, scene-targeted generation, remix, and custom-remix flows.
+- `backend/app/services/pipeline/orchestrator_config.py` - typed dataclasses for execution targets (`DocumentTarget`, `SceneTarget`, `RemixTarget`, `CustomRemixTarget`), `PipelineStagePlan`, `PipelineExecutionConfig`, `PipelineExecutionContext`, `PreparedPipelineExecution`, `PipelineStats`, and `PipelineExecutionResult`.
+- `backend/app/services/pipeline/background.py` - `spawn_background_task` helper that schedules asyncio tasks and logs unhandled exceptions.
+- `backend/app/services/pipeline/exceptions.py` - domain exceptions (`PipelineValidationError`, `DocumentNotFoundError`, `SourceDocumentMissingError`) raised during launch validation.
+- `backend/app/services/pipeline/pipeline_run_start_service.py` - resolves launch requests into `PreparedPipelineExecution` and delegates to the orchestrator; no longer contains execution logic.
 - `backend/app/services/pipeline/document_stage_status_service.py` - computes and synchronizes document-level extraction/ranking statuses (`pending`, `running`, `completed`, `failed`, `stale`).
 - `backend/app/services/document_dashboard_service.py` - builds the Documents dashboard payload by merging filesystem discovery, canonical documents, counts, and stage status metadata.
 - `backend/app/services/art_style/art_style_catalog_service.py` - transactional sync service for DB-backed recommended/other art-style lists managed from Settings.
@@ -36,6 +40,23 @@ The stack is FastAPI + SQLModel on the backend, React + Chakra UI + TanStack Rou
 - `img/generated/` stores generated image outputs; `img/` is also mounted by the backend for serving local assets.
 - `issues/` contains implementation plans and architectural change notes for major shipped features; review relevant issues before large refactors.
 
+## Orchestrator Architecture
+
+The pipeline uses a two-phase model: **preparation** then **execution**.
+
+1. `pipeline_run_start_service.py` resolves a launch request into a `PreparedPipelineExecution` (persists a pending `PipelineRun`, resolves document/scene context, validates the stage plan) and hands it off to `PipelineOrchestrator`.
+2. `PipelineOrchestrator` owns all status transitions (`pending` → `running` → `completed`/`failed`), diagnostics, and stage dispatch. It is the single execution entry point for all orchestrated work.
+
+**Execution targets** (`orchestrator_config.py`):
+- `DocumentTarget` — full-document pipeline run (extraction → ranking → prompts → images).
+- `SceneTarget` — scene-specific prompt/image generation with an exact variant count.
+- `RemixTarget` — remix an existing generated image.
+- `CustomRemixTarget` — custom-remix with user-supplied prompt text.
+
+**Stage plan** (`PipelineStagePlan`): explicit booleans for `run_extraction`, `run_ranking`, `run_prompt_generation`, `run_image_generation`. Validated against the target type before execution starts.
+
+**Batch image generation** is intentionally not wired to orchestrator-backed launch surfaces. The `batch_image_generation_service.py` stays in the codebase for future reintroduction.
+
 ## Concurrency Rule
 
 - All new FastAPI endpoints must be async and non-blocking. Offload CPU-bound or blocking filesystem/network work to background tasks, executors, or threadpool helpers so concurrent requests stay responsive.
@@ -58,11 +79,11 @@ The stack is FastAPI + SQLModel on the backend, React + Chakra UI + TanStack Rou
 ## Pipeline and CLI Commands
 
 - Run from `backend/`.
-- `uv run python -m app.services.scene_extraction.main --help` for extraction commands.
-- `uv run python -m app.services.scene_ranking.main rank --help` for ranking commands.
-- `uv run python -m app.services.image_generation.main --help` for image-generation commands.
-- `uv run python -m app.services.image_gen_cli --help` for the end-to-end pipeline CLI.
+- `uv run python -m app.services.scene_extraction.main --help` for extraction commands (`extract` — standalone escape hatch for re-running extraction on completed documents).
+- `uv run python -m app.services.scene_ranking.main rank --help` for ranking commands (`rank` — standalone escape hatch for re-running ranking on completed documents).
+- `uv run python -m app.services.image_gen_cli run --help` for the end-to-end pipeline CLI (delegates to the orchestrator for all orchestrated runs).
 - `uv run python -m app.services.prompt_metadata.main --help` for prompt-metadata tooling.
+- Legacy CLI commands `prompts`, `images`, `refresh`, and `backfill` have been removed.
 
 ## Coding Style & Naming Conventions
 
