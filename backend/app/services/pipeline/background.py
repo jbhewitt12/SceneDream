@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def spawn_background_task(
-    coro: Coroutine[Any, Any, None],
+    coro: Coroutine[Any, Any, Any],
     *,
     task_name: str,
 ) -> asyncio.Task[Any]:

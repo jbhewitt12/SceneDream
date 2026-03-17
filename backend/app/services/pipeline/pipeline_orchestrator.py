@@ -2,25 +2,48 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from sqlmodel import Session
 
 from app.core.db import engine
-from app.repositories import DocumentRepository, PipelineRunRepository
-from app.services.image_generation.image_generation_service import ImageGenerationConfig
+from app.repositories import (
+    DocumentRepository,
+    GeneratedImageRepository,
+    PipelineRunRepository,
+    SceneExtractionRepository,
+    SceneRankingRepository,
+)
+from app.services.image_generation.image_generation_service import (
+    ImageGenerationConfig,
+    ImageGenerationService,
+)
+from app.services.image_prompt_generation.image_prompt_generation_service import (
+    ImagePromptGenerationService,
+)
 from app.services.image_prompt_generation.models import ImagePromptGenerationConfig
+from app.services.scene_extraction.scene_extraction import (
+    SceneExtractionConfig,
+    SceneExtractor,
+)
+from app.services.scene_ranking.scene_ranking_service import (
+    SceneRankingConfig,
+    SceneRankingService,
+)
 
 from .document_stage_status_service import DocumentStageStatusService
 from .orchestrator_config import (
     PipelineExecutionResult,
     PipelineStats,
     PreparedPipelineExecution,
+    PromptExecutionOptions,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +54,47 @@ def _safe_int(value: object) -> int:
     if isinstance(value, int):
         return value
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Stage execution helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_book_with_fresh_session(
+    config: SceneExtractionConfig,
+    book_path: Path,
+) -> dict[str, object]:
+    """Run extraction in a fresh session for background thread safety."""
+    with Session(engine) as session:
+        extractor = SceneExtractor(session=session, config=config)
+        stats = extractor.extract_book(book_path)
+        session.commit()
+        return stats
+
+
+def _resolve_ranked_scene_fetch_limit(target_scenes: int | None) -> int:
+    """Return a ranking scan depth that tolerates skipped scenes."""
+    if isinstance(target_scenes, int) and target_scenes > 0:
+        return max(target_scenes * 50, 100)
+    return 100
+
+
+def _build_prompt_generation_config(
+    options: PromptExecutionOptions,
+) -> ImagePromptGenerationConfig:
+    """Build ImagePromptGenerationConfig from orchestration prompt options."""
+    kwargs: dict[str, Any] = {}
+    if options.prompt_art_style_mode:
+        kwargs["prompt_art_style_mode"] = options.prompt_art_style_mode
+    if options.prompt_art_style_text is not None:
+        kwargs["prompt_art_style_text"] = options.prompt_art_style_text
+    if options.prompts_per_scene is not None:
+        kwargs["variants_count"] = options.prompts_per_scene
+        kwargs["use_ranking_recommendation"] = not options.ignore_ranking_recommendations
+    else:
+        kwargs["use_ranking_recommendation"] = True
+    return ImagePromptGenerationConfig(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -573,7 +637,7 @@ class PipelineOrchestrator:
         )
 
     # ------------------------------------------------------------------
-    # Stage dispatch stubs (wired in Phase 5+)
+    # Stage dispatch methods
     # ------------------------------------------------------------------
 
     async def _execute_extraction(
@@ -581,28 +645,224 @@ class PipelineOrchestrator:
         prepared: PreparedPipelineExecution,
         stats: PipelineStats,
     ) -> None:
-        """Execute extraction stage. Stub until Phase 5 wires real logic."""
+        """Execute extraction stage."""
+        context = prepared.context
+        book_path = context.book_path
+        if not book_path:
+            raise ValueError("book_path is required for extraction")
+
+        config = SceneExtractionConfig(
+            enable_refinement=True,
+            book_slug=context.book_slug,
+            resume_from_chapter=context.extraction_resume_from_chapter,
+            resume_from_chunk=context.extraction_resume_from_chunk,
+        )
+        loop = asyncio.get_running_loop()
+        extraction_stats = await loop.run_in_executor(
+            None,
+            _extract_book_with_fresh_session,
+            config,
+            Path(book_path),
+        )
+        scenes_count = extraction_stats.get("scenes", 0)
+        stats.scenes_extracted = scenes_count if isinstance(scenes_count, int) else 0
+        logger.info("Extracted %d scenes", stats.scenes_extracted)
 
     async def _execute_ranking(
         self,
         prepared: PreparedPipelineExecution,
         stats: PipelineStats,
     ) -> None:
-        """Execute ranking stage. Stub until Phase 5 wires real logic."""
+        """Execute ranking stage."""
+        context = prepared.context
+        book_slug = context.book_slug
+        run_id = prepared.run_id
+        if not book_slug:
+            raise ValueError("book_slug is required for ranking")
+
+        with Session(engine) as session:
+            scene_repo = SceneExtractionRepository(session)
+            ranking_config = SceneRankingConfig()
+            ranking_service = SceneRankingService(session, config=ranking_config)
+
+            if context.ranking_scene_ids:
+                scenes_to_rank = [
+                    scene
+                    for sid in context.ranking_scene_ids
+                    if (scene := scene_repo.get(sid)) is not None
+                ]
+            else:
+                scenes_to_rank = scene_repo.list_for_book(book_slug)
+
+            for scene in scenes_to_rank:
+                try:
+                    result = await ranking_service.rank_scene(
+                        scene,
+                        overwrite=False,
+                        dry_run=False,
+                        pipeline_run_id=run_id,
+                    )
+                    if result and hasattr(result, "id"):
+                        stats.scenes_ranked += 1
+                        context.created_ranking_ids.append(result.id)
+                        logger.info(
+                            "Ranked scene %d (chapter %d): priority=%.1f",
+                            scene.scene_number,
+                            scene.chapter_number,
+                            result.overall_priority,
+                        )
+                except Exception as exc:
+                    error_msg = f"Failed to rank scene {scene.id}: {exc}"
+                    logger.error(error_msg)
+                    stats.errors.append(error_msg)
+
+            logger.info("Ranked %d scenes", stats.scenes_ranked)
 
     async def _execute_prompt_generation(
         self,
         prepared: PreparedPipelineExecution,
         stats: PipelineStats,
     ) -> None:
-        """Execute prompt generation stage. Stub until Phase 5 wires real logic."""
+        """Execute prompt generation stage."""
+        context = prepared.context
+        book_slug = context.book_slug
+        run_id = prepared.run_id
+        prompt_options = prepared.config.prompt_options
+
+        if not book_slug:
+            raise ValueError("book_slug is required for prompt generation")
+
+        prompts_for_scenes = prompt_options.prompts_for_scenes
+        if prompts_for_scenes is None:
+            prompts_for_scenes = prompt_options.images_for_scenes
+
+        prompt_config = _build_prompt_generation_config(prompt_options)
+
+        with Session(engine) as session:
+            ranking_repo = SceneRankingRepository(session)
+            image_repo = GeneratedImageRepository(session)
+            prompt_service = ImagePromptGenerationService(
+                session, config=prompt_config
+            )
+
+            fetch_limit = _resolve_ranked_scene_fetch_limit(prompts_for_scenes)
+            rankings = ranking_repo.list_top_rankings_for_book(
+                book_slug=book_slug,
+                limit=fetch_limit,
+                include_scene=True,
+            )
+
+            scenes_with_prompts = 0
+            seen_scene_ids: set[UUID] = set()
+
+            for ranking in rankings:
+                if (
+                    prompts_for_scenes is not None
+                    and scenes_with_prompts >= prompts_for_scenes
+                ):
+                    break
+
+                scene = getattr(ranking, "scene_extraction", None)
+                scene_id = getattr(ranking, "scene_extraction_id", None)
+                if scene is None or not isinstance(scene_id, UUID):
+                    continue
+                if scene_id in seen_scene_ids:
+                    continue
+                seen_scene_ids.add(scene_id)
+
+                if image_repo.list_for_scene(scene_id, limit=1):
+                    continue
+
+                try:
+                    prompts = await prompt_service.generate_for_scene(
+                        scene,
+                        dry_run=False,
+                        overwrite=False,
+                        metadata={"source": "orchestrator"},
+                        pipeline_run_id=run_id,
+                    )
+                    if prompts:
+                        stats.prompts_generated += len(prompts)
+                        scenes_with_prompts += 1
+                        for p in prompts:
+                            prompt_id = getattr(p, "id", None)
+                            if prompt_id is not None:
+                                context.created_prompt_ids.append(prompt_id)
+                                scene_list = (
+                                    context.created_prompt_ids_by_scene.setdefault(
+                                        scene_id, []
+                                    )
+                                )
+                                scene_list.append(prompt_id)
+                        logger.info(
+                            "Generated %d prompts for scene %d (chapter %d)",
+                            len(prompts),
+                            scene.scene_number,
+                            scene.chapter_number,
+                        )
+                except Exception as exc:
+                    error_msg = (
+                        f"Failed to generate prompts for scene {scene_id}: {exc}"
+                    )
+                    logger.error(error_msg)
+                    try:
+                        session.rollback()
+                    except Exception:
+                        logger.exception(
+                            "Failed to rollback after prompt error for scene %s",
+                            scene_id,
+                        )
+                    stats.errors.append(error_msg)
+
+            logger.info(
+                "Generated %d prompts for %d scenes",
+                stats.prompts_generated,
+                scenes_with_prompts,
+            )
 
     async def _execute_image_generation(
         self,
         prepared: PreparedPipelineExecution,
         stats: PipelineStats,
     ) -> None:
-        """Execute image generation stage. Stub until Phase 5 wires real logic."""
+        """Execute image generation stage using prompt IDs from this run."""
+        context = prepared.context
+        run_id = prepared.run_id
+        image_options = prepared.config.image_options
+
+        prompt_ids = list(context.created_prompt_ids)
+        if not prompt_ids:
+            logger.warning(
+                "No prompt IDs available for image generation; skipping."
+            )
+            return
+
+        image_config = ImageGenerationConfig(
+            quality=image_options.quality,
+            preferred_style=image_options.style,
+            aspect_ratio=image_options.aspect_ratio,
+            concurrency=image_options.concurrency,
+        )
+
+        with Session(engine) as session:
+            image_service = ImageGenerationService(session, config=image_config)
+
+            try:
+                generated_ids = await image_service.generate_for_selection(
+                    prompt_ids=prompt_ids,
+                    quality=image_options.quality,
+                    preferred_style=image_options.style,
+                    aspect_ratio=image_options.aspect_ratio,
+                    dry_run=False,
+                    pipeline_run_id=run_id,
+                )
+                stats.images_generated = len(generated_ids)
+                context.created_image_ids.extend(generated_ids)
+                logger.info("Generated %d images", stats.images_generated)
+            except Exception as exc:
+                error_msg = f"Failed to generate images: {exc}"
+                logger.error(error_msg)
+                stats.errors.append(error_msg)
 
     # ------------------------------------------------------------------
     # Stage transition helper

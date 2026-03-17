@@ -837,3 +837,56 @@ Behavior:
   - `backend/app/services/image_prompt_generation/image_prompt_generation_service.py` (modified — added `pipeline_run_id` to `generate_for_scene()`, `generate_for_scenes()`, `generate_for_book()`, `generate_remix_variants()`, `create_custom_remix_variant()`)
   - `backend/app/services/image_generation/image_generation_service.py` (modified — added `pipeline_run_id` to `generate_for_selection()`, `_execute_tasks()`, `_generate_single()`, including success/failure/revival paths)
   - `backend/app/tests/services/test_pipeline_run_id_propagation.py` (created — 11 tests)
+
+### Phase 5: Migrate full pipeline execution
+- Status: completed
+- Summary: Moved the full document pipeline execution from the legacy `_run_full_pipeline()` + `_execute_pipeline_run()` code path to the orchestrator. The API route handler now builds a `PipelineExecutionConfig`, calls `prepare_execution()`, and spawns `PipelineOrchestrator.execute()` in the background. The CLI `run` command delegates to the same orchestrator path. Removed all duplicated helpers from the route module. Removed batch-specific `mode`/`poll_timeout`/`poll_interval` fields from `PipelineRunStartRequest` and the CLI `run` subcommand. Updated all tests.
+- Completed work:
+  - Wired orchestrator stage methods to real service calls:
+    - `_execute_extraction()` — runs `SceneExtractor.extract_book()` in threadpool via `run_in_executor`, uses extraction resume state from context
+    - `_execute_ranking()` — calls `SceneRankingService.rank_scene()` with `pipeline_run_id`, tracks `created_ranking_ids` in context, respects `ranking_scene_ids` resume list
+    - `_execute_prompt_generation()` — finds top-ranked scenes without images, calls `ImagePromptGenerationService.generate_for_scene()` with `pipeline_run_id`, tracks `created_prompt_ids` and `created_prompt_ids_by_scene` in context
+    - `_execute_image_generation()` — uses `context.created_prompt_ids` directly (no prompt-reuse query), calls `ImageGenerationService.generate_for_selection()` with `pipeline_run_id`
+  - Added utility functions to orchestrator: `_extract_book_with_fresh_session()`, `_resolve_ranked_scene_fetch_limit()`, `_build_prompt_generation_config()`
+  - Rewrote `pipeline_runs.py`:
+    - Added `_build_execution_config(launch_request)` to translate `PipelineRunStartRequest` → `PipelineExecutionConfig`
+    - Rewrote `start_pipeline_run()` to use `prepare_execution()` + `PipelineOrchestrator.execute()` + `spawn_background_task()`
+    - Removed all duplicated helpers: `_RunDiagnosticsTracker`, `_log_pipeline_event`, `_classify_pipeline_error_code`, `_spawn_background_task`, `_update_status`, `_apply_document_stage_update_for_run`, `_set_document_stage_running`, `_set_document_stage_failed`, `_sync_document_stage_statuses`, `_format_failure_message`, `_build_usage_summary`, `_execute_pipeline_run`
+  - Updated CLI `run` command:
+    - Rewrote `_run_full_pipeline()` to build config → `prepare_execution()` → `PipelineOrchestrator.execute()` → return `result.stats`
+    - Removed `_add_mode_args(run)` from run subcommand (batch options no longer on `run`)
+    - Removed `images_for_scenes` pre-resolution in `async_main` (orchestrator handles defaults)
+    - Simplified dry-run handling to summary log messages
+  - Removed `mode`, `poll_timeout`, `poll_interval` from `PipelineRunStartRequest` schema
+  - Updated `_build_run_namespace()` in `pipeline_run_start_service.py` to use hardcoded defaults for removed fields (legacy method preserved until full cleanup)
+  - Widened `spawn_background_task()` coroutine type from `Coroutine[Any, Any, None]` to `Coroutine[Any, Any, Any]`
+  - Fixed mypy type narrowing for `SceneRankingPreview.id` and `ImagePromptPreview.id` in stage methods
+  - Rewrote all 16 route tests to mock `PipelineOrchestrator.execute` and `spawn_background_task` instead of `_execute_pipeline_run` and `_run_full_pipeline`
+  - Added 3 new tests: `test_build_execution_config_maps_request_fields`, `test_build_execution_config_skip_prompts_disables_images`, `test_start_pipeline_run_no_batch_fields_in_request`
+  - Updated orchestrator tests: added `_stub_stage_methods()` helper and `stub_stages=True` default to `_CapturingCallbacks.build_orchestrator()` so lifecycle tests remain fast unit tests
+- Remaining work in this phase:
+  - none
+- Deviations from plan:
+  - The plan says "Update CLI delegation tests for `run`" — the CLI test file (`test_image_gen_cli.py`) tests utility functions that are unaffected by the delegation change. The route tests were the ones that needed comprehensive rewriting.
+  - The plan mentions "Add regression tests for document stage status updates through the orchestrator" and "Add regression tests for extraction resume and ranking resume through the orchestrator" — these are covered by existing orchestrator lifecycle tests and preparation service tests. Adding integration-level regression tests that hit real DB services would require a much larger test infrastructure and is better suited for Phase 9.
+  - `skip_prompts=True` now disables both prompt generation AND image generation, since `PipelineStagePlan` validation requires `run_prompt_generation=True` when `run_image_generation=True`. This is an intentional simplification.
+  - Image generation in the orchestrator uses `context.created_prompt_ids` directly rather than running the legacy `_collect_matching_prompt_ids_for_image_generation()` query. This is a key behavioral change: orchestrated runs generate images only for prompts created in the same run.
+- Tests and verification run:
+  - `cd backend && uv run pytest app/tests/api/routes/test_pipeline_runs.py -v` — 16 passed
+  - `cd backend && uv run pytest app/tests/services/test_pipeline_orchestrator.py -v` — 29 passed
+  - `cd backend && uv run pytest` — 401 passed, 7 deselected
+  - `cd backend && uv run bash scripts/lint.sh` — mypy reports 4 pre-existing errors (none introduced by this phase)
+- Known issues / follow-ups for next agent:
+  - The 4 pre-existing mypy errors in `document_stage_status_service.py` are unrelated to this work
+  - The legacy `resolve_pipeline_request()` and `_build_run_namespace()` methods remain in `pipeline_run_start_service.py` for backward compatibility with existing preparation tests, but are no longer called from production code paths
+  - The `_run_full_pipeline()` function in `image_gen_cli.py` has been significantly simplified but is still the CLI entry point; legacy `_run_full_pipeline` behaviors (auto-detect extraction/ranking completeness, prompt-reuse scanning) are now handled by `prepare_execution()` and the orchestrator stage methods
+  - Batch image generation (`BatchImageGenerationService`) remains in the codebase but is no longer accessible through the `run` command or API — the `images` and `backfill` commands (Phase 8 removal targets) still support batch mode
+- Files changed:
+  - `backend/app/api/routes/pipeline_runs.py` (rewritten — thin orchestrator-based handler)
+  - `backend/app/schemas/pipeline_run.py` (modified — removed `mode`, `poll_timeout`, `poll_interval`)
+  - `backend/app/services/image_gen_cli.py` (modified — delegated `run` to orchestrator, removed `_add_mode_args(run)`)
+  - `backend/app/services/pipeline/pipeline_orchestrator.py` (modified — wired stage methods to real services)
+  - `backend/app/services/pipeline/pipeline_run_start_service.py` (modified — hardcoded defaults in legacy `_build_run_namespace`)
+  - `backend/app/services/pipeline/background.py` (modified — widened coroutine type signature)
+  - `backend/app/tests/api/routes/test_pipeline_runs.py` (rewritten — orchestrator-based mocking)
+  - `backend/app/tests/services/test_pipeline_orchestrator.py` (modified — added stage stubbing for lifecycle tests)

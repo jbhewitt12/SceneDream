@@ -106,13 +106,31 @@ class _CapturingCallbacks:
     def sync_document_stage_statuses(self, **kwargs: Any) -> None:
         self.sync_calls.append(kwargs)
 
-    def build_orchestrator(self) -> PipelineOrchestrator:
-        return PipelineOrchestrator(
+    def build_orchestrator(self, *, stub_stages: bool = True) -> PipelineOrchestrator:
+        orchestrator = PipelineOrchestrator(
             update_run_status=self.update_run_status,
             set_document_stage_running=self.set_document_stage_running,
             set_document_stage_failed=self.set_document_stage_failed,
             sync_document_stage_statuses=self.sync_document_stage_statuses,
         )
+        if stub_stages:
+            _stub_stage_methods(orchestrator)
+        return orchestrator
+
+
+async def _noop_stage(
+    prepared: PreparedPipelineExecution,  # noqa: ARG001
+    stats: PipelineStats,  # noqa: ARG001
+) -> None:
+    """No-op async stub for stage methods."""
+
+
+def _stub_stage_methods(orchestrator: PipelineOrchestrator) -> None:
+    """Replace all stage methods with no-op stubs for lifecycle tests."""
+    orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+    orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+    orchestrator._execute_prompt_generation = _noop_stage  # type: ignore[method-assign]
+    orchestrator._execute_image_generation = _noop_stage  # type: ignore[method-assign]
 
 
 # ---------------------------------------------------------------------------

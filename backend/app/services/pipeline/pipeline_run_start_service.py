@@ -792,9 +792,9 @@ class PipelineRunStartService:
             quality=launch_request.quality,
             style=launch_request.style,
             aspect_ratio=launch_request.aspect_ratio,
-            mode=launch_request.mode,
-            poll_timeout=launch_request.poll_timeout,
-            poll_interval=launch_request.poll_interval,
+            mode="sync",
+            poll_timeout=3600,
+            poll_interval=30,
             dry_run=launch_request.dry_run,
             verbose=False,
         )

@@ -47,9 +47,6 @@ class PipelineRunStartRequest(BaseModel):
     quality: Literal["standard", "hd"] = "standard"
     style: Literal["vivid", "natural"] | None = None
     aspect_ratio: Literal["1:1", "9:16", "16:9"] | None = None
-    mode: Literal["batch", "sync"] = "sync"
-    poll_timeout: int = Field(default=3600, ge=1)
-    poll_interval: int = Field(default=30, ge=1)
     dry_run: bool = False
 
     @field_validator("prompt_art_style_text")

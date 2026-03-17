@@ -380,7 +380,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_quality_args(run)
     _add_prompt_art_style_args(run)
-    _add_mode_args(run)
     _add_common_args(run)
 
     # Extract-only command
@@ -755,582 +754,82 @@ def _filter_scenes_for_ranking(
 
 async def _run_full_pipeline(
     args: argparse.Namespace,
-    *,
-    stage_callback: StageCallback | None = None,
 ) -> PipelineStats:
-    """Run the complete pipeline."""
-    stats = PipelineStats()
-
-    if args.images_for_scenes is None:
-        args.images_for_scenes = _resolve_default_scenes_per_run()
-        logger.info(
-            "Using settings default for --images-for-scenes: %d",
-            args.images_for_scenes,
-        )
-    if args.images_for_scenes <= 0:
-        raise ValueError("--images-for-scenes must be a positive integer")
-
-    # Validate book_path is provided if extraction is needed
-    if not args.skip_extraction and not args.book_path:
-        logger.error(
-            "--book-path is required for scene extraction. Either provide --book-path or use --skip-extraction."
-        )
-        raise ValueError("--book-path is required for scene extraction")
-
-    book_path = Path(args.book_path) if args.book_path else None
-
-    # Determine book slug early for auto-detection
-    book_slug = args.book_slug
-    if not book_slug and book_path:
-        config = SceneExtractionConfig()
-        with Session(engine) as session:
-            extractor = SceneExtractor(session=session, config=config)
-            book_slug = extractor._resolve_book_slug(book_path)
-        logger.info("Resolved book slug: %s", book_slug)
-
-    # Auto-detect if extraction should be skipped
-    skip_extraction = args.skip_extraction
-    resume_from_chapter: int | None = None
-    resume_from_chunk: int | None = None
-    if not skip_extraction and book_slug and not args.dry_run:
-        detection_config = SceneExtractionConfig(book_slug=book_slug)
-        resolved_detection_path: Path | None = None
-        with Session(engine) as session:
-            detection_extractor = SceneExtractor(
-                session=session,
-                config=detection_config,
-            )
-            if book_path:
-                try:
-                    resolved_detection_path = detection_extractor._resolve_book_path(
-                        book_path
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Unable to resolve book path '%s' when checking extraction completeness: %s",
-                        book_path,
-                        exc,
-                    )
-            scene_repo = SceneExtractionRepository(session)
-            existing_scenes = scene_repo.list_for_book(book_slug)
-            if existing_scenes:
-                extraction_complete = False
-                missing_summary = ""
-                last_scene = max(
-                    existing_scenes,
-                    key=lambda record: (
-                        record.chapter_number or -1,
-                        record.chunk_index if record.chunk_index is not None else -1,
-                        record.scene_number or -1,
-                    ),
-                )
-                if last_scene.chapter_number is not None:
-                    resume_from_chapter = int(last_scene.chapter_number)
-                if last_scene.chunk_index is not None:
-                    resume_from_chunk = int(last_scene.chunk_index)
-                elif resume_from_chapter is not None:
-                    resume_from_chunk = -1
-                if resolved_detection_path:
-                    try:
-                        chapters = detection_extractor._load_chapters(
-                            resolved_detection_path
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Unable to load chapters from '%s' when checking extraction completeness: %s",
-                            resolved_detection_path,
-                            exc,
-                        )
-                    else:
-                        missing_by_chapter = {}
-                        for chapter in chapters:
-                            expected_indexes = {
-                                chunk.index
-                                for chunk in detection_extractor._chunk_chapter(chapter)
-                            }
-                            if not expected_indexes:
-                                continue
-                            existing_indexes = scene_repo.chunk_indexes_for_chapter(
-                                book_slug=book_slug,
-                                chapter_number=chapter.number,
-                            )
-                            missing_indexes = sorted(
-                                expected_indexes - existing_indexes
-                            )
-                            if missing_indexes:
-                                missing_by_chapter[chapter.number] = missing_indexes
-                        if resume_from_chapter is not None:
-                            cutoff_chunk = (
-                                resume_from_chunk
-                                if resume_from_chunk is not None
-                                else -1
-                            )
-                            filtered_missing: dict[int, list[int]] = {}
-                            for chapter_number, indexes in missing_by_chapter.items():
-                                if chapter_number < resume_from_chapter:
-                                    continue
-                                if chapter_number == resume_from_chapter:
-                                    trimmed = [
-                                        idx for idx in indexes if idx > cutoff_chunk
-                                    ]
-                                    if trimmed:
-                                        filtered_missing[chapter_number] = trimmed
-                                else:
-                                    filtered_missing[chapter_number] = indexes
-                            missing_by_chapter = filtered_missing
-                        extraction_complete = not missing_by_chapter
-                        if missing_by_chapter:
-                            parts = []
-                            for chapter_number, indexes in sorted(
-                                missing_by_chapter.items()
-                            ):
-                                display = ", ".join(str(index) for index in indexes[:5])
-                                if len(indexes) > 5:
-                                    display += "…"
-                                parts.append(f"{chapter_number}: {display}")
-                            missing_summary = "; ".join(parts)
-                if extraction_complete:
-                    logger.info(
-                        "Auto-detected %d existing scenes for book '%s' - skipping extraction",
-                        len(existing_scenes),
-                        book_slug,
-                    )
-                    skip_extraction = True
-                else:
-                    logger.info(
-                        "Found %d existing scene(s) for book '%s' but extraction is incomplete; continuing extraction",
-                        len(existing_scenes),
-                        book_slug,
-                    )
-                    if missing_summary:
-                        logger.info(
-                            "Remaining chunk coverage needed (chapter: chunk indexes): %s",
-                            missing_summary,
-                        )
-                    if resume_from_chapter is not None:
-                        next_chunk = (
-                            (resume_from_chunk + 1)
-                            if resume_from_chunk is not None
-                            else 0
-                        )
-                        logger.info(
-                            "Extraction will resume from chapter %s starting at chunk index %s",
-                            resume_from_chapter,
-                            next_chunk,
-                        )
-
-    # Step 1: Extract scenes (if not skipped)
-    if not skip_extraction:
-        await _emit_stage_update(stage_callback, stage="extracting")
-        logger.info("=" * 60)
-        logger.info("STEP 1: EXTRACTING SCENES")
-        logger.info("=" * 60)
-
-        if args.dry_run:
-            logger.info("DRY RUN: Would extract scenes from %s", book_path)
-        else:
-            config = SceneExtractionConfig(
-                enable_refinement=True,
-                book_slug=args.book_slug,
-                resume_from_chapter=resume_from_chapter,
-                resume_from_chunk=resume_from_chunk,
-            )
-            if book_path is None:
-                raise ValueError("--book-path is required for scene extraction")
-            loop = asyncio.get_running_loop()
-            extraction_stats = await loop.run_in_executor(
-                None,
-                _extract_book_with_session,
-                config,
-                book_path,
-            )
-            scenes_count = extraction_stats.get("scenes", 0)
-            stats.scenes_extracted = (
-                scenes_count if isinstance(scenes_count, int) else 0
-            )
-            logger.info("Extracted %d scenes", stats.scenes_extracted)
-    else:
-        logger.info("Skipping scene extraction (already completed)")
-
-    # Ensure book slug is set
-    if not book_slug:
-        logger.error(
-            "--book-slug is required when --skip-extraction is used without --book-path"
-        )
-        raise ValueError("--book-slug is required")
-
-    # Auto-detect if ranking should be skipped
-    skip_ranking = args.skip_ranking
-    if not skip_ranking and not args.dry_run:
-        with Session(engine) as session:
-            scene_repo = SceneExtractionRepository(session)
-            ranking_repo = SceneRankingRepository(session)
-
-            scenes = scene_repo.list_for_book(book_slug)
-            if scenes:
-                # Check if all scenes have rankings
-                scenes_with_rankings = 0
-                for scene in scenes:
-                    if ranking_repo.get_latest_for_scene(scene.id):
-                        scenes_with_rankings += 1
-
-                if scenes_with_rankings == len(scenes):
-                    logger.info(
-                        "Auto-detected rankings for all %d scenes - skipping ranking",
-                        len(scenes),
-                    )
-                    skip_ranking = True
-                elif scenes_with_rankings > 0:
-                    logger.info(
-                        "Found partial rankings (%d/%d scenes) - will rank remaining scenes",
-                        scenes_with_rankings,
-                        len(scenes),
-                    )
-
-    # Step 2: Rank scenes (if not skipped)
-    if not skip_ranking:
-        await _emit_stage_update(stage_callback, stage="ranking")
-        logger.info("\n" + "=" * 60)
-        logger.info("STEP 2: RANKING SCENES")
-        logger.info("=" * 60)
-
-        if args.dry_run:
-            logger.info("DRY RUN: Would rank scenes for book: %s", book_slug)
-        else:
-            with Session(engine) as session:
-                scene_repo = SceneExtractionRepository(session)
-                scenes = scene_repo.list_for_book(book_slug)
-                ranking_config = SceneRankingConfig()
-                ranking_service = SceneRankingService(session, config=ranking_config)
-                scenes_to_rank = _filter_scenes_for_ranking(
-                    session=session,
-                    scenes=scenes,
-                    book_slug=book_slug,
-                    ranking_service=ranking_service,
-                    overwrite=False,
-                )
-
-                if not scenes_to_rank:
-                    logger.info("No scenes require ranking for book: %s", book_slug)
-                else:
-                    for scene in scenes_to_rank:
-                        try:
-                            result = await ranking_service.rank_scene(
-                                scene,
-                                overwrite=False,
-                                dry_run=False,
-                            )
-                            if result:
-                                stats.scenes_ranked += 1
-                                logger.info(
-                                    "Ranked scene %d (chapter %d): priority=%.1f",
-                                    scene.scene_number,
-                                    scene.chapter_number,
-                                    result.overall_priority,
-                                )
-                        except Exception as exc:
-                            error_msg = f"Failed to rank scene {scene.id}: {exc}"
-                            logger.error(error_msg)
-                            stats.errors.append(error_msg)
-
-                    logger.info("Ranked %d scenes", stats.scenes_ranked)
-    else:
-        logger.info("Skipping scene ranking (already completed)")
-
-    primary_prompt_scene_limit = getattr(args, "prompts_for_scenes", None)
-    fallback_prompt_scene_limit = getattr(args, "images_for_scenes", None)
-    effective_prompts_for_scenes = (
-        primary_prompt_scene_limit
-        if isinstance(primary_prompt_scene_limit, int)
-        and primary_prompt_scene_limit > 0
-        else None
+    """Run the complete pipeline via the orchestrator."""
+    from app.services.pipeline import (
+        DocumentTarget,
+        ImageExecutionOptions,
+        PipelineExecutionConfig,
+        PipelineOrchestrator,
+        PipelineRunStartService,
+        PipelineStagePlan,
+        PromptExecutionOptions,
     )
-    prompt_limit_inherited_from_images = False
-    if effective_prompts_for_scenes is None and isinstance(
-        fallback_prompt_scene_limit, int
-    ):
-        if fallback_prompt_scene_limit > 0:
-            effective_prompts_for_scenes = fallback_prompt_scene_limit
-            prompt_limit_inherited_from_images = primary_prompt_scene_limit is None
 
-    prompt_generation_config = _build_run_prompt_generation_config(args)
-
-    # Auto-detect if prompt generation should be skipped
-    skip_prompts = args.skip_prompts
-    if not skip_prompts and not args.dry_run:
-        with Session(engine) as session:
-            ranking_repo = SceneRankingRepository(session)
-            prompt_repo = ImagePromptRepository(session)
-            image_repo = GeneratedImageRepository(session)
-            prompt_service = ImagePromptGenerationService(
-                session,
-                config=prompt_generation_config,
-            )
-            target_scenes = (
-                effective_prompts_for_scenes if effective_prompts_for_scenes else 100
-            )
-
-            ready_scenes, scenes_missing_prompts = (
-                _count_prompt_ready_scenes_without_images(
-                    ranking_repo=ranking_repo,
-                    prompt_repo=prompt_repo,
-                    image_repo=image_repo,
-                    book_slug=book_slug,
-                    target_scenes=target_scenes,
-                    scene_has_ready_prompts=lambda scene_id: _scene_has_matching_prompt_set(
-                        prompt_repo=prompt_repo,
-                        prompt_service=prompt_service,
-                        scene_id=scene_id,
-                    ),
-                )
-            )
-
-            if ready_scenes >= target_scenes:
-                logger.info(
-                    "Auto-detected %d prompt-ready scene(s) without images - skipping prompt generation",
-                    ready_scenes,
-                )
-                skip_prompts = True
-            elif ready_scenes > 0 or scenes_missing_prompts > 0:
-                logger.info(
-                    "Prompt auto-detect found %d prompt-ready scene(s) without images and %d scene(s) still needing prompts",
-                    ready_scenes,
-                    scenes_missing_prompts,
-                )
-
-    # Step 3: Generate prompts (if not skipped)
-    if not skip_prompts:
-        await _emit_stage_update(stage_callback, stage="generating_prompts")
-        logger.info("\n" + "=" * 60)
-        logger.info("STEP 3: GENERATING PROMPTS")
-        logger.info("=" * 60)
-
-        if args.dry_run:
-            top_scenes_msg = ""
-            if effective_prompts_for_scenes:
-                top_scenes_msg = f" for top {effective_prompts_for_scenes} scenes"
-                if prompt_limit_inherited_from_images:
-                    top_scenes_msg += " (matching --images-for-scenes)"
-
-            if (
-                hasattr(args, "prompts_per_scene")
-                and args.prompts_per_scene is not None
-            ):
-                if (
-                    hasattr(args, "ignore_ranking_recommendations")
-                    and args.ignore_ranking_recommendations
-                ):
-                    logger.info(
-                        "DRY RUN: Would generate %d prompts per scene%s for book: %s (ignoring ranking recommendations)",
-                        args.prompts_per_scene,
-                        top_scenes_msg,
-                        book_slug,
-                    )
-                else:
-                    logger.info(
-                        "DRY RUN: Would generate prompts using ranking recommendations (fallback: %d)%s for book: %s",
-                        args.prompts_per_scene,
-                        top_scenes_msg,
-                        book_slug,
-                    )
-            else:
-                logger.info(
-                    "DRY RUN: Would generate prompts using ranking recommendations (fallback: 4)%s for book: %s",
-                    top_scenes_msg,
-                    book_slug,
-                )
-        else:
-            if prompt_limit_inherited_from_images and effective_prompts_for_scenes:
-                logger.info(
-                    "No --prompts-for-scenes provided; defaulting to top %d scenes to align with --images-for-scenes",
-                    effective_prompts_for_scenes,
-                )
-
-            with Session(engine) as session:
-                # Get top-ranked scenes and regenerate only when prompts are missing or mismatched.
-                ranking_repo = SceneRankingRepository(session)
-                prompt_repo = ImagePromptRepository(session)
-
-                # Determine target number of scenes to generate prompts for
-                target_scenes = effective_prompts_for_scenes
-
-                if (
-                    hasattr(args, "prompts_per_scene")
-                    and args.prompts_per_scene is not None
-                ):
-                    if (
-                        hasattr(args, "ignore_ranking_recommendations")
-                        and args.ignore_ranking_recommendations
-                    ):
-                        logger.info(
-                            "Using fixed variant count: %d (ignoring rankings)",
-                            args.prompts_per_scene,
-                        )
-                    else:
-                        logger.info(
-                            "Using ranking recommendations (fallback: %d variants)",
-                            args.prompts_per_scene,
-                        )
-                else:
-                    logger.info("Using ranking recommendations (fallback: 4 variants)")
-
-                prompt_config = _build_run_prompt_generation_config(args)
-                prompt_service = ImagePromptGenerationService(
-                    session, config=prompt_config
-                )
-
-                image_repo = GeneratedImageRepository(session)
-                rankings = _list_ranked_scene_candidates_without_images(
-                    ranking_repo=ranking_repo,
-                    image_repo=image_repo,
-                    book_slug=book_slug,
-                    target_scenes=target_scenes,
-                )
-
-                logger.info(
-                    "Processing %d ranked scene candidates without images to generate prompts for %s scenes",
-                    len(rankings),
-                    target_scenes if target_scenes is not None else "all",
-                )
-
-                scenes_with_prompts_generated = 0
-
-                for ranking in rankings:
-                    # Check if we've reached the target
-                    if (
-                        target_scenes is not None
-                        and scenes_with_prompts_generated >= target_scenes
-                    ):
-                        logger.info(
-                            "Reached target of %d scenes with prompts generated",
-                            target_scenes,
-                        )
-                        break
-
-                    if ranking.scene_extraction:
-                        scene = ranking.scene_extraction
-                        scene_id = scene.id
-
-                        # Reuse only prompt sets that already match this run's style config.
-                        if _scene_has_matching_prompt_set(
-                            prompt_repo=prompt_repo,
-                            prompt_service=prompt_service,
-                            scene_id=scene_id,
-                        ):
-                            logger.debug(
-                                "Scene %s already has matching prompts, skipping",
-                                scene_id,
-                            )
-                            continue
-
-                        try:
-                            prompts = await prompt_service.generate_for_scene(
-                                scene,
-                                dry_run=False,
-                                overwrite=False,
-                                metadata={"cli": "image_gen_cli"},
-                            )
-                            if prompts:
-                                stats.prompts_generated += len(prompts)
-                                scenes_with_prompts_generated += 1
-                                logger.info(
-                                    "Generated %d prompts for scene %d (chapter %d)",
-                                    len(prompts),
-                                    scene.scene_number,
-                                    scene.chapter_number,
-                                )
-                        except Exception as exc:
-                            error_msg = f"Failed to generate prompts for scene {scene_id}: {exc}"
-                            logger.error(error_msg)
-                            _rollback_session_after_scene_error(
-                                session,
-                                context=f"prompt generation failure for scene {scene_id}",
-                            )
-                            stats.errors.append(error_msg)
-
-                logger.info(
-                    "Generated %d prompts for %d scenes",
-                    stats.prompts_generated,
-                    scenes_with_prompts_generated,
-                )
-    else:
-        logger.info("Skipping prompt generation (already completed)")
-
-    # Step 4: Generate images
-    await _emit_stage_update(stage_callback, stage="generating_images")
-    logger.info("\n" + "=" * 60)
-    logger.info("STEP 4: GENERATING IMAGES")
-    logger.info("=" * 60)
+    book_slug = args.book_slug
+    book_path = getattr(args, "book_path", None)
 
     if args.dry_run:
-        logger.info(
-            "DRY RUN: Would generate images for top %d scenes from book: %s",
-            args.images_for_scenes,
-            book_slug,
-        )
-    else:
-        image_config = ImageGenerationConfig(
-            quality=args.quality,
-            preferred_style=args.style,
-            aspect_ratio=args.aspect_ratio,
-            concurrency=3,
-        )
+        stats = PipelineStats()
+        skip_extraction = getattr(args, "skip_extraction", False)
+        skip_ranking = getattr(args, "skip_ranking", False)
+        skip_prompts = getattr(args, "skip_prompts", False)
+        images_for_scenes = getattr(args, "images_for_scenes", None)
 
-        with Session(engine) as session:
-            ranking_repo = SceneRankingRepository(session)
-            prompt_repo = ImagePromptRepository(session)
-            image_repo = GeneratedImageRepository(session)
-            prompt_service = ImagePromptGenerationService(
-                session,
-                config=prompt_generation_config,
+        if not skip_extraction:
+            logger.info("DRY RUN: Would extract scenes from %s", book_path)
+        if not skip_ranking:
+            logger.info("DRY RUN: Would rank scenes for book: %s", book_slug)
+        if not skip_prompts:
+            logger.info("DRY RUN: Would generate prompts for book: %s", book_slug)
+            logger.info(
+                "DRY RUN: Would generate images for top %s scenes from book: %s",
+                images_for_scenes,
+                book_slug,
             )
-            prompt_ids = _collect_matching_prompt_ids_for_image_generation(
-                ranking_repo=ranking_repo,
-                prompt_repo=prompt_repo,
-                image_repo=image_repo,
-                prompt_service=prompt_service,
-                book_slug=book_slug,
-                target_scenes=args.images_for_scenes,
-            )
-            if not prompt_ids:
-                logger.warning(
-                    "No prompt sets matching the resolved run configuration were found for the top %d scene(s) in '%s'; skipping image generation.",
-                    args.images_for_scenes,
-                    book_slug,
-                )
-                return stats
+        return stats
 
-            mode = getattr(args, "mode", "sync")
-            if mode == "batch":
-                image_service: ImageGenerationService | BatchImageGenerationService = (
-                    BatchImageGenerationService(
-                        session,
-                        config=image_config,
-                        poll_timeout=getattr(args, "poll_timeout", 3600),
-                        poll_interval=getattr(args, "poll_interval", 30),
-                    )
-                )
-                logger.info("Using batch generation mode (50%% cost reduction)")
-            else:
-                image_service = ImageGenerationService(session, config=image_config)
-                logger.info("Using sync generation mode")
+    run_prompts = not getattr(args, "skip_prompts", False)
+    target = DocumentTarget(
+        book_slug=book_slug,
+        book_path=book_path,
+    )
+    stages = PipelineStagePlan(
+        run_extraction=not getattr(args, "skip_extraction", False),
+        run_ranking=not getattr(args, "skip_ranking", False),
+        run_prompt_generation=run_prompts,
+        run_image_generation=run_prompts,
+    )
+    prompt_options = PromptExecutionOptions(
+        prompts_per_scene=getattr(args, "prompts_per_scene", None),
+        ignore_ranking_recommendations=getattr(
+            args, "ignore_ranking_recommendations", False
+        ),
+        prompts_for_scenes=getattr(args, "prompts_for_scenes", None),
+        images_for_scenes=getattr(args, "images_for_scenes", None),
+        prompt_art_style_mode=getattr(args, "prompt_art_style_mode", None),
+        prompt_art_style_text=getattr(args, "prompt_art_style_text", None),
+    )
+    image_options = ImageExecutionOptions(
+        quality=getattr(args, "quality", "standard"),
+        style=getattr(args, "style", None),
+        aspect_ratio=getattr(args, "aspect_ratio", None),
+    )
+    config = PipelineExecutionConfig(
+        target=target,
+        stages=stages,
+        prompt_options=prompt_options,
+        image_options=image_options,
+    )
 
-            try:
-                generated_ids = await image_service.generate_for_selection(
-                    prompt_ids=prompt_ids,
-                    quality=args.quality,
-                    preferred_style=args.style,
-                    aspect_ratio=args.aspect_ratio,
-                    dry_run=False,
-                )
-                stats.images_generated = len(generated_ids)
-                logger.info("Generated %d images", stats.images_generated)
-            except Exception as exc:
-                error_msg = f"Failed to generate images: {exc}"
-                logger.error(error_msg)
-                stats.errors.append(error_msg)
+    with Session(engine) as session:
+        service = PipelineRunStartService(session)
+        prepared = service.prepare_execution(config)
 
-    return stats
+    orchestrator = PipelineOrchestrator()
+    result = await orchestrator.execute(prepared)
+
+    return result.stats
 
 
 async def _run_extract(args: argparse.Namespace) -> PipelineStats:
@@ -2128,16 +1627,6 @@ async def async_main(argv: list[str] | None = None) -> int:
         level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-
-    if args.command == "run":
-        if args.images_for_scenes is None:
-            args.images_for_scenes = _resolve_default_scenes_per_run()
-            logger.info(
-                "Using settings default for --images-for-scenes: %d",
-                args.images_for_scenes,
-            )
-        if args.images_for_scenes <= 0:
-            raise ValueError("--images-for-scenes must be a positive integer")
 
     # Route to appropriate handler
     if args.command == "run":
