@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.services.pipeline.orchestrator_config import (
+    CustomRemixTarget,
     DocumentTarget,
     ImageExecutionOptions,
     PipelineExecutionConfig,
@@ -15,6 +16,7 @@ from app.services.pipeline.orchestrator_config import (
     PipelineStats,
     PreparedPipelineExecution,
     PromptExecutionOptions,
+    RemixTarget,
     SceneTarget,
 )
 from app.services.pipeline.pipeline_orchestrator import (
@@ -887,3 +889,327 @@ class TestOrchestratorSceneTarget:
         assert result.status == "completed"
         # Image generation must see exactly the one prompt from this run
         assert image_gen_prompt_ids == [run_prompt_id]
+
+
+# ---------------------------------------------------------------------------
+# Tests: PipelineOrchestrator remix target
+# ---------------------------------------------------------------------------
+
+
+class TestOrchestratorRemixTarget:
+    """Verify the orchestrator handles RemixTarget execution."""
+
+    def test_remix_target_creates_prompts_and_images(self) -> None:
+        """Remix run generates prompts and passes them to image generation."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        source_image_id = uuid4()
+        source_prompt_id = uuid4()
+        prompt_ids = [uuid4(), uuid4()]
+
+        async def _fake_prompt_gen(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            stats.prompts_generated = len(prompt_ids)
+            prepared.context.created_prompt_ids.extend(prompt_ids)
+
+        captured_prompt_ids: list[Any] = []
+
+        async def _fake_image_gen(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            captured_prompt_ids.extend(prepared.context.created_prompt_ids)
+            stats.images_generated = 2
+            prepared.context.created_image_ids.extend([uuid4(), uuid4()])
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _fake_prompt_gen  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _fake_image_gen  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=RemixTarget(
+                source_image_id=source_image_id,
+                source_prompt_id=source_prompt_id,
+                book_slug="test-book",
+            ),
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        assert result.status == "completed"
+        assert captured_prompt_ids == prompt_ids
+        assert result.stats.prompts_generated == 2
+        assert result.stats.images_generated == 2
+
+    def test_remix_target_partial_success(self) -> None:
+        """Remix run with errors succeeds if at least one image generated."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        async def _prompt_with_error(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            stats.prompts_generated = 1
+            prepared.context.created_prompt_ids.append(uuid4())
+            stats.errors.append("One remix variant failed")
+
+        async def _image_success(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            stats.images_generated = 1
+            prepared.context.created_image_ids.append(uuid4())
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _prompt_with_error  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _image_success  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=RemixTarget(
+                source_image_id=uuid4(),
+                source_prompt_id=uuid4(),
+                book_slug="test-book",
+            ),
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+        assert result.status == "completed"
+
+    def test_remix_target_zero_images_is_failure(self) -> None:
+        """Remix run fails if zero images are generated."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        async def _empty_prompt(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            pass
+
+        async def _empty_image(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            pass
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _empty_prompt  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _empty_image  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=RemixTarget(
+                source_image_id=uuid4(),
+                source_prompt_id=uuid4(),
+                book_slug="test-book",
+            ),
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+        assert result.status == "failed"
+        assert "No images were generated" in (result.error_message or "")
+
+    def test_remix_target_no_extraction_or_ranking_stages(self) -> None:
+        """Remix runs should not execute extraction or ranking."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        async def _prompt_stub(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            prepared.context.created_prompt_ids.append(uuid4())
+            stats.prompts_generated = 1
+
+        async def _image_stub(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            stats.images_generated = 1
+            prepared.context.created_image_ids.append(uuid4())
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _prompt_stub  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _image_stub  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=RemixTarget(
+                source_image_id=uuid4(),
+                source_prompt_id=uuid4(),
+                book_slug="test-book",
+            ),
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+        assert result.status == "completed"
+
+        stage_values = [u["current_stage"] for u in callbacks.status_updates]
+        assert "extracting" not in stage_values
+        assert "ranking" not in stage_values
+        assert "generating_prompts" in stage_values
+        assert "generating_images" in stage_values
+
+
+# ---------------------------------------------------------------------------
+# Tests: PipelineOrchestrator custom remix target
+# ---------------------------------------------------------------------------
+
+
+class TestOrchestratorCustomRemixTarget:
+    """Verify the orchestrator handles CustomRemixTarget execution."""
+
+    def test_custom_remix_registers_existing_prompt_and_generates_images(self) -> None:
+        """Custom remix registers the pre-created prompt and generates images."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        custom_prompt_id = uuid4()
+        captured_prompt_ids: list[Any] = []
+
+        async def _fake_prompt_gen(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            # Custom remix prompt generation should register the pre-created
+            # prompt into context
+            target: CustomRemixTarget = prepared.config.target  # type: ignore[assignment]
+            if target.custom_prompt_id is not None:
+                prepared.context.created_prompt_ids.append(target.custom_prompt_id)
+                stats.prompts_generated = 1
+
+        async def _fake_image_gen(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            captured_prompt_ids.extend(prepared.context.created_prompt_ids)
+            stats.images_generated = 1
+            prepared.context.created_image_ids.append(uuid4())
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _fake_prompt_gen  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _fake_image_gen  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=CustomRemixTarget(
+                source_image_id=uuid4(),
+                source_prompt_id=uuid4(),
+                custom_prompt_id=custom_prompt_id,
+                custom_prompt_text="Custom test prompt",
+                book_slug="test-book",
+            ),
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        assert result.status == "completed"
+        assert captured_prompt_ids == [custom_prompt_id]
+        assert result.stats.prompts_generated == 1
+        assert result.stats.images_generated == 1
+
+    def test_custom_remix_missing_prompt_id_errors(self) -> None:
+        """Custom remix without pre-created prompt_id records an error."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        async def _empty_image(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            pass
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        # Use real prompt generation (will pick up CustomRemixTarget dispatch)
+        orchestrator._execute_image_generation = _empty_image  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=CustomRemixTarget(
+                source_image_id=uuid4(),
+                source_prompt_id=uuid4(),
+                custom_prompt_id=None,  # Missing!
+                custom_prompt_text="Test text",
+                book_slug="test-book",
+            ),
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        # Should fail because prompt generation recorded an error and
+        # no images were generated
+        assert result.status == "failed"
+        assert any("not created before orchestrator" in e for e in result.stats.errors)
+
+    def test_custom_remix_zero_images_is_failure(self) -> None:
+        """Custom remix fails if zero images generated."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+
+        custom_prompt_id = uuid4()
+
+        async def _prompt_ok(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            prepared.context.created_prompt_ids.append(custom_prompt_id)
+            stats.prompts_generated = 1
+
+        async def _image_none(
+            prepared: PreparedPipelineExecution,
+            stats: PipelineStats,
+        ) -> None:
+            pass
+
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _prompt_ok  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _image_none  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=True,
+            target=CustomRemixTarget(
+                source_image_id=uuid4(),
+                source_prompt_id=uuid4(),
+                custom_prompt_id=custom_prompt_id,
+                custom_prompt_text="Test",
+                book_slug="test-book",
+            ),
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+        assert result.status == "failed"
+        assert "No images were generated" in (result.error_message or "")

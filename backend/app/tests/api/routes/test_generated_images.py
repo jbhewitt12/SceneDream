@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -12,12 +11,18 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
-import app.api.routes.generated_images as generated_images_routes
 from app.repositories import (
     AppSettingsRepository,
     GeneratedImageRepository,
     ImagePromptRepository,
+    PipelineRunRepository,
     SceneExtractionRepository,
+)
+from app.services.image_prompt_generation.image_prompt_generation_service import (
+    ImagePromptGenerationServiceError,
+)
+from app.services.pipeline.orchestrator_config import (
+    PreparedPipelineExecution,
 )
 from models.generated_image import GeneratedImage
 from models.image_prompt import ImagePrompt
@@ -123,17 +128,64 @@ def remix_test_data(db: Session) -> Generator[dict[str, object], None, None]:
     db.commit()
 
 
-def test_remix_endpoint_schedules_async_task(
-    client: TestClient,
-    remix_test_data: dict[str, object],
+def _mock_prepare_execution(
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Ensure remix endpoint schedules async task without awaiting it."""
+    run_id: object | None = None,
+    *,
+    custom_remix: bool = False,
+) -> MagicMock:
+    """Mock prepare_execution to return a PreparedPipelineExecution."""
+    from app.services.pipeline.orchestrator_config import (
+        CustomRemixTarget,
+        PipelineExecutionConfig,
+        PipelineExecutionContext,
+        PipelineStagePlan,
+        RemixTarget,
+    )
 
-    image: GeneratedImage = remix_test_data["image"]  # type: ignore[assignment]
-    prompt: ImagePrompt = remix_test_data["prompt"]  # type: ignore[assignment]
+    rid = run_id or uuid4()
+    if custom_remix:
+        target: RemixTarget | CustomRemixTarget = CustomRemixTarget(
+            source_image_id=uuid4(),
+            source_prompt_id=uuid4(),
+            custom_prompt_text="test prompt",
+        )
+    else:
+        target = RemixTarget(
+            source_image_id=uuid4(),
+            source_prompt_id=uuid4(),
+        )
 
-    execute_mock = AsyncMock(name="_execute_remix_generation")
+    prepared = PreparedPipelineExecution(
+        run_id=rid,  # type: ignore[arg-type]
+        config=PipelineExecutionConfig(
+            target=target,
+            stages=PipelineStagePlan(
+                run_prompt_generation=True,
+                run_image_generation=True,
+            ),
+        ),
+        config_overrides={},
+        context=PipelineExecutionContext(book_slug="test-book"),
+    )
+    mock_prepare = MagicMock(return_value=prepared)
+    monkeypatch.setattr(
+        "app.api.routes.generated_images.PipelineRunStartService.prepare_execution",
+        mock_prepare,
+    )
+    return mock_prepare
+
+
+def _mock_orchestrator_and_spawn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[MagicMock, list[tuple[object, str]]]:
+    """Mock PipelineOrchestrator.execute and spawn_background_task."""
+    execute_mock = AsyncMock(name="PipelineOrchestrator.execute")
+    monkeypatch.setattr(
+        "app.api.routes.generated_images.PipelineOrchestrator.execute",
+        execute_mock,
+    )
+
     scheduled_calls: list[tuple[object, str]] = []
 
     def _capture_spawn(coro: object, *, task_name: str) -> MagicMock:
@@ -143,15 +195,25 @@ def test_remix_endpoint_schedules_async_task(
         return MagicMock()
 
     monkeypatch.setattr(
-        generated_images_routes,
-        "_execute_remix_generation",
-        execute_mock,
-    )
-    monkeypatch.setattr(
-        generated_images_routes,
-        "_spawn_background_task",
+        "app.api.routes.generated_images.spawn_background_task",
         _capture_spawn,
     )
+    return execute_mock, scheduled_calls
+
+
+def test_remix_endpoint_creates_pending_run_and_schedules_task(
+    client: TestClient,
+    remix_test_data: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Remix endpoint creates a pending PipelineRun via prepare_execution
+    and spawns orchestrator execution in the background."""
+
+    image: GeneratedImage = remix_test_data["image"]  # type: ignore[assignment]
+    run_id = uuid4()
+
+    _mock_prepare_execution(monkeypatch, run_id=run_id)
+    execute_mock, scheduled_calls = _mock_orchestrator_and_spawn(monkeypatch)
 
     response = client.post(
         f"/api/v1/generated-images/{image.id}/remix",
@@ -159,17 +221,35 @@ def test_remix_endpoint_schedules_async_task(
     )
 
     assert response.status_code == 202
-    execute_mock.assert_called_once_with(
-        source_image_id=image.id,
-        source_prompt_id=prompt.id,
-        variants_count=2,
-        dry_run=False,
-    )
+    data = response.json()
+    assert data["pipeline_run_id"] == str(run_id)
+    assert data["status"] == "accepted"
     assert len(scheduled_calls) == 1
-    scheduled_coro, task_name = scheduled_calls[0]
-    assert asyncio.iscoroutine(scheduled_coro)
-    assert execute_mock.await_count == 0
-    assert task_name.startswith("remix-generated-image-")
+    assert scheduled_calls[0][1].startswith("remix-generated-image-")
+
+
+def test_remix_endpoint_returns_pipeline_run_id(
+    client: TestClient,
+    remix_test_data: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Response must include pipeline_run_id."""
+
+    image: GeneratedImage = remix_test_data["image"]  # type: ignore[assignment]
+    run_id = uuid4()
+
+    _mock_prepare_execution(monkeypatch, run_id=run_id)
+    _mock_orchestrator_and_spawn(monkeypatch)
+
+    response = client.post(
+        f"/api/v1/generated-images/{image.id}/remix",
+        json={},
+    )
+
+    assert response.status_code == 202
+    data = response.json()
+    assert "pipeline_run_id" in data
+    assert data["pipeline_run_id"] == str(run_id)
 
 
 def test_remix_endpoint_task_creation_failure(
@@ -181,11 +261,11 @@ def test_remix_endpoint_task_creation_failure(
 
     image: GeneratedImage = remix_test_data["image"]  # type: ignore[assignment]
 
-    execute_mock = AsyncMock(return_value=None)
+    _mock_prepare_execution(monkeypatch)
 
+    execute_mock = AsyncMock(name="PipelineOrchestrator.execute")
     monkeypatch.setattr(
-        generated_images_routes,
-        "_execute_remix_generation",
+        "app.api.routes.generated_images.PipelineOrchestrator.execute",
         execute_mock,
     )
 
@@ -195,8 +275,7 @@ def test_remix_endpoint_task_creation_failure(
         raise RuntimeError("scheduler unavailable")
 
     monkeypatch.setattr(
-        generated_images_routes,
-        "_spawn_background_task",
+        "app.api.routes.generated_images.spawn_background_task",
         _failing_spawn,
     )
 
@@ -209,39 +288,25 @@ def test_remix_endpoint_task_creation_failure(
     assert response.json()["detail"] == "Failed to start remix generation"
 
 
-def test_custom_remix_endpoint_schedules_async_task(
+def test_custom_remix_endpoint_creates_pending_run_and_schedules_task(
     client: TestClient,
     remix_test_data: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ensure custom remix endpoint schedules async task and returns promptly."""
+    """Custom remix creates a pending run, creates custom prompt in request scope,
+    and spawns orchestrator execution."""
 
     image: GeneratedImage = remix_test_data["image"]  # type: ignore[assignment]
     prompt: ImagePrompt = remix_test_data["prompt"]  # type: ignore[assignment]
+    run_id = uuid4()
 
-    execute_mock = AsyncMock(name="_execute_custom_remix_generation")
-    custom_prompt = prompt
-    scheduled_calls: list[tuple[object, str]] = []
+    _mock_prepare_execution(monkeypatch, run_id=run_id, custom_remix=True)
+    execute_mock, scheduled_calls = _mock_orchestrator_and_spawn(monkeypatch)
 
-    def _capture_spawn(coro: object, *, task_name: str) -> MagicMock:
-        scheduled_calls.append((coro, task_name))
-        if asyncio.iscoroutine(coro):
-            coro.close()
-        return MagicMock()
-
-    monkeypatch.setattr(
-        generated_images_routes,
-        "_execute_custom_remix_generation",
-        execute_mock,
-    )
-    monkeypatch.setattr(
-        generated_images_routes,
-        "_spawn_background_task",
-        _capture_spawn,
-    )
+    # Mock create_custom_remix_variant to return the existing prompt as the custom prompt
     monkeypatch.setattr(
         "app.api.routes.generated_images.ImagePromptGenerationService.create_custom_remix_variant",
-        AsyncMock(return_value=custom_prompt),
+        AsyncMock(return_value=prompt),
     )
 
     response = client.post(
@@ -250,42 +315,121 @@ def test_custom_remix_endpoint_schedules_async_task(
     )
 
     assert response.status_code == 202
-    execute_mock.assert_called_once_with(
-        source_image_id=image.id,
-        source_prompt_id=prompt.id,
-        custom_prompt_id=custom_prompt.id,
-        custom_prompt_text="A vibrant aurora over the forest.",
-    )
+    data = response.json()
+    assert data["pipeline_run_id"] == str(run_id)
+    assert data["custom_prompt_id"] == str(prompt.id)
+    assert data["status"] == "accepted"
     assert len(scheduled_calls) == 1
-    scheduled_coro, task_name = scheduled_calls[0]
-    assert asyncio.iscoroutine(scheduled_coro)
-    assert execute_mock.await_count == 0
-    assert task_name.startswith("custom-remix-generated-image-")
+    assert scheduled_calls[0][1].startswith("custom-remix-generated-image-")
 
 
-def test_spawn_background_task_logs_exception(
-    caplog: pytest.LogCaptureFixture,
+def test_custom_remix_endpoint_returns_pipeline_run_id(
+    client: TestClient,
+    remix_test_data: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unhandled errors in background tasks should be logged via callback."""
+    """Custom remix response must include pipeline_run_id."""
 
-    caplog.set_level(logging.ERROR, logger=generated_images_routes.logger.name)
+    image: GeneratedImage = remix_test_data["image"]  # type: ignore[assignment]
+    prompt: ImagePrompt = remix_test_data["prompt"]  # type: ignore[assignment]
+    run_id = uuid4()
 
-    async def _failing_task() -> None:
-        raise RuntimeError("boom")
+    _mock_prepare_execution(monkeypatch, run_id=run_id, custom_remix=True)
+    _mock_orchestrator_and_spawn(monkeypatch)
 
-    async def _run() -> None:
-        task = generated_images_routes._spawn_background_task(
-            _failing_task(), task_name="test-task"
-        )
-        await asyncio.sleep(0)
-        assert task.done()
-
-    asyncio.run(_run())
-
-    assert any(
-        "Unhandled exception in background task test-task" in message
-        for message in caplog.messages
+    monkeypatch.setattr(
+        "app.api.routes.generated_images.ImagePromptGenerationService.create_custom_remix_variant",
+        AsyncMock(return_value=prompt),
     )
+
+    response = client.post(
+        f"/api/v1/generated-images/{image.id}/custom-remix",
+        json={"custom_prompt_text": "Test prompt text."},
+    )
+
+    assert response.status_code == 202
+    data = response.json()
+    assert "pipeline_run_id" in data
+    assert data["pipeline_run_id"] == str(run_id)
+
+
+def test_custom_remix_prompt_creation_failure_fails_pending_run(
+    client: TestClient,
+    db: Session,
+    remix_test_data: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If custom prompt creation fails, the pending run should be marked as failed."""
+
+    image: GeneratedImage = remix_test_data["image"]  # type: ignore[assignment]
+
+    # Create a real pending pipeline run so we can verify it gets failed
+    run_repo = PipelineRunRepository(db)
+    run = run_repo.create(
+        data={
+            "book_slug": image.book_slug,
+            "status": "pending",
+            "current_stage": "pending",
+            "config_overrides": {},
+        },
+        commit=True,
+        refresh=True,
+    )
+    run_id = run.id
+
+    from app.services.pipeline.orchestrator_config import (
+        CustomRemixTarget,
+        PipelineExecutionConfig,
+        PipelineExecutionContext,
+        PipelineStagePlan,
+    )
+
+    prepared = PreparedPipelineExecution(
+        run_id=run_id,
+        config=PipelineExecutionConfig(
+            target=CustomRemixTarget(
+                source_image_id=image.id,
+                source_prompt_id=image.image_prompt_id,
+                custom_prompt_text="Will fail",
+            ),
+            stages=PipelineStagePlan(
+                run_prompt_generation=True,
+                run_image_generation=True,
+            ),
+        ),
+        config_overrides={},
+        context=PipelineExecutionContext(book_slug=image.book_slug),
+    )
+    monkeypatch.setattr(
+        "app.api.routes.generated_images.PipelineRunStartService.prepare_execution",
+        MagicMock(return_value=prepared),
+    )
+    _mock_orchestrator_and_spawn(monkeypatch)
+
+    # Make prompt creation fail
+    monkeypatch.setattr(
+        "app.api.routes.generated_images.ImagePromptGenerationService.create_custom_remix_variant",
+        AsyncMock(side_effect=ImagePromptGenerationServiceError("prompt gen failed")),
+    )
+
+    response = client.post(
+        f"/api/v1/generated-images/{image.id}/custom-remix",
+        json={"custom_prompt_text": "Will fail"},
+    )
+
+    assert response.status_code == 400
+    assert "prompt gen failed" in response.json()["detail"]
+
+    # Verify the pipeline run was marked as failed
+    db.expire_all()
+    failed_run = run_repo.get(run_id)
+    assert failed_run is not None
+    assert failed_run.status == "failed"
+    assert "prompt gen failed" in (failed_run.error_message or "")
+
+    # Cleanup
+    db.delete(failed_run)
+    db.commit()
 
 
 # ---------------------------------------------------------------------------

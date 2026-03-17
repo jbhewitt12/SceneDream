@@ -933,3 +933,41 @@ Behavior:
   - `openapi.json` (regenerated)
   - `frontend/openapi.json` (regenerated)
   - `frontend/src/client/*` (regenerated)
+
+### Phase 7: Migrate remix and custom remix
+- Status: completed
+- Summary: Replaced independent remix and custom-remix background tasks in `generated_images.py` with orchestrator-backed execution. Both flows now create a pending `PipelineRun` via `prepare_execution()`, then spawn `PipelineOrchestrator.execute()` in the background. Custom remix creates the custom prompt in request scope (linked to the run) before handing off to the orchestrator. Response schemas now include `pipeline_run_id`. Added `_fail_pending_run()` helper for failing pending runs when request-scope setup fails.
+- Completed work:
+  - Added `_execute_remix_prompt_generation()` to the orchestrator that calls `generate_remix_variants()` with `pipeline_run_id` and tracks created prompt IDs in `context.created_prompt_ids`
+  - Added `_execute_custom_remix_prompt_generation()` to the orchestrator that registers the pre-created custom prompt ID into `context.created_prompt_ids` (prompt was created in request scope before orchestrator execution)
+  - Updated `_execute_prompt_generation()` to dispatch based on target type: `SceneTarget` -> scene, `RemixTarget` -> remix, `CustomRemixTarget` -> custom remix, else -> document
+  - Extended partial-success and zero-images failure checks to include `RemixTarget` and `CustomRemixTarget` alongside `SceneTarget`
+  - Added `pipeline_run_id: UUID` to `GeneratedImageRemixResponse` and `GeneratedImageCustomRemixResponse` schemas
+  - Rewrote `remix_generated_image` route: builds `PipelineExecutionConfig` with `RemixTarget`, calls `prepare_execution()`, spawns orchestrator, returns response with `pipeline_run_id`
+  - Rewrote `custom_remix_generated_image` route: builds config with `CustomRemixTarget`, calls `prepare_execution()`, creates custom prompt in request scope with `pipeline_run_id`, updates target's `custom_prompt_id`, spawns orchestrator, returns response with `pipeline_run_id`
+  - Added `_fail_pending_run()` helper in routes for marking runs as failed when request-scope prompt creation fails
+  - Removed legacy `_spawn_background_task()`, `_execute_remix_generation()`, `_execute_custom_remix_generation()` from routes; social posting helpers now use shared `spawn_background_task`
+  - Added 7 orchestrator tests: remix creates prompts and images, remix partial success, remix zero images failure, remix no extraction/ranking stages, custom remix registers prompt and generates images, custom remix missing prompt_id errors, custom remix zero images failure
+  - Added/rewrote 6 route tests: remix pending run + task scheduling, remix returns `pipeline_run_id`, remix task creation failure, custom remix pending run + task scheduling, custom remix returns `pipeline_run_id`, custom remix prompt creation failure fails pending run
+- Remaining work in this phase:
+  - none
+- Deviations from plan:
+  - The plan mentions "add simple failure finalization for request-scope custom-remix prompt creation failures". Implementation uses a `_fail_pending_run()` helper that directly updates the `PipelineRun` status to `failed` via `PipelineRunRepository.update_status()`, rather than routing through the orchestrator's finalization logic, since the failure occurs before orchestrator execution begins.
+  - Remix prompt generation delegates to `ImagePromptGenerationService.generate_remix_variants()` which already supports `pipeline_run_id` propagation from Phase 4 work, so no changes to the prompt generation service were needed.
+  - The custom-remix orchestrator method does not call prompt generation — it only registers the pre-created prompt ID. This differs from the remix path which actively generates new prompt variants.
+- Tests and verification run:
+  - `cd backend && uv run pytest app/tests/services/test_pipeline_orchestrator.py -v` — 40 passed (29 existing + 11 new)
+  - `cd backend && uv run pytest app/tests/api/routes/test_generated_images.py -v` — 15 passed
+  - `cd backend && uv run pytest` — 420 passed, 7 deselected
+  - `cd backend && uv run bash scripts/lint.sh` — mypy reports 4 pre-existing errors (none introduced by this phase)
+  - `cd backend && uv run ruff check` and `ruff format` — clean on all changed files
+- Known issues / follow-ups for next agent:
+  - The 4 pre-existing mypy errors in `document_stage_status_service.py` are unrelated to this work
+  - The removed `test_spawn_background_task_logs_exception` test from routes was testing the now-deleted local `_spawn_background_task()` function; the shared `spawn_background_task` in `background.py` has its own test coverage
+  - Social posting helpers (`_execute_social_posting`, `_execute_social_posting_all`) were updated to use the shared `spawn_background_task` import instead of the removed local version
+- Files changed:
+  - `backend/app/services/pipeline/pipeline_orchestrator.py` (modified — added remix/custom-remix prompt generation dispatch, extended partial-success/failure checks)
+  - `backend/app/schemas/generated_image.py` (modified — added `pipeline_run_id` to remix/custom-remix response schemas)
+  - `backend/app/api/routes/generated_images.py` (modified — rewrote remix/custom-remix routes to use orchestrator, removed legacy background task functions, added `_fail_pending_run` helper)
+  - `backend/app/tests/services/test_pipeline_orchestrator.py` (modified — added 11 new tests for remix and custom-remix orchestrator paths)
+  - `backend/app/tests/api/routes/test_generated_images.py` (modified — rewrote remix/custom-remix route tests for orchestrator-based mocking)

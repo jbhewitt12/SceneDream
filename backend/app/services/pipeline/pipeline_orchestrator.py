@@ -40,10 +40,12 @@ from app.services.scene_ranking.scene_ranking_service import (
 
 from .document_stage_status_service import DocumentStageStatusService
 from .orchestrator_config import (
+    CustomRemixTarget,
     PipelineExecutionResult,
     PipelineStats,
     PreparedPipelineExecution,
     PromptExecutionOptions,
+    RemixTarget,
     SceneTarget,
 )
 
@@ -623,10 +625,12 @@ class PipelineOrchestrator:
             )
 
         if stats.errors:
-            # For scene-targeted runs, partial success (at least one image)
-            # is still considered a successful completion.
-            is_scene_target = isinstance(config.target, SceneTarget)
-            if is_scene_target and stats.images_generated > 0:
+            # For scene-targeted and remix runs, partial success (at least one
+            # image) is still considered a successful completion.
+            is_image_producing_target = isinstance(
+                config.target, SceneTarget | RemixTarget | CustomRemixTarget
+            )
+            if is_image_producing_target and stats.images_generated > 0:
                 logger.info(
                     "Scene-targeted run had errors but generated %d images; "
                     "treating as partial success.",
@@ -641,14 +645,15 @@ class PipelineOrchestrator:
                     diagnostics=diagnostics,
                 )
 
-        # For scene-targeted image runs, fail if zero images were generated
+        # For image-producing runs (scene, remix, custom-remix), fail if
+        # zero images were generated
         if (
-            isinstance(config.target, SceneTarget)
+            isinstance(config.target, SceneTarget | RemixTarget | CustomRemixTarget)
             and stages.run_image_generation
             and stats.images_generated == 0
             and not stats.errors  # avoid double-finalizing
         ):
-            stats.errors.append("No images were generated for scene-targeted run")
+            stats.errors.append("No images were generated")
             return self._finalize_stats_failure(
                 run_id=run_id,
                 prepared=prepared,
@@ -754,11 +759,15 @@ class PipelineOrchestrator:
     ) -> None:
         """Execute prompt generation stage.
 
-        Dispatches to scene-targeted or document-targeted prompt generation
-        based on the execution target type.
+        Dispatches based on execution target type.
         """
-        if isinstance(prepared.config.target, SceneTarget):
+        target = prepared.config.target
+        if isinstance(target, SceneTarget):
             await self._execute_scene_prompt_generation(prepared, stats)
+        elif isinstance(target, RemixTarget):
+            await self._execute_remix_prompt_generation(prepared, stats)
+        elif isinstance(target, CustomRemixTarget):
+            await self._execute_custom_remix_prompt_generation(prepared, stats)
         else:
             await self._execute_document_prompt_generation(prepared, stats)
 
@@ -835,6 +844,73 @@ class PipelineOrchestrator:
             stats.prompts_generated,
             len(target.scene_ids),
         )
+
+    async def _execute_remix_prompt_generation(
+        self,
+        prepared: PreparedPipelineExecution,
+        stats: PipelineStats,
+    ) -> None:
+        """Generate remix prompt variants from the source prompt."""
+        target: RemixTarget = prepared.config.target  # type: ignore[assignment]
+        context = prepared.context
+        run_id = prepared.run_id
+        prompt_options = prepared.config.prompt_options
+
+        variants_count = prompt_options.variants_count or 3
+
+        with Session(engine) as session:
+            prompt_service = ImagePromptGenerationService(session)
+
+            try:
+                prompts = await prompt_service.generate_remix_variants(
+                    target.source_prompt_id,
+                    variants_count=variants_count,
+                    dry_run=False,
+                    pipeline_run_id=run_id,
+                )
+                if prompts:
+                    stats.prompts_generated = len(prompts)
+                    for p in prompts:
+                        prompt_id = getattr(p, "id", None)
+                        if prompt_id is not None:
+                            context.created_prompt_ids.append(prompt_id)
+                    logger.info(
+                        "Generated %d remix prompts from source prompt %s",
+                        len(prompts),
+                        target.source_prompt_id,
+                    )
+            except Exception as exc:
+                error_msg = f"Failed to generate remix prompts: {exc}"
+                logger.error(error_msg)
+                stats.errors.append(error_msg)
+
+    async def _execute_custom_remix_prompt_generation(
+        self,
+        prepared: PreparedPipelineExecution,
+        stats: PipelineStats,
+    ) -> None:
+        """Register the pre-created custom prompt into execution context.
+
+        For custom remix, the prompt is created in request scope before
+        orchestrator execution. This stage just records the prompt ID so
+        image generation can consume it.
+        """
+        target: CustomRemixTarget = prepared.config.target  # type: ignore[assignment]
+        context = prepared.context
+
+        if target.custom_prompt_id is not None:
+            context.created_prompt_ids.append(target.custom_prompt_id)
+            stats.prompts_generated = 1
+            logger.info(
+                "Custom remix prompt %s registered for image generation",
+                target.custom_prompt_id,
+            )
+        else:
+            error_msg = (
+                "Custom remix prompt was not created before orchestrator execution"
+            )
+            logger.error(error_msg)
+            stats.errors.append(error_msg)
 
     async def _execute_document_prompt_generation(
         self,

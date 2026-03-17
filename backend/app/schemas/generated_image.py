@@ -161,6 +161,7 @@ class GeneratedImageRemixRequest(BaseModel):
 class GeneratedImageRemixResponse(BaseModel):
     """Response schema for remix initiation acknowledgment."""
 
+    pipeline_run_id: UUID
     remix_prompt_ids: list[UUID]
     status: str = Field(
         "accepted",
@@ -186,6 +187,7 @@ class GeneratedImageCustomRemixRequest(BaseModel):
 class GeneratedImageCustomRemixResponse(BaseModel):
     """Response schema for custom remix initiation acknowledgment."""
 
+    pipeline_run_id: UUID
     custom_prompt_id: UUID
     status: str = Field(
         "accepted",

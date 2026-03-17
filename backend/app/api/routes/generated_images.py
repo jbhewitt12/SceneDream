@@ -5,20 +5,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import mimetypes
-import time
-from collections.abc import Coroutine
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy.exc import OperationalError
 
 from app.api.deps import SessionDep
 from app.repositories import (
     AppSettingsRepository,
     GeneratedImageRepository,
     ImagePromptRepository,
+    PipelineRunRepository,
     SceneExtractionRepository,
 )
 from app.schemas import (
@@ -52,6 +50,18 @@ from app.services.image_prompt_generation.image_prompt_generation_service import
     ImagePromptGenerationService,
     ImagePromptGenerationServiceError,
 )
+from app.services.pipeline import (
+    CustomRemixTarget,
+    ImageExecutionOptions,
+    PipelineExecutionConfig,
+    PipelineOrchestrator,
+    PipelineRunStartService,
+    PipelineStagePlan,
+    PipelineValidationError,
+    PromptExecutionOptions,
+    RemixTarget,
+    spawn_background_task,
+)
 from app.services.social_posting import SocialPostingService
 from app.services.social_posting.exceptions import SocialPostingDisabledError
 from app.services.social_posting.scheduler import get_scheduler
@@ -67,27 +77,6 @@ _MAX_SCENE_LIMIT = 100
 logger = logging.getLogger(__name__)
 
 _SOCIAL_POSTING_DISABLED_DETAIL = "Social media posting is disabled in Settings"
-
-
-def _spawn_background_task(
-    coro: Coroutine[Any, Any, None],
-    *,
-    task_name: str,
-) -> asyncio.Task[Any]:
-    """
-    Schedule a coroutine to run in the background and surface unhandled exceptions.
-    """
-
-    task = asyncio.create_task(coro, name=task_name)
-
-    def _handle_task_result(completed: asyncio.Task[Any]) -> None:
-        try:
-            completed.result()
-        except Exception:
-            logger.exception("Unhandled exception in background task %s", task_name)
-
-    task.add_done_callback(_handle_task_result)
-    return task
 
 
 def _build_context(
@@ -140,158 +129,18 @@ async def _read_upload_contents(file: UploadFile) -> bytes:
     return await file.read()
 
 
-async def _execute_remix_generation(
-    *,
-    source_image_id: UUID,
-    source_prompt_id: UUID,
-    variants_count: int,
-    dry_run: bool,
-) -> None:
-    """Background task to generate remix prompts and downstream images."""
-    from sqlmodel import Session
-
-    from app.core.db import engine
-
-    logger.info(
-        "Remix generation task started: image_id=%s, prompt_id=%s, variants=%d, dry_run=%s",
-        source_image_id,
-        source_prompt_id,
-        variants_count,
-        dry_run,
+def _fail_pending_run(session: SessionDep, run_id: UUID, error_message: str) -> None:
+    """Mark a pending pipeline run as failed when request-scope setup fails."""
+    run_repo = PipelineRunRepository(session)
+    run_repo.update_status(
+        run_id,
+        status="failed",
+        current_stage="failed",
+        error_message=error_message[:2000],
+        completed=True,
+        commit=True,
+        refresh=False,
     )
-    started_at = time.perf_counter()
-    prompt_ids: list[UUID] = []
-
-    try:
-        with Session(engine) as background_session:
-            prompt_service = ImagePromptGenerationService(background_session)
-            prompts = await prompt_service.generate_remix_variants(
-                source_prompt_id,
-                variants_count=variants_count,
-                dry_run=dry_run,
-            )
-            if dry_run:
-                logger.info(
-                    "Remix dry-run complete in %.2fs: image_id=%s, prompt_id=%s, preview_count=%d",
-                    time.perf_counter() - started_at,
-                    source_image_id,
-                    source_prompt_id,
-                    len(prompts),
-                )
-                return
-
-            persisted_prompts = cast(list[ImagePrompt], prompts)
-            prompt_ids = [prompt.id for prompt in persisted_prompts]
-            if not prompt_ids:
-                elapsed = time.perf_counter() - started_at
-                logger.info(
-                    "Remix task created no prompts for image %s (prompt %s); skipping image generation (elapsed=%.2fs)",
-                    source_image_id,
-                    source_prompt_id,
-                    elapsed,
-                )
-                return
-
-            image_service = ImageGenerationService(background_session)
-            await image_service.generate_for_selection(
-                prompt_ids=prompt_ids,
-            )
-            background_session.commit()
-    except ImagePromptGenerationServiceError:
-        logger.exception(
-            "Remix prompt generation failed for image %s (prompt %s)",
-            source_image_id,
-            source_prompt_id,
-        )
-    except OperationalError as exc:
-        logger.exception(
-            "Database error during remix task for image %s (prompt %s): %s",
-            source_image_id,
-            source_prompt_id,
-            exc,
-        )
-    except Exception:
-        logger.exception(
-            "Unexpected error while processing remix for image %s (prompt %s)",
-            source_image_id,
-            source_prompt_id,
-        )
-    else:
-        elapsed = time.perf_counter() - started_at
-        logger.info(
-            "Remix generation task completed in %.2fs: image_id=%s, prompt_id=%s, generated_prompts=%d, prompt_ids=%s",
-            elapsed,
-            source_image_id,
-            source_prompt_id,
-            len(prompt_ids),
-            ", ".join(str(pid) for pid in prompt_ids),
-        )
-
-
-async def _execute_custom_remix_generation(
-    *,
-    source_image_id: UUID,
-    source_prompt_id: UUID,
-    custom_prompt_id: UUID,
-    custom_prompt_text: str,
-) -> None:
-    """Background task to generate an image for a custom remix prompt."""
-    from sqlmodel import Session
-
-    from app.core.db import engine
-
-    logger.info(
-        "Custom remix task started: image_id=%s, prompt_id=%s, custom_prompt_id=%s, text_length=%d",
-        source_image_id,
-        source_prompt_id,
-        custom_prompt_id,
-        len(custom_prompt_text),
-    )
-    started_at = time.perf_counter()
-
-    try:
-        with Session(engine) as background_session:
-            prompt = background_session.get(ImagePrompt, custom_prompt_id)
-            if prompt is None:
-                elapsed = time.perf_counter() - started_at
-                logger.warning(
-                    "Custom remix prompt %s not found for image %s (source prompt %s); elapsed=%.2fs",
-                    custom_prompt_id,
-                    source_image_id,
-                    source_prompt_id,
-                    elapsed,
-                )
-                return
-
-            image_service = ImageGenerationService(background_session)
-            await image_service.generate_for_selection(
-                prompt_ids=[custom_prompt_id],
-            )
-            background_session.commit()
-    except OperationalError as exc:
-        logger.exception(
-            "Database error during custom remix task for image %s (prompt %s, custom prompt %s): %s",
-            source_image_id,
-            source_prompt_id,
-            custom_prompt_id,
-            exc,
-        )
-    except Exception:
-        logger.exception(
-            "Unexpected error while processing custom remix for image %s (source prompt %s, custom prompt %s)",
-            source_image_id,
-            source_prompt_id,
-            custom_prompt_id,
-        )
-    else:
-        elapsed = time.perf_counter() - started_at
-        logger.info(
-            "Custom remix task completed in %.2fs: image_id=%s, prompt_id=%s, custom_prompt_id=%s",
-            elapsed,
-            source_image_id,
-            source_prompt_id,
-            custom_prompt_id,
-        )
 
 
 @router.get("/providers", response_model=list[str])
@@ -625,29 +474,40 @@ async def remix_generated_image(
         )
 
     variants_count = request.variants_count or REMIX_VARIANTS_COUNT
-    dry_run = bool(request.dry_run)
 
-    try:
-        _ = ImagePromptGenerationService(session)
-        _ = ImageGenerationService(session)
-    except Exception as exc:  # pragma: no cover - defensive guard
-        logger.exception("Unable to initialize remix services: %s", exc)
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to initialize remix services",
-        ) from exc
+    target = RemixTarget(
+        source_image_id=image_id,
+        source_prompt_id=prompt.id,
+    )
+    config = PipelineExecutionConfig(
+        target=target,
+        stages=PipelineStagePlan(
+            run_prompt_generation=True,
+            run_image_generation=True,
+        ),
+        prompt_options=PromptExecutionOptions(
+            variants_count=variants_count,
+        ),
+        image_options=ImageExecutionOptions(),
+        dry_run=bool(request.dry_run),
+    )
 
+    service = PipelineRunStartService(session)
     try:
-        _spawn_background_task(
-            _execute_remix_generation(
-                source_image_id=image_id,
-                source_prompt_id=prompt.id,
-                variants_count=variants_count,
-                dry_run=dry_run,
-            ),
+        prepared = service.prepare_execution(config)
+    except PipelineValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    orchestrator = PipelineOrchestrator()
+    coro = orchestrator.execute(prepared)
+    try:
+        spawn_background_task(
+            coro,
             task_name=f"remix-generated-image-{image_id}",
         )
     except Exception as exc:
+        if asyncio.iscoroutine(coro):
+            coro.close()
         logger.exception(
             "Failed to create remix generation task for image %s", image_id
         )
@@ -658,6 +518,7 @@ async def remix_generated_image(
 
     estimated_seconds = max(variants_count * 60, 120)
     return GeneratedImageRemixResponse(
+        pipeline_run_id=prepared.run_id,
         remix_prompt_ids=[],
         status="accepted",
         estimated_completion_seconds=estimated_seconds,
@@ -697,45 +558,81 @@ async def custom_remix_generated_image(
             detail="Custom prompt text must not be empty",
         )
 
+    # Build config with CustomRemixTarget (custom_prompt_id set after creation)
+    target = CustomRemixTarget(
+        source_image_id=image_id,
+        source_prompt_id=prompt.id,
+        custom_prompt_text=custom_prompt_text,
+    )
+    config = PipelineExecutionConfig(
+        target=target,
+        stages=PipelineStagePlan(
+            run_prompt_generation=True,
+            run_image_generation=True,
+        ),
+        prompt_options=PromptExecutionOptions(),
+        image_options=ImageExecutionOptions(),
+    )
+
+    # Create the pending pipeline run first
+    service = PipelineRunStartService(session)
+    try:
+        prepared = service.prepare_execution(config)
+    except PipelineValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    run_id = prepared.run_id
+
+    # Create the custom prompt in request scope, linked to the run
     try:
         prompt_service = ImagePromptGenerationService(session)
-        _ = ImageGenerationService(session)
-    except Exception as exc:  # pragma: no cover - defensive guard
-        logger.exception("Unable to initialize custom remix services: %s", exc)
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to initialize custom remix services",
-        ) from exc
-
-    try:
         custom_prompt = await prompt_service.create_custom_remix_variant(
             prompt,
             custom_prompt_text,
             dry_run=False,
+            pipeline_run_id=run_id,
         )
     except ImagePromptGenerationServiceError as exc:
+        _fail_pending_run(
+            session, run_id, f"Custom remix prompt creation failed: {exc}"
+        )
         raise HTTPException(
             status_code=400,
             detail=str(exc),
         ) from exc
+    except Exception as exc:
+        _fail_pending_run(
+            session, run_id, f"Custom remix prompt creation failed: {exc}"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Custom remix prompt creation failed",
+        ) from exc
 
     if not isinstance(custom_prompt, ImagePrompt):  # pragma: no cover - safety valve
+        _fail_pending_run(
+            session, run_id, "Custom remix prompt creation returned unexpected type"
+        )
         raise HTTPException(
             status_code=500,
             detail="Custom remix prompt creation failed",
         )
 
+    # Update the target with the created prompt ID and register in context
+    custom_remix_target: CustomRemixTarget = prepared.config.target  # type: ignore[assignment]
+    custom_remix_target.custom_prompt_id = custom_prompt.id
+
+    # Spawn orchestrator execution in the background
+    orchestrator = PipelineOrchestrator()
+    coro = orchestrator.execute(prepared)
     try:
-        _spawn_background_task(
-            _execute_custom_remix_generation(
-                source_image_id=image_id,
-                source_prompt_id=prompt.id,
-                custom_prompt_id=custom_prompt.id,
-                custom_prompt_text=custom_prompt_text,
-            ),
+        spawn_background_task(
+            coro,
             task_name=f"custom-remix-generated-image-{image_id}",
         )
     except Exception as exc:
+        if asyncio.iscoroutine(coro):
+            coro.close()
         logger.exception(
             "Failed to create custom remix task for image %s (prompt %s)",
             image_id,
@@ -755,6 +652,7 @@ async def custom_remix_generated_image(
     )
 
     return GeneratedImageCustomRemixResponse(
+        pipeline_run_id=run_id,
         custom_prompt_id=custom_prompt.id,
         status="accepted",
         estimated_completion_seconds=60,
@@ -849,7 +747,7 @@ async def queue_image_for_posting(
     # Trigger immediate queue check if cooldown has passed
     scheduler = get_scheduler()
     if scheduler.is_running:
-        _spawn_background_task(
+        spawn_background_task(
             scheduler.trigger_immediate_check(),
             task_name=f"immediate-post-check-{image_id}",
         )
@@ -931,7 +829,7 @@ async def retry_failed_posts(
     # Trigger immediate queue check
     scheduler = get_scheduler()
     if scheduler.is_running:
-        _spawn_background_task(
+        spawn_background_task(
             scheduler.trigger_immediate_check(),
             task_name="retry-failed-posts-check",
         )
