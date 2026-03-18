@@ -1,4 +1,8 @@
-# SceneDream
+<img src="img/assets/banner/The-Gilded-Unfurl.png" width="19%"><img src="img/assets/banner/The-God-Scar.png" width="19%"><img src="img/assets/banner/Obsidian-Eyed-Muse.png" width="19%"><img src="img/assets/banner/Petals-of-Iron-Ink.png" width="19%"><img src="img/assets/banner/Angelic-Zenith.png" width="19%">
+
+<h1 align="center">SceneDream</h1>
+
+<img src="img/assets/banner/Aria-of-Impact.png" width="19%"><img src="img/assets/banner/Ink-Stained-Singularity.png" width="19%"><img src="img/assets/banner/Baroque-Breach.png" width="19%"><img src="img/assets/banner/Command-of-the-Depths.png" width="19%"><img src="img/assets/banner/Diamond-Sky.png" width="19%">
 
 SceneDream is a project for automatically turning text based stories into AI images. You put in a story, and it comes out as a bunch of images.
 

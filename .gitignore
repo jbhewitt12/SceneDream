@@ -11,7 +11,8 @@ docker-compose.override.yml
 
 # Books folder
 /books/
-/img/
+/img/generated/
+/img/banner/
 /db_backups/
 /documents/
 
