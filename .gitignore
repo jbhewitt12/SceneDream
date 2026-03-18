@@ -6,6 +6,9 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 
+# Local docker-compose overrides
+docker-compose.override.yml
+
 # Books folder
 /books/
 /img/
