@@ -784,8 +784,10 @@ class PipelineOrchestrator:
 
         variant_count = prompt_options.scene_variant_count or 1
         prompt_config = _build_prompt_generation_config(prompt_options)
-        # Override variants_count to produce exactly the requested number
+        # Override variants_count to produce exactly the requested number.
+        # Disable content-warning filtering: the user explicitly chose this scene.
         prompt_config.variants_count = variant_count
+        prompt_config = prompt_config.copy_with(skip_scenes_with_warnings=False)
 
         with Session(engine) as session:
             scene_repo = SceneExtractionRepository(session)
@@ -1036,6 +1038,7 @@ class PipelineOrchestrator:
 
         with Session(engine) as session:
             image_service = ImageGenerationService(session, config=image_config)
+            image_repo = GeneratedImageRepository(session)
 
             try:
                 generated_ids = await image_service.generate_for_selection(
@@ -1046,9 +1049,25 @@ class PipelineOrchestrator:
                     dry_run=False,
                     pipeline_run_id=run_id,
                 )
-                stats.images_generated = len(generated_ids)
-                context.created_image_ids.extend(generated_ids)
-                logger.info("Generated %d images", stats.images_generated)
+                if generated_ids:
+                    stats.images_generated = len(generated_ids)
+                    context.created_image_ids.extend(generated_ids)
+                    logger.info("Generated %d images", stats.images_generated)
+                else:
+                    # Idempotency check may have skipped all prompts because images
+                    # already exist. Collect existing image IDs so the run succeeds.
+                    existing_ids: list[UUID] = []
+                    for pid in prompt_ids:
+                        for img in image_repo.list_for_prompt(pid):
+                            existing_ids.append(img.id)
+                    if existing_ids:
+                        stats.images_generated = len(existing_ids)
+                        context.created_image_ids.extend(existing_ids)
+                        logger.info(
+                            "No new images generated (idempotency); "
+                            "counted %d existing images as successful output.",
+                            stats.images_generated,
+                        )
             except Exception as exc:
                 error_msg = f"Failed to generate images: {exc}"
                 logger.error(error_msg)

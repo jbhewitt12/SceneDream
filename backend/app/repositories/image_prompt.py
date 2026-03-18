@@ -7,10 +7,11 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete
+from sqlalchemy import delete, exists
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, select
 
+from models.generated_image import GeneratedImage
 from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
@@ -234,7 +235,8 @@ class ImagePromptRepository:
         commit: bool = False,
     ) -> int:
         statement = delete(ImagePrompt).where(
-            ImagePrompt.scene_extraction_id == scene_extraction_id
+            ImagePrompt.scene_extraction_id == scene_extraction_id,
+            ~exists().where(GeneratedImage.image_prompt_id == ImagePrompt.id),
         )
         if prompt_version:
             statement = statement.where(ImagePrompt.prompt_version == prompt_version)

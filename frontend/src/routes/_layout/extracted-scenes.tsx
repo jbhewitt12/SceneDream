@@ -12,6 +12,7 @@ import {
   Button,
   Container,
   Flex,
+  Grid,
   HStack,
   Heading,
   Icon,
@@ -28,16 +29,19 @@ import {
 } from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { type ChangeEvent, useMemo } from "react"
-import { FiFilter, FiRefreshCcw, FiSearch } from "react-icons/fi"
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
+import { FiFilter, FiPlay, FiRefreshCcw, FiSearch } from "react-icons/fi"
 import { z } from "zod"
 
+import { PipelineRunsApi } from "@/api/pipelineRuns"
 import {
   type SceneExtraction,
   type SceneExtractionFilterOptions,
   type SceneExtractionListParams,
   SceneExtractionService,
 } from "@/api/sceneExtractions"
+import { SettingsApi } from "@/api/settings"
+import { PromptArtStyleControl } from "@/components/Common/PromptArtStyleControl"
 import { InputGroup } from "@/components/ui/input-group"
 import {
   PaginationItems,
@@ -45,6 +49,13 @@ import {
   PaginationPrevTrigger,
   PaginationRoot,
 } from "@/components/ui/pagination"
+import useCustomToast from "@/hooks/useCustomToast"
+import {
+  type PromptArtStyleSelection,
+  getPromptArtStyleSelectionFromSettings,
+  getPromptArtStyleTextForPayload,
+  getPromptArtStyleValidationMessage,
+} from "@/types/promptArtStyle"
 
 const extractedScenesSearchSchema = z.object({
   page: z.coerce.number().int().min(1).catch(1),
@@ -430,7 +441,291 @@ const metadataPairs = (scene: SceneExtraction) => {
   ]
 }
 
-const SceneExtractionItem = ({ scene }: { scene: SceneExtraction }) => {
+const POLL_INTERVAL_MS = 3000
+
+const isTerminalStatus = (status: string | null | undefined) =>
+  status === "completed" || status === "failed"
+
+type ActiveRun = {
+  pipeline_run_id: string
+  status: string
+  error_message?: string | null
+  completed_at?: string | null
+}
+
+const SceneLaunchPanel = ({
+  scene,
+  defaultArtStyleSelection,
+  artStyleCatalogCounts,
+}: {
+  scene: SceneExtraction
+  defaultArtStyleSelection: PromptArtStyleSelection
+  artStyleCatalogCounts: { recommended: number; other: number }
+}) => {
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+  const [variantCount, setVariantCount] = useState("3")
+  const [artStyleSelection, setArtStyleSelection] =
+    useState<PromptArtStyleSelection>(defaultArtStyleSelection)
+  const [launching, setLaunching] = useState(false)
+  const [activeRun, setActiveRun] = useState<ActiveRun | undefined>(undefined)
+  const activeRunRef = useRef(activeRun)
+
+  useEffect(() => {
+    activeRunRef.current = activeRun
+  }, [activeRun])
+
+  useEffect(() => {
+    if (!activeRun || isTerminalStatus(activeRun.status)) {
+      return
+    }
+
+    let cancelled = false
+
+    const poll = async () => {
+      const current = activeRunRef.current
+      if (!current || isTerminalStatus(current.status) || cancelled) {
+        return
+      }
+
+      try {
+        const latest = await PipelineRunsApi.get(current.pipeline_run_id)
+        if (cancelled) {
+          return
+        }
+        setActiveRun({
+          pipeline_run_id: current.pipeline_run_id,
+          status: latest.status,
+          error_message: latest.error_message,
+          completed_at: latest.completed_at,
+        })
+        if (isTerminalStatus(latest.status)) {
+          if (latest.status === "completed") {
+            showSuccessToast("Image generation completed.")
+          } else {
+            showErrorToast(latest.error_message ?? "Pipeline run failed.")
+          }
+          return
+        }
+      } catch (error) {
+        if (!cancelled) {
+          showErrorToast(
+            error instanceof Error
+              ? error.message
+              : "Failed to poll run status.",
+          )
+          setActiveRun(undefined)
+        }
+        return
+      }
+
+      if (!cancelled) {
+        window.setTimeout(poll, POLL_INTERVAL_MS)
+      }
+    }
+
+    const timer = window.setTimeout(poll, POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [activeRun, showSuccessToast, showErrorToast])
+
+  const artStyleValidationMessage =
+    getPromptArtStyleValidationMessage(artStyleSelection)
+  const hasActiveRun =
+    activeRun !== undefined && !isTerminalStatus(activeRun.status)
+
+  const handleLaunch = async () => {
+    const count = Number.parseInt(variantCount, 10)
+    if (!count || count < 1) {
+      showErrorToast("Variant count must be a positive integer.")
+      return
+    }
+    if (artStyleValidationMessage) {
+      showErrorToast(artStyleValidationMessage)
+      return
+    }
+    setLaunching(true)
+    try {
+      const response = await SceneExtractionService.generate(scene.id, {
+        num_images: count,
+        prompt_art_style_mode: artStyleSelection.promptArtStyleMode,
+        prompt_art_style_text:
+          getPromptArtStyleTextForPayload(artStyleSelection),
+      })
+      setActiveRun({
+        pipeline_run_id: response.pipeline_run_id,
+        status: response.status,
+      })
+      showSuccessToast("Image generation started.")
+    } catch (error) {
+      showErrorToast(
+        error instanceof Error
+          ? error.message
+          : "Failed to launch image generation.",
+      )
+    } finally {
+      setLaunching(false)
+    }
+  }
+
+  return (
+    <Box borderWidth="1px" borderRadius="xl" p={{ base: 4, md: 5 }}>
+      <Grid
+        templateColumns={{ base: "1fr", xl: "minmax(0, 1fr) 280px" }}
+        gap={5}
+        alignItems="start"
+      >
+        <Stack gap={4}>
+          <Stack gap={1}>
+            <Text fontSize="xs" textTransform="uppercase" color="fg.subtle">
+              Generate Images for This Scene
+            </Text>
+            <Text fontSize="sm" color="fg.muted">
+              Generate image variants directly for this scene using a targeted
+              pipeline run.
+            </Text>
+          </Stack>
+
+          <Grid
+            templateColumns={{ base: "1fr", lg: "180px minmax(0, 1fr)" }}
+            gap={4}
+            alignItems="start"
+          >
+            <Box maxW={{ base: "full", lg: "180px" }}>
+              <Text fontSize="sm" color="fg.muted" mb={1}>
+                Variants
+              </Text>
+              <Input
+                type="number"
+                min={1}
+                value={variantCount}
+                onChange={(event) => setVariantCount(event.target.value)}
+              />
+            </Box>
+            <PromptArtStyleControl
+              label="Art style"
+              selection={artStyleSelection}
+              recommendedCount={artStyleCatalogCounts.recommended}
+              otherCount={artStyleCatalogCounts.other}
+              randomMixManageCopy="Manage styles in Settings."
+              validationMessage={artStyleValidationMessage}
+              onModeChange={(mode) =>
+                setArtStyleSelection((prev) => ({
+                  ...prev,
+                  promptArtStyleMode: mode,
+                }))
+              }
+              onTextChange={(text) =>
+                setArtStyleSelection((prev) => ({
+                  ...prev,
+                  promptArtStyleText: text,
+                }))
+              }
+            />
+          </Grid>
+        </Stack>
+
+        <Box
+          borderWidth="1px"
+          borderRadius="lg"
+          p={4}
+          bg="rgba(255,255,255,0.03)"
+        >
+          <Stack gap={4} h="full" justify="space-between">
+            <Stack gap={2}>
+              <Text fontSize="xs" textTransform="uppercase" color="fg.subtle">
+                This Run
+              </Text>
+              <Text fontSize="2xl" fontWeight="semibold">
+                {variantCount || "—"} variant
+                {Number(variantCount) === 1 ? "" : "s"}
+              </Text>
+              <Text fontSize="sm" color="fg.muted">
+                {artStyleSelection.promptArtStyleMode === "random_mix"
+                  ? "Random style mix"
+                  : artStyleSelection.promptArtStyleText || "Single art style"}
+              </Text>
+              {hasActiveRun && (
+                <Badge colorScheme="blue" variant="subtle" alignSelf="start">
+                  Pipeline currently running
+                </Badge>
+              )}
+            </Stack>
+
+            <Stack gap={2}>
+              <Button
+                colorScheme="blue"
+                onClick={handleLaunch}
+                loading={launching || hasActiveRun}
+                disabled={artStyleValidationMessage !== null}
+                gap={2}
+                w="full"
+                size="lg"
+              >
+                <FiPlay />
+                Generate Images
+              </Button>
+            </Stack>
+          </Stack>
+        </Box>
+      </Grid>
+
+      {activeRun && (
+        <Box mt={5} pt={4} borderTopWidth="1px" borderColor="whiteAlpha.200">
+          <Text
+            fontSize="xs"
+            textTransform="uppercase"
+            color="fg.subtle"
+            mb={2}
+          >
+            Last Run
+          </Text>
+          <Stack gap={2}>
+            <Flex wrap="wrap" gap={2} align="center">
+              <Badge
+                colorScheme={
+                  activeRun.status === "completed"
+                    ? "green"
+                    : activeRun.status === "failed"
+                      ? "red"
+                      : "blue"
+                }
+              >
+                {activeRun.status}
+              </Badge>
+              {activeRun.completed_at && (
+                <Text fontSize="sm" color="fg.muted">
+                  Completed: {formatDateTime(activeRun.completed_at)}
+                </Text>
+              )}
+              {hasActiveRun && (
+                <Badge colorScheme="blue" variant="subtle">
+                  live
+                </Badge>
+              )}
+            </Flex>
+            {activeRun.error_message && (
+              <Text fontSize="sm" color="red.300">
+                {activeRun.error_message}
+              </Text>
+            )}
+          </Stack>
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+const SceneExtractionItem = ({
+  scene,
+  defaultArtStyleSelection,
+  artStyleCatalogCounts,
+}: {
+  scene: SceneExtraction
+  defaultArtStyleSelection: PromptArtStyleSelection
+  artStyleCatalogCounts: { recommended: number; other: number }
+}) => {
   const refined = Boolean(scene.refined)
   return (
     <AccordionItem
@@ -534,6 +829,13 @@ const SceneExtractionItem = ({ scene }: { scene: SceneExtraction }) => {
               )}
             </Box>
           )}
+          <Separator />
+          <SceneLaunchPanel
+            scene={scene}
+            defaultArtStyleSelection={defaultArtStyleSelection}
+            artStyleCatalogCounts={artStyleCatalogCounts}
+          />
+          <Separator />
           <Box>
             <Text
               fontSize="sm"
@@ -631,6 +933,30 @@ function ExtractedScenesPage() {
     queryFn: SceneExtractionService.filters,
   })
 
+  const settingsQuery = useQuery({
+    queryKey: ["settings", "bundle"],
+    queryFn: () => SettingsApi.get(),
+  })
+
+  const defaultPromptArtStyleSelection = useMemo(
+    () => getPromptArtStyleSelectionFromSettings(settingsQuery.data?.settings),
+    [settingsQuery.data?.settings],
+  )
+  const artStyleCatalogCounts = useMemo(() => {
+    const styles = settingsQuery.data?.art_styles ?? []
+    return styles.reduce(
+      (counts, style) => {
+        if (style.is_recommended) {
+          counts.recommended += 1
+        } else {
+          counts.other += 1
+        }
+        return counts
+      },
+      { recommended: 0, other: 0 },
+    )
+  }, [settingsQuery.data?.art_styles])
+
   const updateSearch: FilterUpdater = (updates) => {
     navigate({
       search: (prev: ExtractedScenesSearch) => {
@@ -716,7 +1042,12 @@ function ExtractedScenesPage() {
               defaultValue={scenes.length ? [String(scenes[0].id)] : []}
             >
               {scenes.map((scene) => (
-                <SceneExtractionItem key={scene.id} scene={scene} />
+                <SceneExtractionItem
+                  key={scene.id}
+                  scene={scene}
+                  defaultArtStyleSelection={defaultPromptArtStyleSelection}
+                  artStyleCatalogCounts={artStyleCatalogCounts}
+                />
               ))}
             </AccordionRoot>
           )}

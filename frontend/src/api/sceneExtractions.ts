@@ -51,6 +51,20 @@ export type SceneExtractionFilterOptions = {
   date_range: SceneExtractionDateRange
 }
 
+export type SceneGenerateRequest = {
+  num_images: number
+  prompt_art_style_mode: string
+  prompt_art_style_text: string | null
+  quality?: string | null
+  aspect_ratio?: string | null
+}
+
+export type SceneGenerateResponse = {
+  pipeline_run_id: string
+  status: string
+  message: string
+}
+
 export type SceneExtractionListParams = {
   page?: number
   page_size?: number
@@ -105,6 +119,24 @@ export const SceneExtractionService = {
       path: {
         scene_id: sceneId,
       },
+      errors: {
+        404: "Not Found",
+        422: "Validation Error",
+      },
+    })
+  },
+
+  generate(
+    sceneId: string,
+    request: SceneGenerateRequest,
+  ): CancelablePromise<SceneGenerateResponse> {
+    return __request<SceneGenerateResponse>(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/scene-extractions/{scene_id}/generate",
+      path: {
+        scene_id: sceneId,
+      },
+      body: request,
       errors: {
         404: "Not Found",
         422: "Validation Error",

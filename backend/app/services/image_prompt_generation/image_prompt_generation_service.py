@@ -312,6 +312,15 @@ class ImagePromptGenerationService:
                     deleted,
                     target_scene.id,
                 )
+            elif existing:
+                # Deletion was blocked (existing prompts are referenced by generated
+                # images). Return the surviving prompts instead of failing on insert.
+                logger.info(
+                    "Skipping prompt regeneration for scene %s — existing prompts "
+                    "are referenced by generated images and cannot be replaced.",
+                    target_scene.id,
+                )
+                return existing
 
         try:
             created = self._prompt_repo.bulk_create(
