@@ -174,13 +174,10 @@ class ImagePromptGenerationService:
         if config.variants_count <= 0:
             raise ImagePromptGenerationServiceError("variants_count must be positive")
 
-        if config.allow_overwrite:
-            variant_indices = self._determine_next_variant_indices_for_scene(
-                target_scene.id,
-                config.variants_count,
-            )
-        else:
-            variant_indices = list(range(config.variants_count))
+        variant_indices = self._determine_next_variant_indices_for_scene(
+            target_scene.id,
+            config.variants_count,
+        )
 
         existing: list[ImagePrompt] = []
         if not config.allow_overwrite:
@@ -294,33 +291,6 @@ class ImagePromptGenerationService:
                         preview.flavour_text = metadata_payload.get("flavour_text")
                 previews.append(preview)
             return previews
-
-        should_replace_existing = config.allow_overwrite or (
-            not config.dry_run and not config.allow_overwrite and bool(existing)
-        )
-
-        if should_replace_existing:
-            deleted = self._prompt_repo.delete_for_scene(
-                target_scene.id,
-                prompt_version=config.prompt_version,
-                model_name=config.model_name,
-                commit=False,
-            )
-            if deleted:
-                logger.info(
-                    "Deleted %s existing image prompt variants for scene %s",
-                    deleted,
-                    target_scene.id,
-                )
-            elif existing:
-                # Deletion was blocked (existing prompts are referenced by generated
-                # images). Return the surviving prompts instead of failing on insert.
-                logger.info(
-                    "Skipping prompt regeneration for scene %s — existing prompts "
-                    "are referenced by generated images and cannot be replaced.",
-                    target_scene.id,
-                )
-                return existing
 
         try:
             created = self._prompt_repo.bulk_create(

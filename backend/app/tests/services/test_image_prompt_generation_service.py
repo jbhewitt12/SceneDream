@@ -374,9 +374,10 @@ def test_generate_for_scene_returns_existing_when_overwrite_disabled(
     repository.delete_for_scene(scene.id, commit=True)
 
 
-def test_generate_for_scene_replaces_existing_when_style_selection_changes(
+def test_generate_for_scene_appends_new_prompts_when_style_selection_changes(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Existing prompts are never deleted; new variants are appended at the next index."""
     scene = scene_factory()
     repository = ImagePromptRepository(db)
     config = ImagePromptGenerationConfig(
@@ -465,19 +466,23 @@ def test_generate_for_scene_replaces_existing_when_style_selection_changes(
 
     results = asyncio.run(service.generate_for_scene(scene))
 
+    # New prompts are created, not the existing ones
     assert len(results) == 2
     assert [prompt.id for prompt in results] != [prompt.id for prompt in existing]
 
+    # New prompts get the next available variant indices (2, 3)
+    new_indices = sorted(prompt.variant_index for prompt in results)
+    assert new_indices == [2, 3]
+
+    # Existing prompts are preserved — total is now 4
     stored = repository.list_for_scene(
         scene.id,
         model_name=config.model_name,
         prompt_version=config.prompt_version,
     )
-    assert len(stored) == 2
-    assert all(
-        prompt.raw_response["service"]["prompt_art_style_mode"] == "random_mix"
-        for prompt in stored
-    )
+    assert len(stored) == 4
+    existing_ids = {p.id for p in existing}
+    assert all(p.id in existing_ids for p in stored if p.variant_index < 2)
     repository.delete_for_scene(scene.id, commit=True)
 
 
@@ -542,9 +547,10 @@ def test_create_custom_remix_variant_dry_run_returns_preview(
     assert stored_prompts == [base_prompt]
 
 
-def test_generate_for_scene_overwrites_when_allowed(
+def test_generate_for_scene_appends_when_overwrite_allowed(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """allow_overwrite=True appends new prompts at next indices; existing are preserved."""
     scene = scene_factory()
     repository = ImagePromptRepository(db)
     config = ImagePromptGenerationConfig(
@@ -590,11 +596,18 @@ def test_generate_for_scene_overwrites_when_allowed(
 
     results = asyncio.run(service.generate_for_scene(scene))
 
+    # Two new prompts created at indices 1, 2 (next after existing index 0)
     assert len(results) == 2
+    new_indices = sorted(prompt.variant_index for prompt in results)
+    assert new_indices == [1, 2]
+
+    # Old prompt is preserved — total is now 3
     stored = repository.list_for_scene(scene.id)
-    assert len(stored) == 2
+    assert len(stored) == 3
+    assert any(prompt.title == "Old" for prompt in stored)
     assert all(
-        prompt.title in {"Neon Watchtower", "Garden Overwatch"} for prompt in stored
+        prompt.title in {"Neon Watchtower", "Garden Overwatch", "Old"}
+        for prompt in stored
     )
 
     repository.delete_for_scene(scene.id, commit=True)
