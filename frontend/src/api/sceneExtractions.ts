@@ -34,6 +34,8 @@ export type SceneExtraction = {
   extracted_at: string
   refined_at: string | null
   props: Record<string, unknown>
+  ranking_score: number | null
+  has_content_warnings: boolean
 }
 
 export type SceneExtractionListResponse = {
@@ -69,13 +71,10 @@ export type SceneExtractionListParams = {
   page?: number
   page_size?: number
   book_slug?: string | null
-  chapter_number?: number | null
   decision?: string | null
-  has_refined?: boolean | null
+  has_warnings?: boolean | null
   search?: string | null
-  start_date?: string | null
-  end_date?: string | null
-  order?: "asc" | "desc"
+  sort_by?: "extracted_desc" | "extracted_asc" | "ranking_desc"
 }
 
 const sanitizeSearchTerm = (term?: string | null) => {

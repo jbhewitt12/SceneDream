@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -46,13 +45,12 @@ def list_scene_extractions(
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     book_slug: str | None = Query(None),
-    chapter_number: int | None = Query(None, ge=0),
     decision: str | None = Query(None),
-    has_refined: bool | None = Query(None),
+    has_warnings: bool | None = Query(None),
     search: str | None = Query(None, min_length=1),
-    start_date: datetime | None = Query(None),
-    end_date: datetime | None = Query(None),
-    order: Literal["asc", "desc"] = Query("desc"),
+    sort_by: Literal["extracted_desc", "extracted_asc", "ranking_desc"] = Query(
+        "extracted_desc"
+    ),
 ) -> SceneExtractionListResponse:
     """Return a paginated list of scene extractions with optional filters."""
 
@@ -61,16 +59,18 @@ def list_scene_extractions(
         page=page,
         page_size=page_size,
         book_slug=book_slug,
-        chapter_number=chapter_number,
         decision=decision,
-        has_refined=has_refined,
+        has_warnings=has_warnings,
         search_term=search,
-        start_date=start_date,
-        end_date=end_date,
-        order=order,
+        sort_by=sort_by,
     )
 
-    data = [SceneExtractionRead.model_validate(record) for record in records]
+    data = []
+    for scene, score, flagged in records:
+        read = SceneExtractionRead.model_validate(scene)
+        read.ranking_score = score
+        read.has_content_warnings = flagged
+        data.append(read)
 
     return SceneExtractionListResponse(
         data=data,

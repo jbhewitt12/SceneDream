@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
-from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, case, exists, func, not_, or_
 from sqlmodel import Session, select
 
 from models.scene_extraction import SceneExtraction
+from models.scene_ranking import SceneRanking
 
 
 class SceneExtractionRepository:
@@ -91,33 +91,53 @@ class SceneExtractionRepository:
         page: int,
         page_size: int,
         book_slug: str | None = None,
-        chapter_number: int | None = None,
         decision: str | None = None,
-        has_refined: bool | None = None,
         search_term: str | None = None,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
-        order: str = "desc",
-    ) -> tuple[list[SceneExtraction], int]:
+        sort_by: str = "extracted_desc",
+        has_warnings: bool | None = None,
+    ) -> tuple[list[tuple[SceneExtraction, float | None, bool]], int]:
+        # Correlated subquery: most recent overall_priority per scene
+        latest_score = (
+            select(SceneRanking.overall_priority)
+            .where(SceneRanking.scene_extraction_id == SceneExtraction.id)
+            .order_by(SceneRanking.created_at.desc())
+            .limit(1)
+            .correlate(SceneExtraction)
+            .scalar_subquery()
+        )
+
+        # EXISTS subquery: does any ranking for this scene have non-empty warnings?
+        # CASE guards jsonb_array_length — PostgreSQL does not short-circuit AND
+        # conditions, so calling jsonb_array_length on a scalar (e.g. JSON null)
+        # would raise. The CASE ensures it is only called when typeof = 'array'.
+        any_warnings = exists().where(
+            SceneRanking.scene_extraction_id == SceneExtraction.id,
+            case(
+                (
+                    func.jsonb_typeof(SceneRanking.warnings) == "array",
+                    func.jsonb_array_length(SceneRanking.warnings),
+                ),
+                else_=0,
+            )
+            > 0,
+        )
+
         filters = []
 
         if book_slug:
             filters.append(SceneExtraction.book_slug == book_slug)
-        if chapter_number is not None:
-            filters.append(SceneExtraction.chapter_number == chapter_number)
         if decision:
             filters.append(SceneExtraction.refinement_decision == decision)
-        if has_refined is not None:
-            if has_refined:
-                filters.append(SceneExtraction.refined.is_not(None))
-            else:
-                filters.append(SceneExtraction.refined.is_(None))
-        if start_date:
-            filters.append(SceneExtraction.extracted_at >= start_date)
-        if end_date:
-            filters.append(SceneExtraction.extracted_at <= end_date)
+        if has_warnings is True:
+            filters.append(any_warnings)
+        elif has_warnings is False:
+            filters.append(not_(any_warnings))
 
-        statement = select(SceneExtraction)
+        statement = select(
+            SceneExtraction,
+            latest_score.label("ranking_score"),
+            any_warnings.label("has_warnings"),
+        )
         count_statement = select(func.count()).select_from(SceneExtraction)
 
         if search_term:
@@ -134,16 +154,19 @@ class SceneExtractionRepository:
             statement = statement.where(and_(*filters))
             count_statement = count_statement.where(and_(*filters))
 
-        ordering = (
-            SceneExtraction.extracted_at.asc()
-            if order.lower() == "asc"
-            else SceneExtraction.extracted_at.desc()
-        )
+        if sort_by == "ranking_desc":
+            statement = statement.order_by(latest_score.desc().nulls_last())
+        elif sort_by == "extracted_asc":
+            statement = statement.order_by(SceneExtraction.extracted_at.asc())
+        else:  # extracted_desc
+            statement = statement.order_by(SceneExtraction.extracted_at.desc())
 
-        statement = statement.order_by(ordering)
         statement = statement.offset((page - 1) * page_size).limit(page_size)
 
-        records = list(self._session.exec(statement))
+        rows = self._session.execute(statement).all()
+        records: list[tuple[SceneExtraction, float | None, bool]] = [
+            (row[0], row[1], bool(row[2])) for row in rows
+        ]
         total = self._session.exec(count_statement).one()
         return records, int(total)
 

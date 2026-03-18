@@ -27,7 +27,7 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react"
-import { useQuery } from "@tanstack/react-query"
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
 import { FiFilter, FiPlay, FiRefreshCcw, FiSearch } from "react-icons/fi"
@@ -43,12 +43,6 @@ import {
 import { SettingsApi } from "@/api/settings"
 import { PromptArtStyleControl } from "@/components/Common/PromptArtStyleControl"
 import { InputGroup } from "@/components/ui/input-group"
-import {
-  PaginationItems,
-  PaginationNextTrigger,
-  PaginationPrevTrigger,
-  PaginationRoot,
-} from "@/components/ui/pagination"
 import useCustomToast from "@/hooks/useCustomToast"
 import {
   type PromptArtStyleSelection,
@@ -57,9 +51,9 @@ import {
   getPromptArtStyleValidationMessage,
 } from "@/types/promptArtStyle"
 
+const PAGE_SIZE = 20
+
 const extractedScenesSearchSchema = z.object({
-  page: z.coerce.number().int().min(1).catch(1),
-  page_size: z.coerce.number().int().min(1).max(100).catch(20),
   book_slug: z
     .string()
     .trim()
@@ -68,36 +62,23 @@ const extractedScenesSearchSchema = z.object({
     .or(z.literal("").transform(() => undefined))
     .or(z.undefined())
     .catch(undefined),
-  chapter_number: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .or(z.literal("").transform(() => undefined))
-    .catch(undefined),
   decision: z.string().trim().min(1).catch("keep"),
-  has_refined: z
-    .enum(["true", "false"])
-    .transform((value) => value === "true")
+  has_warnings: z
+    .union([
+      z.boolean(),
+      z.enum(["true", "false"]).transform((v) => v === "true"),
+      z.literal("").transform(() => undefined),
+    ])
     .optional()
-    .or(z.literal("").transform(() => undefined))
     .catch(undefined),
   search: z
     .string()
     .optional()
     .or(z.literal("").transform(() => undefined))
     .catch(undefined),
-  start_date: z
-    .string()
-    .optional()
-    .or(z.literal("").transform(() => undefined))
-    .catch(undefined),
-  end_date: z
-    .string()
-    .optional()
-    .or(z.literal("").transform(() => undefined))
-    .catch(undefined),
-  order: z.enum(["asc", "desc"]).catch("desc"),
+  sort_by: z
+    .enum(["extracted_desc", "extracted_asc", "ranking_desc"])
+    .catch("extracted_desc"),
 })
 
 type ExtractedScenesSearch = z.infer<typeof extractedScenesSearchSchema>
@@ -123,6 +104,8 @@ const formatDateTime = (value: string | null) => {
   }).format(date)
 }
 
+const DEBOUNCE_MS = 400
+
 const SceneExtractionFilters = ({
   search,
   onChange,
@@ -135,36 +118,49 @@ const SceneExtractionFilters = ({
   isFetching: boolean
 }) => {
   const bookOptions = options?.books ?? []
-  const chaptersForBook = useMemo(() => {
-    if (!search.book_slug) {
-      return []
-    }
-    return options?.chapters_by_book?.[search.book_slug] ?? []
-  }, [options?.chapters_by_book, search.book_slug])
-
   const decisionOptions = options?.refinement_decisions ?? []
   const decisionValue = decisionOptions.length
     ? search.decision ?? "keep"
     : "all"
-  const hasRefinedValue = search.has_refined ?? undefined
+
+  const [searchDraft, setSearchDraft] = useState(search.search ?? "")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  )
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current !== undefined) {
+        clearTimeout(debounceRef.current)
+      }
+    }
+  }, [])
 
   const handleChange = (patch: Partial<ExtractedScenesSearch>) => {
-    onChange({
-      ...patch,
-      page: 1,
-    })
+    onChange(patch)
+  }
+
+  const handleSearchChange = (value: string) => {
+    setSearchDraft(value)
+    if (debounceRef.current !== undefined) {
+      clearTimeout(debounceRef.current)
+    }
+    debounceRef.current = setTimeout(() => {
+      handleChange({ search: value || undefined })
+    }, DEBOUNCE_MS)
   }
 
   const resetFilters = () => {
+    setSearchDraft("")
+    if (debounceRef.current !== undefined) {
+      clearTimeout(debounceRef.current)
+    }
     onChange({
       book_slug: undefined,
-      chapter_number: undefined,
       decision: "keep",
-      has_refined: undefined,
+      has_warnings: undefined,
       search: undefined,
-      start_date: undefined,
-      end_date: undefined,
-      page: 1,
+      sort_by: "extracted_desc",
     })
   }
 
@@ -188,7 +184,7 @@ const SceneExtractionFilters = ({
           Reset
         </Button>
       </Flex>
-      <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
+      <SimpleGrid columns={{ base: 1, md: 4 }} gap={4}>
         <Box>
           <Text
             fontSize="xs"
@@ -196,56 +192,22 @@ const SceneExtractionFilters = ({
             mb={1}
             color="fg.subtle"
           >
-            Book
+            Document
           </Text>
           <NativeSelectRoot disabled={!bookOptions.length} w="full">
             <NativeSelectField
               value={search.book_slug ?? ""}
               onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                 const value = event.target.value || undefined
-                handleChange({
-                  book_slug: value,
-                  chapter_number: undefined,
-                })
+                handleChange({ book_slug: value })
               }}
             >
               <option value="">
-                {bookOptions.length ? "All books" : "No books"}
+                {bookOptions.length ? "All documents" : "No documents"}
               </option>
               {bookOptions.map((slug) => (
                 <option key={slug} value={slug}>
                   {slug}
-                </option>
-              ))}
-            </NativeSelectField>
-            <NativeSelectIndicator />
-          </NativeSelectRoot>
-        </Box>
-        <Box>
-          <Text
-            fontSize="xs"
-            textTransform="uppercase"
-            mb={1}
-            color="fg.subtle"
-          >
-            Chapter
-          </Text>
-          <NativeSelectRoot disabled={!chaptersForBook.length} w="full">
-            <NativeSelectField
-              value={search.chapter_number?.toString() ?? ""}
-              onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                const value = event.target.value
-                handleChange({
-                  chapter_number: value ? Number(value) : undefined,
-                })
-              }}
-            >
-              <option value="">
-                {search.book_slug ? "All chapters" : "Select a book first"}
-              </option>
-              {chaptersForBook.map((chapter) => (
-                <option key={chapter} value={chapter}>
-                  Chapter {chapter}
                 </option>
               ))}
             </NativeSelectField>
@@ -281,8 +243,6 @@ const SceneExtractionFilters = ({
             <NativeSelectIndicator />
           </NativeSelectRoot>
         </Box>
-      </SimpleGrid>
-      <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
         <Box>
           <Text
             fontSize="xs"
@@ -290,27 +250,27 @@ const SceneExtractionFilters = ({
             mb={1}
             color="fg.subtle"
           >
-            Refinement
+            Content Warnings
           </Text>
           <NativeSelectRoot w="full">
             <NativeSelectField
               value={
-                hasRefinedValue === undefined
+                search.has_warnings === undefined
                   ? ""
-                  : hasRefinedValue
+                  : search.has_warnings
                     ? "true"
                     : "false"
               }
               onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                 const value = event.target.value
                 handleChange({
-                  has_refined: value ? value === "true" : undefined,
+                  has_warnings: value === "" ? undefined : value === "true",
                 })
               }}
             >
               <option value="">All scenes</option>
-              <option value="true">With refinement</option>
-              <option value="false">Without refinement</option>
+              <option value="false">Hide flagged content</option>
+              <option value="true">Flagged only</option>
             </NativeSelectField>
             <NativeSelectIndicator />
           </NativeSelectRoot>
@@ -322,36 +282,24 @@ const SceneExtractionFilters = ({
             mb={1}
             color="fg.subtle"
           >
-            Start Date
+            Sort By
           </Text>
-          <Input
-            type="date"
-            value={search.start_date ?? ""}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              const value = event.target.value || undefined
-              handleChange({ start_date: value })
-            }}
-            max={search.end_date ?? undefined}
-          />
-        </Box>
-        <Box>
-          <Text
-            fontSize="xs"
-            textTransform="uppercase"
-            mb={1}
-            color="fg.subtle"
-          >
-            End Date
-          </Text>
-          <Input
-            type="date"
-            value={search.end_date ?? ""}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              const value = event.target.value || undefined
-              handleChange({ end_date: value })
-            }}
-            min={search.start_date ?? undefined}
-          />
+          <NativeSelectRoot w="full">
+            <NativeSelectField
+              value={search.sort_by}
+              onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                handleChange({
+                  sort_by: event.target
+                    .value as ExtractedScenesSearch["sort_by"],
+                })
+              }}
+            >
+              <option value="extracted_desc">Newest first</option>
+              <option value="extracted_asc">Oldest first</option>
+              <option value="ranking_desc">Ranking score</option>
+            </NativeSelectField>
+            <NativeSelectIndicator />
+          </NativeSelectRoot>
         </Box>
       </SimpleGrid>
       <InputGroup
@@ -360,20 +308,12 @@ const SceneExtractionFilters = ({
       >
         <Input
           placeholder="Search excerpts, chapter titles, markers..."
-          value={search.search ?? ""}
+          value={searchDraft}
           onChange={(event: ChangeEvent<HTMLInputElement>) => {
-            const value = event.target.value
-            handleChange({ search: value || undefined })
+            handleSearchChange(event.target.value)
           }}
         />
       </InputGroup>
-      {options?.date_range && (
-        <Text fontSize="xs" color="fg.muted">
-          Showing data captured between{" "}
-          {formatDateTime(options.date_range.earliest)} and{" "}
-          {formatDateTime(options.date_range.latest)}
-        </Text>
-      )}
       {isFetching && (
         <HStack gap={2} color="fg.muted">
           <Spinner size="sm" />
@@ -782,6 +722,29 @@ const SceneExtractionItem = ({
               >
                 {formatDateTime(scene.extracted_at)}
               </Badge>
+              {scene.ranking_score != null && (
+                <Badge
+                  colorScheme="orange"
+                  fontSize="xs"
+                  px={2}
+                  py={0.5}
+                  borderRadius="full"
+                >
+                  Score {scene.ranking_score.toFixed(2)}
+                </Badge>
+              )}
+              {scene.has_content_warnings && (
+                <Badge
+                  colorScheme="red"
+                  fontSize="xs"
+                  px={2}
+                  py={0.5}
+                  borderRadius="full"
+                  variant="subtle"
+                >
+                  Flagged
+                </Badge>
+              )}
             </Flex>
             <Box
               mt={3}
@@ -894,38 +857,32 @@ const SceneExtractionItem = ({
 function ExtractedScenesPage() {
   const navigate = useNavigate({ from: Route.fullPath })
   const search = Route.useSearch()
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
   const cleanSearch = useMemo(() => {
-    const toIsoString = (value?: string) => {
-      if (!value) {
-        return undefined
-      }
-      const date = new Date(value)
-      if (Number.isNaN(date.getTime())) {
-        return undefined
-      }
-      return date.toISOString()
-    }
-
     const sanitized: SceneExtractionListParams = {
-      page: search.page,
-      page_size: search.page_size,
-      order: search.order,
+      page_size: PAGE_SIZE,
+      sort_by: search.sort_by,
       book_slug: search.book_slug,
-      chapter_number: search.chapter_number,
       decision: search.decision === "all" ? undefined : search.decision,
-      has_refined: search.has_refined,
+      has_warnings: search.has_warnings,
       search: search.search,
-      start_date: toIsoString(search.start_date ?? undefined),
-      end_date: toIsoString(search.end_date ?? undefined),
     }
     return sanitized
   }, [search])
 
-  const listQuery = useQuery({
+  const listQuery = useInfiniteQuery({
     queryKey: ["scene-extractions", cleanSearch],
-    queryFn: () => SceneExtractionService.list(cleanSearch),
-    placeholderData: (prev) => prev,
+    queryFn: ({ pageParam = 1 }) =>
+      SceneExtractionService.list({
+        ...cleanSearch,
+        page: pageParam as number,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.data.length < PAGE_SIZE) return undefined
+      return allPages.length + 1
+    },
   })
 
   const filtersQuery = useQuery({
@@ -961,9 +918,6 @@ function ExtractedScenesPage() {
     navigate({
       search: (prev: ExtractedScenesSearch) => {
         const next = { ...prev, ...updates } as ExtractedScenesSearch
-        if (updates.page === undefined) {
-          next.page = updates.page ?? prev.page ?? 1
-        }
         for (const [key, value] of Object.entries(next)) {
           if (
             value === undefined ||
@@ -978,11 +932,31 @@ function ExtractedScenesPage() {
     })
   }
 
-  const setPage = (page: number) => updateSearch({ page })
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    if (!loadMoreRef.current) return
+    if (!listQuery.hasNextPage) return
+    if (listQuery.isFetchingNextPage) return
 
-  const scenes = listQuery.data?.data ?? []
-  const total = listQuery.data?.total ?? 0
-  const pageSize = listQuery.data?.page_size ?? search.page_size
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && listQuery.hasNextPage) {
+          listQuery.fetchNextPage()
+        }
+      },
+      { threshold: 0.1 },
+    )
+
+    observer.observe(loadMoreRef.current)
+    return () => observer.disconnect()
+  }, [
+    listQuery.hasNextPage,
+    listQuery.isFetchingNextPage,
+    listQuery.fetchNextPage,
+  ])
+
+  const scenes = (listQuery.data?.pages ?? []).flatMap((p) => p.data)
+  const total = listQuery.data?.pages[0]?.total ?? 0
 
   return (
     <Container maxW="7xl" py={8}>
@@ -1051,22 +1025,24 @@ function ExtractedScenesPage() {
               ))}
             </AccordionRoot>
           )}
-          {total > pageSize && (
-            <Flex justify="flex-end">
-              <PaginationRoot
-                count={total}
-                pageSize={pageSize}
-                page={search.page}
-                onPageChange={({ page }) => setPage(page)}
-              >
-                <Flex align="center" gap={2}>
-                  <PaginationPrevTrigger />
-                  <PaginationItems />
-                  <PaginationNextTrigger />
-                </Flex>
-              </PaginationRoot>
-            </Flex>
-          )}
+          <Box ref={loadMoreRef} py={8} textAlign="center">
+            {listQuery.isFetchingNextPage ? (
+              <Flex justify="center" align="center" gap={2}>
+                <Spinner size="sm" />
+                <Text fontSize="sm" color="fg.subtle">
+                  Loading more scenes...
+                </Text>
+              </Flex>
+            ) : listQuery.hasNextPage ? (
+              <Text fontSize="sm" color="fg.subtle">
+                Scroll for more
+              </Text>
+            ) : scenes.length > 0 ? (
+              <Text fontSize="sm" color="fg.subtle">
+                All scenes loaded
+              </Text>
+            ) : null}
+          </Box>
         </Stack>
       </Stack>
     </Container>

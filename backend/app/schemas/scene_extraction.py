@@ -52,6 +52,8 @@ class SceneExtractionRead(BaseModel):
     refined_at: datetime | None
     refinement_has_refined_excerpt: bool | None
     props: dict[str, Any] = Field(default_factory=dict)
+    ranking_score: float | None = None
+    has_content_warnings: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

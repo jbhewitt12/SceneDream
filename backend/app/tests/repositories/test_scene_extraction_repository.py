@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import cast
 from uuid import uuid4
 
+import pytest
 from sqlmodel import Session
 
 from app.repositories import SceneExtractionRepository
@@ -114,9 +115,7 @@ def test_list_unrefined_honors_filters(db: Session, scene_factory) -> None:
     assert len(including_refined) == 1
 
 
-def test_search_applies_filters_pagination_and_order(
-    db: Session, scene_factory
-) -> None:
+def test_search_applies_filters_pagination_and_sort(db: Session, scene_factory) -> None:
     repository = SceneExtractionRepository(db)
     slug = f"test-book-search-{uuid4()}"
     base_time = datetime(2025, 4, 1, tzinfo=timezone.utc)
@@ -155,33 +154,149 @@ def test_search_applies_filters_pagination_and_order(
         page=1,
         page_size=5,
         book_slug=slug,
-        chapter_number=1,
         decision="keep",
-        has_refined=True,
         search_term="alpha",
-        start_date=base_time - timedelta(minutes=1),
-        end_date=base_time + timedelta(minutes=1),
-        order="asc",
+        sort_by="extracted_asc",
     )
     assert total == 1
-    assert [scene.id for scene in filtered] == [first.id]
+    assert [scene.id for scene, _, _ in filtered] == [first.id]
 
     ascending, _ = repository.search(
         page=1,
         page_size=10,
         book_slug=slug,
-        order="asc",
+        sort_by="extracted_asc",
     )
-    assert [scene.id for scene in ascending] == [first.id, second.id]
+    assert [scene.id for scene, _, _ in ascending] == [first.id, second.id]
 
     page_two, total_for_pagination = repository.search(
         page=2,
         page_size=1,
         book_slug=slug,
-        order="asc",
+        sort_by="extracted_asc",
     )
     assert total_for_pagination == 2
-    assert [scene.id for scene in page_two] == [second.id]
+    assert [scene.id for scene, _, _ in page_two] == [second.id]
+
+
+def _make_ranking(
+    session: Session,
+    scene_id: object,
+    *,
+    score: float,
+    warnings: list[str] | None = None,
+    base_time: datetime | None = None,
+) -> None:
+    from models.scene_ranking import SceneRanking
+
+    ts = base_time or datetime(2025, 6, 1, tzinfo=timezone.utc)
+    session.add(
+        SceneRanking(
+            scene_extraction_id=scene_id,
+            model_vendor="test",
+            model_name="test-model",
+            prompt_version="v1",
+            overall_priority=score,
+            scores={},
+            weight_config={},
+            weight_config_hash="abc",
+            raw_response={},
+            warnings=warnings,
+            created_at=ts,
+            updated_at=ts,
+        )
+    )
+    session.flush()
+
+
+def test_search_sort_by_ranking_desc(db: Session, scene_factory) -> None:
+    slug = f"test-book-ranking-sort-{uuid4()}"
+    base_time = datetime(2025, 6, 1, tzinfo=timezone.utc)
+
+    unranked = scene_factory(
+        book_slug=slug, chapter_number=1, scene_number=1, extracted_at=base_time
+    )
+    low_score = scene_factory(
+        book_slug=slug,
+        chapter_number=1,
+        scene_number=2,
+        extracted_at=base_time + timedelta(minutes=1),
+    )
+    high_score = scene_factory(
+        book_slug=slug,
+        chapter_number=1,
+        scene_number=3,
+        extracted_at=base_time + timedelta(minutes=2),
+    )
+
+    _make_ranking(db, low_score.id, score=0.3)
+    _make_ranking(db, high_score.id, score=0.9)
+
+    repository = SceneExtractionRepository(db)
+    results, total = repository.search(
+        page=1, page_size=10, book_slug=slug, sort_by="ranking_desc"
+    )
+    assert total == 3
+    scene_ids = [scene.id for scene, _, _ in results]
+    scores = [score for _, score, _ in results]
+
+    # high_score first, then low_score, then unranked (NULL last)
+    assert scene_ids[0] == high_score.id
+    assert scene_ids[1] == low_score.id
+    assert scene_ids[2] == unranked.id
+    assert scores[0] == pytest.approx(0.9)
+    assert scores[1] == pytest.approx(0.3)
+    assert scores[2] is None
+
+
+def test_search_has_warnings_filter(db: Session, scene_factory) -> None:
+    slug = f"test-book-warnings-{uuid4()}"
+    base_time = datetime(2025, 6, 2, tzinfo=timezone.utc)
+
+    clean = scene_factory(
+        book_slug=slug, chapter_number=1, scene_number=1, extracted_at=base_time
+    )
+    flagged = scene_factory(
+        book_slug=slug,
+        chapter_number=1,
+        scene_number=2,
+        extracted_at=base_time + timedelta(minutes=1),
+    )
+    unranked = scene_factory(
+        book_slug=slug,
+        chapter_number=1,
+        scene_number=3,
+        extracted_at=base_time + timedelta(minutes=2),
+    )
+
+    _make_ranking(db, clean.id, score=0.8, warnings=[])
+    _make_ranking(db, flagged.id, score=0.7, warnings=["violence", "horror"])
+
+    repository = SceneExtractionRepository(db)
+
+    # No filter: all three scenes returned; flagged scene has has_warnings=True
+    all_results, total = repository.search(
+        page=1, page_size=10, book_slug=slug, sort_by="extracted_asc"
+    )
+    assert total == 3
+    flagged_flags = {scene.id: hw for scene, _, hw in all_results}
+    assert flagged_flags[clean.id] is False
+    assert flagged_flags[flagged.id] is True
+    assert flagged_flags[unranked.id] is False
+
+    # has_warnings=False: only clean and unranked
+    no_warnings, count = repository.search(
+        page=1, page_size=10, book_slug=slug, has_warnings=False
+    )
+    assert count == 2
+    assert flagged.id not in {scene.id for scene, _, _ in no_warnings}
+
+    # has_warnings=True: only flagged
+    only_warnings, count = repository.search(
+        page=1, page_size=10, book_slug=slug, has_warnings=True
+    )
+    assert count == 1
+    assert [scene.id for scene, _, _ in only_warnings] == [flagged.id]
 
 
 def test_chunk_indexes_for_chapter_and_filter_options(

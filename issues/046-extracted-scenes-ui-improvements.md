@@ -159,12 +159,24 @@ The current Extracted Scenes page has six filter controls (Book, Chapter, Decisi
 
 ## Acceptance Criteria
 
-- [ ] Chapter, Refinement, Start Date, and End Date filters are removed from the UI and from the backend query params.
-- [ ] The "Book" filter label reads "Document"; underlying `book_slug` field is unchanged.
-- [ ] A sort-by dropdown is present with Newest first / Oldest first / Ranking score options.
-- [ ] Scenes with a ranking display a "Score X.XX" badge in the accordion trigger row.
-- [ ] Typing in the search box does not update the URL until 400 ms after the last keystroke.
-- [ ] Scrolling to the bottom of the scene list loads the next page automatically; no page number controls are shown.
-- [ ] All backend tests pass (`uv run pytest`).
-- [ ] Backend linting passes (`uv run bash scripts/lint.sh`).
-- [ ] Frontend linting and build pass (`npm run lint && npm run build`).
+- [x] Chapter, Refinement, Start Date, and End Date filters are removed from the UI and from the backend query params.
+- [x] The "Book" filter label reads "Document"; underlying `book_slug` field is unchanged.
+- [x] A sort-by dropdown is present with Newest first / Oldest first / Ranking score options.
+- [x] Scenes with a ranking display a "Score X.XX" badge in the accordion trigger row.
+- [x] Typing in the search box does not update the URL until 400 ms after the last keystroke.
+- [x] Scrolling to the bottom of the scene list loads the next page automatically; no page number controls are shown.
+- [x] All backend tests pass (`uv run pytest`).
+- [x] Backend linting passes (`uv run bash scripts/lint.sh`).
+- [x] Frontend linting and build pass (`npm run lint && npm run build`).
+
+## Completion Notes
+
+Implemented all four phases as planned, plus an additional content warnings filter requested by the user during implementation.
+
+**Deviations from plan:**
+- Added a `has_warnings` filter (not in original plan) that exposes `SceneRanking.warnings` through the API. The repository uses a PostgreSQL `EXISTS` + `CASE WHEN jsonb_typeof(...) = 'array' THEN jsonb_array_length(...) ELSE 0 END > 0` pattern to safely check for non-empty warning arrays, guarding against JSON `null` scalar values that would cause `jsonb_array_length` to raise.
+- Added `has_content_warnings: bool` to `SceneExtractionRead` so the frontend can show a "Flagged" badge on scene cards.
+- The filter panel uses 4 columns instead of 3 (Document, Decision, Content Warnings, Sort By).
+- Removed the date range display footer from the filters panel (it was only useful alongside the date range filters that were removed).
+- Repository `search()` return type changed from `list[SceneExtraction]` to `list[tuple[SceneExtraction, float | None, bool]]` to carry ranking score and warnings flag alongside each scene. The route unpacks these and populates the schema fields.
+- Used `session.execute()` (not `session.exec()`) for the multi-column SELECT query since SQLModel's `exec()` is designed for single-model results.

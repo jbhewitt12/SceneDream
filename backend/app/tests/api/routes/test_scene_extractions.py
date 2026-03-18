@@ -59,13 +59,9 @@ def test_list_scene_extractions_applies_filters_and_pagination(
             "page": 1,
             "page_size": 10,
             "book_slug": matching_scene.book_slug,
-            "chapter_number": 3,
             "decision": "keep",
-            "has_refined": True,
             "search": "skyline",
-            "start_date": (base_time - timedelta(minutes=1)).isoformat(),
-            "end_date": (base_time + timedelta(minutes=1)).isoformat(),
-            "order": "asc",
+            "sort_by": "extracted_asc",
         },
     )
 
@@ -75,6 +71,149 @@ def test_list_scene_extractions_applies_filters_and_pagination(
     assert payload["page"] == 1
     assert payload["page_size"] == 10
     assert [item["id"] for item in payload["data"]] == [str(matching_scene.id)]
+
+
+def test_list_scene_extractions_returns_ranking_score_and_warnings(
+    client: TestClient,
+    scene_factory,
+    db,
+) -> None:
+    from models.scene_ranking import SceneRanking
+
+    base_time = datetime(2025, 3, 1, tzinfo=timezone.utc)
+    slug = f"test-book-fields-{uuid4()}"
+
+    ranked = scene_factory(
+        book_slug=slug, chapter_number=1, scene_number=1, extracted_at=base_time
+    )
+    flagged = scene_factory(
+        book_slug=slug,
+        chapter_number=1,
+        scene_number=2,
+        extracted_at=base_time + timedelta(minutes=1),
+    )
+
+    db.add(
+        SceneRanking(
+            scene_extraction_id=ranked.id,
+            model_vendor="test",
+            model_name="test-model",
+            prompt_version="v1",
+            overall_priority=0.75,
+            scores={},
+            weight_config={},
+            weight_config_hash="abc",
+            raw_response={},
+            warnings=[],
+            created_at=base_time,
+            updated_at=base_time,
+        )
+    )
+    db.add(
+        SceneRanking(
+            scene_extraction_id=flagged.id,
+            model_vendor="test",
+            model_name="test-model",
+            prompt_version="v1",
+            overall_priority=0.5,
+            scores={},
+            weight_config={},
+            weight_config_hash="abc",
+            raw_response={},
+            warnings=["violence"],
+            created_at=base_time,
+            updated_at=base_time,
+        )
+    )
+    db.commit()
+
+    response = client.get(
+        "/api/v1/scene-extractions/",
+        params={"book_slug": slug, "sort_by": "ranking_desc"},
+    )
+    assert response.status_code == 200
+    items = {item["id"]: item for item in response.json()["data"]}
+
+    assert items[str(ranked.id)]["ranking_score"] == pytest.approx(0.75)
+    assert items[str(ranked.id)]["has_content_warnings"] is False
+
+    assert items[str(flagged.id)]["ranking_score"] == pytest.approx(0.5)
+    assert items[str(flagged.id)]["has_content_warnings"] is True
+
+
+def test_list_scene_extractions_has_warnings_filter(
+    client: TestClient,
+    scene_factory,
+    db,
+) -> None:
+    from models.scene_ranking import SceneRanking
+
+    base_time = datetime(2025, 4, 1, tzinfo=timezone.utc)
+    slug = f"test-book-warn-filter-{uuid4()}"
+
+    clean = scene_factory(
+        book_slug=slug, chapter_number=1, scene_number=1, extracted_at=base_time
+    )
+    flagged = scene_factory(
+        book_slug=slug,
+        chapter_number=1,
+        scene_number=2,
+        extracted_at=base_time + timedelta(minutes=1),
+    )
+
+    db.add(
+        SceneRanking(
+            scene_extraction_id=clean.id,
+            model_vendor="test",
+            model_name="test-model",
+            prompt_version="v1",
+            overall_priority=0.8,
+            scores={},
+            weight_config={},
+            weight_config_hash="abc",
+            raw_response={},
+            warnings=[],
+            created_at=base_time,
+            updated_at=base_time,
+        )
+    )
+    db.add(
+        SceneRanking(
+            scene_extraction_id=flagged.id,
+            model_vendor="test",
+            model_name="test-model",
+            prompt_version="v1",
+            overall_priority=0.6,
+            scores={},
+            weight_config={},
+            weight_config_hash="abc",
+            raw_response={},
+            warnings=["sexual"],
+            created_at=base_time,
+            updated_at=base_time,
+        )
+    )
+    db.commit()
+
+    # has_warnings=false: only clean scene
+    resp = client.get(
+        "/api/v1/scene-extractions/",
+        params={"book_slug": slug, "has_warnings": False},
+    )
+    assert resp.status_code == 200
+    ids = [item["id"] for item in resp.json()["data"]]
+    assert str(clean.id) in ids
+    assert str(flagged.id) not in ids
+
+    # has_warnings=true: only flagged scene
+    resp = client.get(
+        "/api/v1/scene-extractions/",
+        params={"book_slug": slug, "has_warnings": True},
+    )
+    assert resp.status_code == 200
+    ids = [item["id"] for item in resp.json()["data"]]
+    assert str(flagged.id) in ids
+    assert str(clean.id) not in ids
 
 
 def test_scene_extraction_filters_returns_expected_options(
