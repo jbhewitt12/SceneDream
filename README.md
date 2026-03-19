@@ -4,20 +4,35 @@
 
 <img src="img/assets/banner/Aria-of-Impact.png" width="19%"><img src="img/assets/banner/Ink-Stained-Singularity.png" width="19%"><img src="img/assets/banner/Baroque-Breach.png" width="19%"><img src="img/assets/banner/Command-of-the-Depths.png" width="19%"><img src="img/assets/banner/Diamond-Sky.png" width="19%">
 
-SceneDream is a project for automatically turning text based stories into AI images. You put in a story, and it comes out as a bunch of images.
+SceneDream is a project for automatically turning text based stories into AI images. You put in a story, and it comes out as a bunch of images!
 
 It's set up as a pipeline you run on your own computer that ingests source text, extracts cinematic scenes, ranks them, creates image generation prompts, and generates images.
 
-All you'll need to get it working is an OpenAI API key and a text based story.
+All you'll need to get it working is an OpenAI API key and a text based story. You don't need to be technically savvy to use it, because it's all done through a web interface.
+
+## The Interface
+
+<table>
+<tr>
+<td width="50%">
+<img src="img/assets/documents-frontend.png" width="100%">
+<b>Documents Dashboard</b> —  Launch the pipeline from here. See how many scenes were extracted, how many have been ranked, how many prompts and images have been generated, and kick off a new run with one click.
+</td>
+<td width="50%">
+<img src="img/assets/generated-scenes-frontend.png" width="100%">
+<b>Generated Images</b> — Browse every image generated across all your documents. Filter by book, provider, or approval status. Click on an image to see the prompt that was used to generate it and the raw scene text that was used to create it.
+</td>
+</tr>
+</table>
 
 ## Pipeline Overview
 
 1. Ingest source documents (`.epub`, `.mobi`, `.txt`, `.md`, `.docx`)
 2. Extract cinematic scenes
-3. Optionally refine scenes
+3. Discard any scenes that are not suitable for generation
 4. Rank scenes for generation priority
 5. Generate prompt variants
-6. Generate images (Default to gpt-image-1.5) and persist assets
+6. Generate images (Default to gpt-image-1.5)
 
 ## Architecture
 
