@@ -52,6 +52,8 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./img:/app/img
+      - ./documents:/app/documents
+      - ./example_docs:/app/example_docs
     env_file:
       - .env
     environment:
