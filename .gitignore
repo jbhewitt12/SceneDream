@@ -13,7 +13,8 @@ docker-compose.override.yml
 /books/
 /img/generated/
 /db_backups/
-/documents/
+/documents/*
+!/documents/.gitkeep
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
