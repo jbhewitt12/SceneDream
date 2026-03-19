@@ -927,7 +927,7 @@ function DocumentCard({
               color="fg.subtle"
               mb={2}
             >
-              Last Run
+              Pipeline Status
             </Text>
             {runSummary ? (
               <Stack gap={2}>

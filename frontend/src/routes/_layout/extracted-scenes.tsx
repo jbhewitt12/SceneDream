@@ -619,7 +619,7 @@ const SceneLaunchPanel = ({
             color="fg.subtle"
             mb={2}
           >
-            Last Run
+            Pipeline Status
           </Text>
           <Stack gap={2}>
             <Flex wrap="wrap" gap={2} align="center">
