@@ -76,9 +76,7 @@ Drop any `.epub`, `.mobi`, `.txt`, `.md`, or `.docx` file into the `documents/` 
 docker compose watch
 ```
 
-5. Open the app:
-- Dashboard: [http://localhost:5173](http://localhost:5173)
-- API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+5. Open the app: [http://localhost:5173](http://localhost:5173)
 
 ## Quickstart (Run Backend/Frontend Directly)
 
