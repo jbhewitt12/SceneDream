@@ -28,11 +28,11 @@ All you'll need to get it working is an OpenAI API key and a text based story. Y
 ## Pipeline Overview
 
 1. Ingest source documents (`.epub`, `.mobi`, `.txt`, `.md`, `.docx`)
-2. Extract cinematic scenes
+2. Extract cinematic scenes (Go through the document and choose scenes that could be images)
 3. Discard any scenes that are not suitable for generation
-4. Rank scenes for generation priority
-5. Generate prompt variants
-6. Generate images (Default to gpt-image-1.5)
+4. Rank scenes for generation priority (an LLM decides how good the scene is for being turned into an image)
+5. Generate image prompts
+6. Generate images using the image prompts (Default to GPT Image 1.5)
 
 ## Architecture
 
@@ -132,9 +132,47 @@ Once extraction and ranking are complete, you don't have to do them again. Now e
 The Settings page ([http://localhost:5173/settings](http://localhost:5173/settings)) lets you configure pipeline defaults and art style behavior without touching any code:
 
 - **Default scenes per run** — how many scenes to process each time you launch a pipeline run.
-- **Default art style mode** — choose between *Random Style Mix* (randomly samples from your style lists) or *Single art style* (always uses one specific style).
-- **Recommended Styles / Other Styles** — two editable lists of art style descriptions that the random mix draws from. Edit these to steer the aesthetic of generated images toward styles you like.
+- **Default art style mode** — choose between *Random Style Mix* (randomly samples from two lists of art styles you can edit) or *Single art style* (always uses one specific style).
+- **Recommended Styles / Other Styles** — two prepopulated editable lists of art style descriptions that the random mix draws from. Edit these to steer the aesthetic of generated images toward styles you like.
 - **Social media posting** — enable the social posting feature (disabled by default). At the moment, you can post to you Flickr and X.com accounts by clicking a button in the frontend. If you want to do that, you will need to add the appropriate API keys to the.env file. When disabled, posting controls are hidden across the app.
+
+## Image Generation Workflows
+
+There are four ways to generate images, each suited to a different workflow.
+
+### 1. Full pipeline from the Documents dashboard
+
+Go to [http://localhost:5173/documents](http://localhost:5173/documents) and click the launch button on any document card.
+
+- This needs to be done first for each document so that extraction and ranking are completed.
+- If a document has never been processed, the button says **Run pipeline** and triggers extraction, ranking, prompt generation, and image generation all in one go.
+- Once extraction and ranking are done, the button switches to **Generate images for scenes** and only runs prompt generation and image generation for the next highest-ranked scenes that don't already have images.
+- Before launching, you can set how many scenes to process in this run and choose an art style: **Random Style Mix** (randomly draws from art styles configured in settings) or **Single art style** (you type in a specific style description). Multiple prompts and images will be generated for every scene. The exact number that is generated is decided by an LLM based on how many different moments in the scene could be turned into images.
+- The card shows live run status and polls automatically until the run completes.
+
+This is the main workflow for working through a document top to bottom.
+
+### 2. Targeted generation from the Extracted Scenes page
+
+Go to [http://localhost:5173/extracted-scenes](http://localhost:5173/extracted-scenes) to browse every extracted scene across all your documents.
+
+- Filter by document, refinement decision, content warnings, or free-text search. Sort by extraction order or ranking score.
+- Expand any scene to read the raw excerpt.
+- Each expanded scene has a **Generate Images** panel where you can set the number of image variants to produce and choose an art style, then launch a scene-targeted pipeline run just for that one scene.
+
+Use this workflow when you want to manually pick which scenes to generate images for rather than letting the ranking decide.
+
+### 3. Remix
+
+From the Generated Images gallery ([http://localhost:5173/generated-images](http://localhost:5173/generated-images)), each image card has a remix button (the shuffle icon). Clicking it immediately starts a new pipeline run using the same scene and prompt configuration to produce a fresh variation of the image.
+
+Use this when an image is close but not quite right and you want a new roll of the dice with the same inputs.
+
+### 4. Custom remix
+
+Click any image to open the detail modal. The sidebar shows the full prompt text that was used to generate the image. You can edit that prompt directly in the modal and click **Remix with Edits** to generate a new image using your modified version.
+
+Use this when you want full control of the prompt.
 
 ## Common Development Commands
 
