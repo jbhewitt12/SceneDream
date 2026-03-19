@@ -188,26 +188,29 @@ class DocumentDashboardService:
 
     def _scan_documents_directory(self) -> dict[str, _EntryBuilder]:
         rows: dict[str, _EntryBuilder] = {}
-        documents_dir = self._project_root / "documents"
-        if not documents_dir.exists():
-            return rows
+        scan_dirs = ["documents", "example_docs"]
 
-        for path in sorted(documents_dir.rglob("*")):
-            if not path.is_file():
-                continue
-            extension = path.suffix.lower()
-            if extension not in SUPPORTED_SOURCE_EXTENSIONS:
+        for dir_name in scan_dirs:
+            scan_dir = self._project_root / dir_name
+            if not scan_dir.exists():
                 continue
 
-            source_path = path.relative_to(self._project_root).as_posix()
-            rows[source_path] = _EntryBuilder(
-                document_id=None,
-                slug=self._slug_from_source_path(source_path),
-                display_name=self._derive_display_name(source_path),
-                source_path=source_path,
-                source_type=extension.removeprefix("."),
-                file_exists=True,
-            )
+            for path in sorted(scan_dir.rglob("*")):
+                if not path.is_file():
+                    continue
+                extension = path.suffix.lower()
+                if extension not in SUPPORTED_SOURCE_EXTENSIONS:
+                    continue
+
+                source_path = path.relative_to(self._project_root).as_posix()
+                rows[source_path] = _EntryBuilder(
+                    document_id=None,
+                    slug=self._slug_from_source_path(source_path),
+                    display_name=self._derive_display_name(source_path),
+                    source_path=source_path,
+                    source_type=extension.removeprefix("."),
+                    file_exists=True,
+                )
 
         return rows
 

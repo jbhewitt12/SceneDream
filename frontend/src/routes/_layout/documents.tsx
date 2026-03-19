@@ -639,7 +639,7 @@ function DocumentsPage() {
           <Box borderWidth="1px" borderRadius="lg" p={6}>
             <Text color="fg.muted">
               No documents matched your search and filters, or no files were
-              found in `documents/`.
+              found in `documents/` or `example_docs/`.
             </Text>
           </Box>
         ) : null}
