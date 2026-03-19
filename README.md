@@ -55,13 +55,22 @@ cp .env.example .env
 - `GEMINI_API_KEY` is optional; when present, Gemini models remain the configured defaults with automatic OpenAI fallback.
 - `XAI_API_KEY` remains optional for any xAI experiments.
 
-3. Start the stack:
+3. Add a story to the `documents/` folder:
+
+Drop any `.epub`, `.mobi`, `.txt`, `.md`, or `.docx` file into the `documents/` directory. If you don't have one handy, the repo includes four public domain short stories you can use straight away:
+
+- `E_A_Poe-The_Cask_of_Amontillado.md`
+- `F_R_Stockton-The_Lady_or_the_Tiger.docx`
+- `H_G_Wells-The_Star.txt`
+- `W_W_Jacobs-The_Monkeys_Paw.epub`
+
+4. Start the stack:
 
 ```bash
 docker compose watch
 ```
 
-4. Open the app:
+5. Open the app:
 - Dashboard: http://localhost:5173
 - API docs: http://localhost:8000/docs
 
