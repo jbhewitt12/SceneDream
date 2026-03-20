@@ -1025,7 +1025,7 @@ class ImagePromptGenerationService:
                 f"LLM prompt generation failed: {last_error}"
             ) from last_error
         raise ImagePromptGenerationServiceError(
-            "LLM prompt generation failed after retries"
+            f"LLM prompt generation failed after retries: {last_error}"
         ) from last_error
 
     async def _run_metadata_generation(
