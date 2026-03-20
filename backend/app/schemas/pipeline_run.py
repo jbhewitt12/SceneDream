@@ -76,6 +76,7 @@ class PipelineRunRead(BaseModel):
     error_message: str | None
     config_overrides: dict[str, Any] = Field(default_factory=dict)
     usage_summary: dict[str, Any] = Field(default_factory=dict)
+    stage_progress: dict[str, Any] | None = None
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime

@@ -8,7 +8,7 @@ import logging
 import os
 import re
 import unicodedata
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -169,7 +169,12 @@ class SceneExtractor:
             context="SceneExtractor.refine",
         )
 
-    def extract_book(self, book_path: str | os.PathLike[str]) -> dict[str, object]:
+    def extract_book(
+        self,
+        book_path: str | os.PathLike[str],
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> dict[str, object]:
         resolved_book_path = self._resolve_book_path(book_path)
         book_slug = self._resolve_book_slug(resolved_book_path)
         chapters = self._load_chapters(resolved_book_path)
@@ -230,6 +235,11 @@ class SceneExtractor:
                     idx,
                     total_chapters,
                 )
+            if on_progress is not None:
+                try:
+                    on_progress(idx, total_chapters)
+                except Exception:
+                    logger.exception("on_progress callback raised an exception")
             if (
                 resume_active
                 and resume_chapter is not None

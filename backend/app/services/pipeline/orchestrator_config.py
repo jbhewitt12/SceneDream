@@ -254,6 +254,18 @@ class PipelineStats:
 
 
 # ---------------------------------------------------------------------------
+# Stage progress helpers
+# ---------------------------------------------------------------------------
+
+PIPELINE_STAGES = ["extracting", "ranking", "generating_prompts", "generating_images"]
+
+
+def build_stage_progress() -> dict[str, Any]:
+    """Return a fresh stage-progress dict with all stages set to pending."""
+    return {stage: {"status": "pending"} for stage in PIPELINE_STAGES}
+
+
+# ---------------------------------------------------------------------------
 # Execution result
 # ---------------------------------------------------------------------------
 

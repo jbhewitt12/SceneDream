@@ -189,3 +189,21 @@ After extraction completes the entry becomes `{"status": "completed", "items": 4
 - [ ] All backend tests pass (`uv run pytest`)
 - [ ] Frontend builds cleanly (`npm run build`)
 - [ ] Backend lint passes (`uv run bash scripts/lint.sh`)
+
+## Completion Notes
+
+Implemented as planned across all 6 phases. Key implementation details:
+
+**Phase 1** — Added `stage_progress: dict[str, Any] | None` (JSONB, nullable) to `PipelineRun` model. Wrote migration manually (`e5f7a8b9c012`) since DB was not running locally. Added `stage_progress` kwarg to `PipelineRunRepository.update_status()`. Added `build_stage_progress()` helper to `orchestrator_config.py`.
+
+**Phase 2** — Added `on_progress: Callable[[int, int], None] | None = None` to `SceneExtractor.extract_book()` and `_extract_book_with_fresh_session()`. In `_execute_extraction()`, a closure `_on_extraction_progress` opens a fresh DB session per call to write chapter progress. After extraction completes, `self._stage_progress["extracting"]` is updated to the final scene count.
+
+**Phase 3** — Added `_stage_progress: dict` instance variable and `_write_stage_progress()` method to `PipelineOrchestrator`. Initialized in `execute()` via `build_stage_progress()`. Updated `_transition_stage()` to mark the completed stage and set the new stage to `running` in `_stage_progress`. Added per-scene `_write_stage_progress` calls in ranking loop, both prompt generation loops (scene-targeted and document-targeted). Added `on_image_generated` callback to `ImageGenerationService.generate_for_selection()`, `_execute_tasks()` (with `asyncio.Lock` for atomic counter), flowing through from `_execute_image_generation()`. Updated all three finalize methods to mark active stage as `failed`/`completed` and pass `stage_progress` to the final DB write.
+
+**Phase 4** — Added `stage_progress: dict[str, Any] | None = None` to `PipelineRunRead`. Regenerated client via `./scripts/generate-client.sh`.
+
+**Phase 5** — Created `PipelineStageProgress.tsx` with 4-row compact breakdown (checkmark/arrow/cross/circle icons per status, counter format `"3 / 12 chapters"`). Updated `RunSummaryLike` type and `DocumentCard` to render `PipelineStageProgress` when `stage_progress` is present, falling back to the existing single-line stage text for older runs.
+
+**Phase 6** — Added `TestStageProgress` class to `test_pipeline_orchestrator.py` with 5 tests covering initialization, success completion, exception failure, all-four-stages run, and helper function. Added `test_pipeline_run_repository_stage_progress` to `test_core_domain_repositories.py`. Added `test_get_pipeline_run_returns_stage_progress` to `test_pipeline_runs.py`.
+
+**Deviations from plan**: Minor — the `_update_run_status` helper function signature was also updated to accept `stage_progress` (the plan implied this implicitly). The `_finalize_success` logic for marking the last running stage as completed was slightly richer than described (preserves existing items/total/unit fields, only overwrites the status key).

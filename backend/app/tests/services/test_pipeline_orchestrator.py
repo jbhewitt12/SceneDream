@@ -1213,3 +1213,135 @@ class TestOrchestratorCustomRemixTarget:
         result = asyncio.run(orchestrator.execute(prepared))
         assert result.status == "failed"
         assert "No images were generated" in (result.error_message or "")
+
+
+# ---------------------------------------------------------------------------
+# Tests: stage_progress tracking
+# ---------------------------------------------------------------------------
+
+
+class TestStageProgress:
+    """Tests for stage_progress updates in the orchestrator."""
+
+    def test_stage_progress_initialized_on_execute(self) -> None:
+        """stage_progress starts as all-pending dict when execute() begins."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator()
+        prepared = _make_prepared(
+            run_extraction=True,
+            run_ranking=False,
+            run_prompt_generation=False,
+            run_image_generation=False,
+        )
+
+        asyncio.run(orchestrator.execute(prepared))
+
+        # First transition update should carry stage_progress with extracting=running
+        transition_updates = [
+            u
+            for u in callbacks.status_updates
+            if u.get("current_stage") not in ("completed", "failed")
+        ]
+        assert len(transition_updates) >= 1
+        first = transition_updates[0]
+        assert "stage_progress" in first
+        sp = first["stage_progress"]
+        assert sp is not None
+        # extracting should be running
+        assert sp["extracting"]["status"] == "running"
+        # other stages should be pending
+        assert sp["ranking"]["status"] == "pending"
+        assert sp["generating_prompts"]["status"] == "pending"
+        assert sp["generating_images"]["status"] == "pending"
+
+    def test_stage_progress_completed_on_success(self) -> None:
+        """After a successful run, the final update includes stage_progress with last active stage completed."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator()
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=False,
+            run_prompt_generation=True,
+            run_image_generation=False,
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        assert result.status == "completed"
+        final_update = callbacks.status_updates[-1]
+        assert final_update["status_value"] == "completed"
+        sp = final_update.get("stage_progress")
+        assert sp is not None
+        # generating_prompts was last active stage — should be completed
+        assert sp["generating_prompts"]["status"] == "completed"
+
+    def test_stage_progress_failed_on_exception(self) -> None:
+        """On exception, the active stage is marked failed in stage_progress."""
+
+        async def _raise_stage(
+            prepared: PreparedPipelineExecution,  # noqa: ARG001
+            stats: PipelineStats,  # noqa: ARG001
+        ) -> None:
+            raise RuntimeError("stage exploded")
+
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+        orchestrator._execute_extraction = _raise_stage  # type: ignore[method-assign]
+        orchestrator._execute_ranking = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _noop_stage  # type: ignore[method-assign]
+
+        prepared = _make_prepared(
+            run_extraction=True,
+            run_ranking=False,
+            run_prompt_generation=False,
+            run_image_generation=False,
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        assert result.status == "failed"
+        final_update = callbacks.status_updates[-1]
+        sp = final_update.get("stage_progress")
+        assert sp is not None
+        assert sp["extracting"]["status"] == "failed"
+
+    def test_stage_progress_all_four_stages(self) -> None:
+        """With all stages enabled, each stage transitions through pending→running→completed."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator()
+        prepared = _make_prepared(
+            run_extraction=True,
+            run_ranking=True,
+            run_prompt_generation=True,
+            run_image_generation=True,
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        assert result.status == "completed"
+        final_update = callbacks.status_updates[-1]
+        sp = final_update.get("stage_progress")
+        assert sp is not None
+        # All four stages should be present
+        for stage in (
+            "extracting",
+            "ranking",
+            "generating_prompts",
+            "generating_images",
+        ):
+            assert stage in sp
+
+    def test_build_stage_progress_helper(self) -> None:
+        """build_stage_progress() returns all four stages as pending."""
+        from app.services.pipeline.orchestrator_config import build_stage_progress
+
+        sp = build_stage_progress()
+        assert set(sp.keys()) == {
+            "extracting",
+            "ranking",
+            "generating_prompts",
+            "generating_images",
+        }
+        for entry in sp.values():
+            assert entry["status"] == "pending"

@@ -647,13 +647,10 @@ export class SceneExtractionsService {
      * @param data.page
      * @param data.pageSize
      * @param data.bookSlug
-     * @param data.chapterNumber
      * @param data.decision
-     * @param data.hasRefined
+     * @param data.hasWarnings
      * @param data.search
-     * @param data.startDate
-     * @param data.endDate
-     * @param data.order
+     * @param data.sortBy
      * @returns SceneExtractionListResponse Successful Response
      * @throws ApiError
      */
@@ -665,13 +662,10 @@ export class SceneExtractionsService {
                 page: data.page,
                 page_size: data.pageSize,
                 book_slug: data.bookSlug,
-                chapter_number: data.chapterNumber,
                 decision: data.decision,
-                has_refined: data.hasRefined,
+                has_warnings: data.hasWarnings,
                 search: data.search,
-                start_date: data.startDate,
-                end_date: data.endDate,
-                order: data.order
+                sort_by: data.sortBy
             },
             errors: {
                 422: 'Validation Error'

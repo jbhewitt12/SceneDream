@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -374,6 +375,8 @@ class ImageGenerationService:
         concurrency: int = 3,
         dry_run: bool = False,
         pipeline_run_id: UUID | None = None,
+        on_image_generated: Callable[[int, int], None] | None = None,
+        total_images: int | None = None,
     ) -> list[UUID]:
         """
         Generate images for a selection of prompts.
@@ -430,8 +433,13 @@ class ImageGenerationService:
             return []
 
         # Execute tasks with concurrency control
+        effective_total = total_images if total_images is not None else len(tasks)
         results = await self._execute_tasks(
-            tasks, config, pipeline_run_id=pipeline_run_id
+            tasks,
+            config,
+            pipeline_run_id=pipeline_run_id,
+            on_image_generated=on_image_generated,
+            total_images=effective_total,
         )
 
         # Collect successful generation IDs
@@ -769,19 +777,37 @@ class ImageGenerationService:
         config: ImageGenerationConfig,
         *,
         pipeline_run_id: UUID | None = None,
+        on_image_generated: Callable[[int, int], None] | None = None,
+        total_images: int = 0,
     ) -> list[GenerationResult]:
         """Execute generation tasks with bounded concurrency."""
         semaphore = asyncio.Semaphore(config.concurrency)
-        results: list[GenerationResult] = []
+        completed_count = 0
+        count_lock = asyncio.Lock()
 
         async def bounded_generate(task: GenerationTask) -> GenerationResult:
+            nonlocal completed_count
             async with semaphore:
-                return await self._generate_single(
+                result = await self._generate_single(
                     task, config, pipeline_run_id=pipeline_run_id
                 )
+                if (
+                    on_image_generated is not None
+                    and result.generated_image_id is not None
+                ):
+                    async with count_lock:
+                        completed_count += 1
+                        done = completed_count
+                    try:
+                        on_image_generated(done, total_images)
+                    except Exception:
+                        logger.exception(
+                            "on_image_generated callback raised an exception"
+                        )
+                return result
 
         # Execute all tasks concurrently (bounded by semaphore)
-        results = await asyncio.gather(
+        results: list[GenerationResult] = await asyncio.gather(
             *[bounded_generate(task) for task in tasks],
             return_exceptions=False,
         )

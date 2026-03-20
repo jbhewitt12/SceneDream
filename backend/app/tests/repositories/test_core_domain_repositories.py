@@ -351,3 +351,78 @@ def test_generated_asset_repository_links_existing_records(
     db.delete(run)
     db.delete(document)
     db.commit()
+
+
+def test_pipeline_run_repository_stage_progress(db: Session) -> None:
+    document_repo = DocumentRepository(db)
+    run_repo = PipelineRunRepository(db)
+    slug = f"test-book-progress-{uuid4()}"
+    document = document_repo.create(
+        data={
+            "slug": slug,
+            "source_path": f"documents/{slug}.epub",
+            "source_type": "epub",
+            "ingestion_state": "ingested",
+            "source_metadata": {},
+        },
+        commit=True,
+    )
+
+    run = run_repo.create(
+        data={
+            "document_id": document.id,
+            "book_slug": slug,
+            "status": "pending",
+            "config_overrides": {},
+        },
+        commit=True,
+    )
+    assert run.stage_progress is None
+
+    progress = {
+        "extracting": {
+            "status": "running",
+            "items": 3,
+            "total": 10,
+            "unit": "chapters",
+        },
+        "ranking": {"status": "pending"},
+        "generating_prompts": {"status": "pending"},
+        "generating_images": {"status": "pending"},
+    }
+    updated = run_repo.update_status(
+        run.id,
+        status="extracting",
+        current_stage="extracting",
+        stage_progress=progress,
+        commit=True,
+    )
+    assert updated is not None
+    assert updated.stage_progress is not None
+    assert updated.stage_progress["extracting"]["status"] == "running"
+    assert updated.stage_progress["extracting"]["items"] == 3
+    assert updated.stage_progress["ranking"]["status"] == "pending"
+
+    # Updating again merges properly
+    completed_progress = {
+        "extracting": {"status": "completed", "items": 42, "unit": "scenes"},
+        "ranking": {"status": "pending"},
+        "generating_prompts": {"status": "pending"},
+        "generating_images": {"status": "pending"},
+    }
+    final = run_repo.update_status(
+        run.id,
+        status="completed",
+        current_stage="completed",
+        stage_progress=completed_progress,
+        completed=True,
+        commit=True,
+    )
+    assert final is not None
+    assert final.stage_progress is not None
+    assert final.stage_progress["extracting"]["status"] == "completed"
+    assert final.stage_progress["extracting"]["items"] == 42
+
+    db.delete(run)
+    db.delete(document)
+    db.commit()

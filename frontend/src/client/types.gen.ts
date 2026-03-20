@@ -178,6 +178,7 @@ export type GeneratedImageCustomRemixRequest = {
  * Response schema for custom remix initiation acknowledgment.
  */
 export type GeneratedImageCustomRemixResponse = {
+    pipeline_run_id: string;
     custom_prompt_id: string;
     /**
      * Represents the custom remix request status (accepted when background task scheduled).
@@ -318,6 +319,7 @@ export type GeneratedImageRemixRequest = {
  * Response schema for remix initiation acknowledgment.
  */
 export type GeneratedImageRemixResponse = {
+    pipeline_run_id: string;
     remix_prompt_ids: Array<(string)>;
     /**
      * Represents the remix request status (accepted when background task scheduled).
@@ -463,6 +465,9 @@ export type PipelineRunRead = {
     usage_summary?: {
         [key: string]: unknown;
     };
+    stage_progress?: ({
+    [key: string]: unknown;
+} | null);
     started_at: (string | null);
     completed_at: (string | null);
     created_at: string;
@@ -581,6 +586,8 @@ export type SceneExtractionRead = {
     props?: {
         [key: string]: unknown;
     };
+    ranking_score?: (number | null);
+    has_content_warnings?: boolean;
 };
 
 /**
@@ -888,15 +895,12 @@ export type PipelineRunsGetPipelineRunResponse = (PipelineRunRead);
 
 export type SceneExtractionsListSceneExtractionsData = {
     bookSlug?: (string | null);
-    chapterNumber?: (number | null);
     decision?: (string | null);
-    endDate?: (string | null);
-    hasRefined?: (boolean | null);
-    order?: 'asc' | 'desc';
+    hasWarnings?: (boolean | null);
     page?: number;
     pageSize?: number;
     search?: (string | null);
-    startDate?: (string | null);
+    sortBy?: 'extracted_desc' | 'extracted_asc' | 'ranking_desc';
 };
 
 export type SceneExtractionsListSceneExtractionsResponse = (SceneExtractionListResponse);

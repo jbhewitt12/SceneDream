@@ -100,6 +100,7 @@ class PipelineRunRepository:
         current_stage: str | None = None,
         error_message: str | None = None,
         usage_summary: dict[str, Any] | None = None,
+        stage_progress: dict[str, Any] | None = None,
         completed: bool = False,
         commit: bool = False,
         refresh: bool = True,
@@ -112,6 +113,8 @@ class PipelineRunRepository:
         run.error_message = error_message
         if usage_summary is not None:
             run.usage_summary = usage_summary
+        if stage_progress is not None:
+            run.stage_progress = stage_progress
         if run.started_at is None:
             run.started_at = datetime.now(timezone.utc)
         if completed:

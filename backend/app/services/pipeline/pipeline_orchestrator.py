@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import functools
 import json
 import logging
 from collections.abc import Callable
@@ -47,6 +49,7 @@ from .orchestrator_config import (
     PromptExecutionOptions,
     RemixTarget,
     SceneTarget,
+    build_stage_progress,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,11 +70,12 @@ def _safe_int(value: object) -> int:
 def _extract_book_with_fresh_session(
     config: SceneExtractionConfig,
     book_path: Path,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, object]:
     """Run extraction in a fresh session for background thread safety."""
     with Session(engine) as session:
         extractor = SceneExtractor(session=session, config=config)
-        stats = extractor.extract_book(book_path)
+        stats = extractor.extract_book(book_path, on_progress=on_progress)
         session.commit()
         return stats
 
@@ -398,6 +402,7 @@ def _update_run_status(
     current_stage: str | None,
     error_message: str | None = None,
     usage_summary: dict[str, Any] | None = None,
+    stage_progress: dict[str, Any] | None = None,
     completed: bool = False,
 ) -> None:
     with Session(engine) as background_session:
@@ -408,6 +413,7 @@ def _update_run_status(
             current_stage=current_stage,
             error_message=error_message,
             usage_summary=usage_summary,
+            stage_progress=stage_progress,
             completed=completed,
             commit=True,
             refresh=False,
@@ -552,6 +558,29 @@ class PipelineOrchestrator:
         self._set_document_stage_running = set_document_stage_running
         self._set_document_stage_failed = set_document_stage_failed
         self._sync_document_stage_statuses = sync_document_stage_statuses
+        # Live stage-progress state; initialized per run in execute()
+        self._stage_progress: dict[str, Any] = {}
+
+    def _write_stage_progress(
+        self,
+        *,
+        run_id: UUID,
+        stage: str,
+        progress: dict[str, Any],
+    ) -> None:
+        """Merge a per-stage progress update and persist to DB."""
+        self._stage_progress[stage] = progress
+        try:
+            self._update_run_status(
+                run_id=run_id,
+                status_value=stage,
+                current_stage=stage,
+                stage_progress=copy.deepcopy(self._stage_progress),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to write stage progress for run %s stage %s", run_id, stage
+            )
 
     async def execute(
         self,
@@ -567,6 +596,7 @@ class PipelineOrchestrator:
         started_at = datetime.now(timezone.utc)
         diagnostics = RunDiagnosticsTracker(run_id=run_id, started_at=started_at)
         stats = PipelineStats()
+        self._stage_progress = build_stage_progress()
 
         book_slug = context.book_slug
 
@@ -691,15 +721,49 @@ class PipelineOrchestrator:
             resume_from_chapter=context.extraction_resume_from_chapter,
             resume_from_chunk=context.extraction_resume_from_chunk,
         )
+
+        run_id = prepared.run_id
+
+        def _on_extraction_progress(idx: int, total: int) -> None:
+            with Session(engine) as progress_session:
+                repo = PipelineRunRepository(progress_session)
+                run = repo.get(run_id)
+                if run is None:
+                    return
+                current_progress = (
+                    copy.deepcopy(run.stage_progress)
+                    if run.stage_progress
+                    else build_stage_progress()
+                )
+                current_progress["extracting"] = {
+                    "status": "running",
+                    "items": idx,
+                    "total": total,
+                    "unit": "chapters",
+                }
+                run.stage_progress = current_progress
+                run.updated_at = datetime.now(timezone.utc)
+                progress_session.add(run)
+                progress_session.commit()
+
         loop = asyncio.get_running_loop()
         extraction_stats = await loop.run_in_executor(
             None,
-            _extract_book_with_fresh_session,
-            config,
-            Path(book_path),
+            functools.partial(
+                _extract_book_with_fresh_session,
+                config,
+                Path(book_path),
+                _on_extraction_progress,
+            ),
         )
         scenes_count = extraction_stats.get("scenes", 0)
         stats.scenes_extracted = scenes_count if isinstance(scenes_count, int) else 0
+        # Update extracting stage to completed with final scene count
+        self._stage_progress["extracting"] = {
+            "status": "completed",
+            "items": stats.scenes_extracted,
+            "unit": "scenes",
+        }
         logger.info("Extracted %d scenes", stats.scenes_extracted)
 
     async def _execute_ranking(
@@ -728,6 +792,7 @@ class PipelineOrchestrator:
             else:
                 scenes_to_rank = scene_repo.list_for_book(book_slug)
 
+            total_to_rank = len(scenes_to_rank)
             for scene in scenes_to_rank:
                 try:
                     result = await ranking_service.rank_scene(
@@ -744,6 +809,16 @@ class PipelineOrchestrator:
                             scene.scene_number,
                             scene.chapter_number,
                             result.overall_priority,
+                        )
+                        self._write_stage_progress(
+                            run_id=run_id,
+                            stage="ranking",
+                            progress={
+                                "status": "running",
+                                "items": stats.scenes_ranked,
+                                "total": total_to_rank,
+                                "unit": "scenes",
+                            },
                         )
                 except Exception as exc:
                     error_msg = f"Failed to rank scene {scene.id}: {exc}"
@@ -789,6 +864,9 @@ class PipelineOrchestrator:
         prompt_config.variants_count = variant_count
         prompt_config = prompt_config.copy_with(skip_scenes_with_warnings=False)
 
+        total_scenes = len(target.scene_ids)
+        scenes_with_prompts = 0
+
         with Session(engine) as session:
             scene_repo = SceneExtractionRepository(session)
             prompt_service = ImagePromptGenerationService(session, config=prompt_config)
@@ -812,6 +890,7 @@ class PipelineOrchestrator:
                     )
                     if prompts:
                         stats.prompts_generated += len(prompts)
+                        scenes_with_prompts += 1
                         for p in prompts:
                             prompt_id = getattr(p, "id", None)
                             if prompt_id is not None:
@@ -826,6 +905,16 @@ class PipelineOrchestrator:
                             "Generated %d prompts for scene %s",
                             len(prompts),
                             scene_id,
+                        )
+                        self._write_stage_progress(
+                            run_id=run_id,
+                            stage="generating_prompts",
+                            progress={
+                                "status": "running",
+                                "items": scenes_with_prompts,
+                                "total": total_scenes,
+                                "unit": "scenes",
+                            },
                         )
                 except Exception as exc:
                     error_msg = (
@@ -994,6 +1083,16 @@ class PipelineOrchestrator:
                             scene.scene_number,
                             scene.chapter_number,
                         )
+                        self._write_stage_progress(
+                            run_id=run_id,
+                            stage="generating_prompts",
+                            progress={
+                                "status": "running",
+                                "items": scenes_with_prompts,
+                                "total": prompts_for_scenes,
+                                "unit": "scenes",
+                            },
+                        )
                 except Exception as exc:
                     error_msg = (
                         f"Failed to generate prompts for scene {scene_id}: {exc}"
@@ -1036,6 +1135,23 @@ class PipelineOrchestrator:
             concurrency=image_options.concurrency,
         )
 
+        total_images = len(prompt_ids)
+        images_done = 0
+
+        def _on_image_generated(done: int, total: int) -> None:
+            nonlocal images_done
+            images_done = done
+            self._write_stage_progress(
+                run_id=run_id,
+                stage="generating_images",
+                progress={
+                    "status": "running",
+                    "items": done,
+                    "total": total,
+                    "unit": "images",
+                },
+            )
+
         with Session(engine) as session:
             image_service = ImageGenerationService(session, config=image_config)
 
@@ -1047,6 +1163,8 @@ class PipelineOrchestrator:
                     aspect_ratio=image_options.aspect_ratio,
                     dry_run=False,
                     pipeline_run_id=run_id,
+                    on_image_generated=_on_image_generated,
+                    total_images=total_images,
                 )
                 stats.images_generated = len(generated_ids)
                 context.created_image_ids.extend(generated_ids)
@@ -1083,17 +1201,25 @@ class PipelineOrchestrator:
                 stage=completed_stage,
                 duration_ms=completed_duration_ms,
             )
+            if completed_stage in self._stage_progress:
+                existing = self._stage_progress[completed_stage]
+                self._stage_progress[completed_stage] = {
+                    k: v for k, v in existing.items() if k != "status"
+                }
+                self._stage_progress[completed_stage]["status"] = "completed"
         log_pipeline_event(
             event="stage_started",
             run_id=str(run_id),
             book_slug=book_slug,
             stage=stage,
         )
+        self._stage_progress[stage] = {"status": "running"}
         self._update_run_status(
             run_id=run_id,
             status_value=stage,
             current_stage=stage,
             error_message=None,
+            stage_progress=copy.deepcopy(self._stage_progress),
         )
         self._set_document_stage_running(run_id=run_id, pipeline_stage=stage)
 
@@ -1145,12 +1271,20 @@ class PipelineOrchestrator:
             error_code=error_code,
             error_message=failure_message,
         )
+        if (
+            diagnostics.current_stage
+            and diagnostics.current_stage in self._stage_progress
+        ):
+            self._stage_progress[diagnostics.current_stage] = {"status": "failed"}
         self._update_run_status(
             run_id=run_id,
             status_value="failed",
             current_stage="failed",
             error_message=failure_message,
             usage_summary=usage_summary,
+            stage_progress=copy.deepcopy(self._stage_progress)
+            if self._stage_progress
+            else None,
             completed=True,
         )
         self._set_document_stage_failed(
@@ -1205,12 +1339,20 @@ class PipelineOrchestrator:
             error_code=error_code,
             diagnostics=diagnostics_payload,
         )
+        if (
+            diagnostics.current_stage
+            and diagnostics.current_stage in self._stage_progress
+        ):
+            self._stage_progress[diagnostics.current_stage] = {"status": "failed"}
         self._update_run_status(
             run_id=run_id,
             status_value="failed",
             current_stage="failed",
             error_message=combined_error[:2000],
             usage_summary=usage_summary,
+            stage_progress=copy.deepcopy(self._stage_progress)
+            if self._stage_progress
+            else None,
             completed=True,
         )
         self._set_document_stage_failed(
@@ -1266,12 +1408,26 @@ class PipelineOrchestrator:
             completed_at=completed_at,
             diagnostics=diagnostics_payload,
         )
+        # Mark the last active stage as completed
+        if (
+            diagnostics.current_stage
+            and diagnostics.current_stage in self._stage_progress
+        ):
+            existing = self._stage_progress[diagnostics.current_stage]
+            if existing.get("status") == "running":
+                self._stage_progress[diagnostics.current_stage] = {
+                    k: v for k, v in existing.items() if k != "status"
+                }
+                self._stage_progress[diagnostics.current_stage]["status"] = "completed"
         self._update_run_status(
             run_id=run_id,
             status_value="completed",
             current_stage="completed",
             error_message=None,
             usage_summary=usage_summary,
+            stage_progress=copy.deepcopy(self._stage_progress)
+            if self._stage_progress
+            else None,
             completed=True,
         )
         self._sync_document_stage_statuses(

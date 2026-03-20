@@ -26,6 +26,10 @@ import { FiPlay, FiRefreshCcw, FiSearch } from "react-icons/fi"
 import { type DocumentDashboardEntry, DocumentsApi } from "@/api/documents"
 import { type PipelineRun, PipelineRunsApi } from "@/api/pipelineRuns"
 import { SettingsApi } from "@/api/settings"
+import {
+  type StageEntry,
+  PipelineStageProgress,
+} from "@/components/Common/PipelineStageProgress"
 import { PromptArtStyleControl } from "@/components/Common/PromptArtStyleControl"
 import {
   type DocumentDashboardPreferences,
@@ -721,6 +725,7 @@ type RunSummaryLike = {
   current_stage: string | null
   error_message: string | null
   usage_summary?: Record<string, unknown>
+  stage_progress?: Record<string, unknown> | null
   completed_at: string | null
 }
 
@@ -957,15 +962,17 @@ function DocumentCard({
                   <Badge colorScheme={statusColor(runSummary.status)}>
                     {runSummary.status}
                   </Badge>
-                  <Text
-                    fontSize="sm"
-                    color={
-                      runSummary.status === "failed" ? "red.300" : "fg.muted"
-                    }
-                  >
-                    {runSummary.status === "failed" ? "Failed at:" : "Stage:"}{" "}
-                    {runSummary.current_stage ?? "—"}
-                  </Text>
+                  {runSummary.stage_progress ? null : (
+                    <Text
+                      fontSize="sm"
+                      color={
+                        runSummary.status === "failed" ? "red.300" : "fg.muted"
+                      }
+                    >
+                      {runSummary.status === "failed" ? "Failed at:" : "Stage:"}{" "}
+                      {runSummary.current_stage ?? "—"}
+                    </Text>
+                  )}
                   <Text fontSize="sm" color="fg.muted">
                     Completed: {formatDateTime(runSummary.completed_at)}
                   </Text>
@@ -980,6 +987,13 @@ function DocumentCard({
                     </Badge>
                   ) : null}
                 </Flex>
+                {runSummary.stage_progress ? (
+                  <PipelineStageProgress
+                    stageProgress={
+                      runSummary.stage_progress as Record<string, StageEntry>
+                    }
+                  />
+                ) : null}
                 {runSummary.error_message ? (
                   <Text fontSize="sm" color="red.300">
                     {runSummary.error_message}

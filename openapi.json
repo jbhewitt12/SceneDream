@@ -727,23 +727,6 @@
             }
           },
           {
-            "name": "chapter_number",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Chapter Number"
-            }
-          },
-          {
             "name": "decision",
             "in": "query",
             "required": false,
@@ -760,7 +743,7 @@
             }
           },
           {
-            "name": "has_refined",
+            "name": "has_warnings",
             "in": "query",
             "required": false,
             "schema": {
@@ -772,7 +755,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Has Refined"
+              "title": "Has Warnings"
             }
           },
           {
@@ -793,51 +776,18 @@
             }
           },
           {
-            "name": "start_date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "date-time"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Start Date"
-            }
-          },
-          {
-            "name": "end_date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "date-time"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "End Date"
-            }
-          },
-          {
-            "name": "order",
+            "name": "sort_by",
             "in": "query",
             "required": false,
             "schema": {
               "enum": [
-                "asc",
-                "desc"
+                "extracted_desc",
+                "extracted_asc",
+                "ranking_desc"
               ],
               "type": "string",
-              "default": "desc",
-              "title": "Order"
+              "default": "extracted_desc",
+              "title": "Sort By"
             }
           }
         ],
@@ -3112,6 +3062,11 @@
       },
       "GeneratedImageCustomRemixResponse": {
         "properties": {
+          "pipeline_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pipeline Run Id"
+          },
           "custom_prompt_id": {
             "type": "string",
             "format": "uuid",
@@ -3133,6 +3088,7 @@
         },
         "type": "object",
         "required": [
+          "pipeline_run_id",
           "custom_prompt_id"
         ],
         "title": "GeneratedImageCustomRemixResponse",
@@ -3810,6 +3766,11 @@
       },
       "GeneratedImageRemixResponse": {
         "properties": {
+          "pipeline_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pipeline Run Id"
+          },
           "remix_prompt_ids": {
             "items": {
               "type": "string",
@@ -3834,6 +3795,7 @@
         },
         "type": "object",
         "required": [
+          "pipeline_run_id",
           "remix_prompt_ids"
         ],
         "title": "GeneratedImageRemixResponse",
@@ -4386,6 +4348,17 @@
           "usage_summary": {
             "type": "object",
             "title": "Usage Summary"
+          },
+          "stage_progress": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Progress"
           },
           "started_at": {
             "anyOf": [
@@ -5057,6 +5030,22 @@
           "props": {
             "type": "object",
             "title": "Props"
+          },
+          "ranking_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ranking Score"
+          },
+          "has_content_warnings": {
+            "type": "boolean",
+            "title": "Has Content Warnings",
+            "default": false
           }
         },
         "type": "object",

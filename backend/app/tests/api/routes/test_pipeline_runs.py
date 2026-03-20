@@ -682,3 +682,45 @@ def test_start_pipeline_run_no_batch_fields_in_request(
     assert "mode" not in PipelineRunStartRequest.model_fields
     assert "poll_timeout" not in PipelineRunStartRequest.model_fields
     assert "poll_interval" not in PipelineRunStartRequest.model_fields
+
+
+def test_get_pipeline_run_returns_stage_progress(
+    client: TestClient,
+    db: Session,
+) -> None:
+    """GET /pipeline-runs/{id} includes stage_progress when set."""
+    run_repo = PipelineRunRepository(db)
+    progress = {
+        "extracting": {"status": "completed", "items": 30, "unit": "scenes"},
+        "ranking": {"status": "completed", "items": 30, "total": 30, "unit": "scenes"},
+        "generating_prompts": {
+            "status": "running",
+            "items": 5,
+            "total": 10,
+            "unit": "scenes",
+        },
+        "generating_images": {"status": "pending"},
+    }
+    run = run_repo.create(
+        data={
+            "book_slug": f"test-stage-progress-{uuid4()}",
+            "status": "generating_prompts",
+            "current_stage": "generating_prompts",
+            "config_overrides": {},
+            "stage_progress": progress,
+        },
+        commit=True,
+    )
+
+    response = client.get(f"/api/v1/pipeline-runs/{run.id}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "stage_progress" in payload
+    sp = payload["stage_progress"]
+    assert sp is not None
+    assert sp["extracting"]["status"] == "completed"
+    assert sp["generating_prompts"]["status"] == "running"
+    assert sp["generating_images"]["status"] == "pending"
+
+    db.delete(run)
+    db.commit()
