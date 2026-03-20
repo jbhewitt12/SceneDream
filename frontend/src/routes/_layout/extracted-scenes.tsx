@@ -50,6 +50,15 @@ import {
   getPromptArtStyleTextForPayload,
   getPromptArtStyleValidationMessage,
 } from "@/types/promptArtStyle"
+import { ApiError } from "../../client"
+
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const body = error.body as Record<string, unknown> | undefined
+    if (body && typeof body.detail === "string") return body.detail
+  }
+  return error instanceof Error ? error.message : fallback
+}
 
 const PAGE_SIZE = 20
 
@@ -449,9 +458,7 @@ const SceneLaunchPanel = ({
       } catch (error) {
         if (!cancelled) {
           showErrorToast(
-            error instanceof Error
-              ? error.message
-              : "Failed to poll run status.",
+            getApiErrorMessage(error, "Failed to poll run status."),
           )
           setActiveRun(undefined)
         }
@@ -500,9 +507,7 @@ const SceneLaunchPanel = ({
       showSuccessToast("Image generation started.")
     } catch (error) {
       showErrorToast(
-        error instanceof Error
-          ? error.message
-          : "Failed to launch image generation.",
+        getApiErrorMessage(error, "Failed to launch image generation."),
       )
     } finally {
       setLaunching(false)

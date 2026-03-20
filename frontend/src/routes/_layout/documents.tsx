@@ -42,6 +42,15 @@ import {
   getPromptArtStyleSelectionFromSettings,
   getPromptArtStyleValidationMessage,
 } from "@/types/promptArtStyle"
+import { ApiError } from "../../client"
+
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const body = error.body as Record<string, unknown> | undefined
+    if (body && typeof body.detail === "string") return body.detail
+  }
+  return error instanceof Error ? error.message : fallback
+}
 
 export const Route = createFileRoute("/_layout/documents")({
   component: DocumentsPage,
@@ -113,6 +122,23 @@ const formatUsageSummary = (
   }
 
   return parts.length ? parts.join(" • ") : null
+}
+
+const getUsageSummaryErrorMessages = (
+  usageSummary: Record<string, unknown> | undefined,
+  primaryError: string | null,
+): string[] => {
+  if (!usageSummary) return []
+  const errors =
+    typeof usageSummary.errors === "object" && usageSummary.errors !== null
+      ? (usageSummary.errors as Record<string, unknown>)
+      : {}
+  const messages = Array.isArray(errors.messages) ? errors.messages : []
+  const valid = messages.filter(
+    (m): m is string => typeof m === "string" && m.length > 0,
+  )
+  if (!primaryError) return valid
+  return valid.filter((m) => m !== primaryError)
 }
 
 const statusColor = (status: string | null | undefined) => {
@@ -326,9 +352,7 @@ function DocumentsPage() {
         } catch (error) {
           shouldRefreshDashboard = true
           showErrorToast(
-            error instanceof Error
-              ? error.message
-              : "Failed to poll pipeline run status.",
+            getApiErrorMessage(error, "Failed to poll pipeline run status."),
           )
           setActiveRunByKey((previous) => {
             const next = { ...previous }
@@ -475,9 +499,7 @@ function DocumentsPage() {
       void dashboardQuery.refetch()
     } catch (error) {
       showErrorToast(
-        error instanceof Error
-          ? error.message
-          : "Failed to launch pipeline run.",
+        getApiErrorMessage(error, "Failed to launch pipeline run."),
       )
     } finally {
       setLaunchingByKey((previous) => ({
@@ -935,8 +957,14 @@ function DocumentCard({
                   <Badge colorScheme={statusColor(runSummary.status)}>
                     {runSummary.status}
                   </Badge>
-                  <Text fontSize="sm" color="fg.muted">
-                    Stage: {runSummary.current_stage ?? "—"}
+                  <Text
+                    fontSize="sm"
+                    color={
+                      runSummary.status === "failed" ? "red.300" : "fg.muted"
+                    }
+                  >
+                    {runSummary.status === "failed" ? "Failed at:" : "Stage:"}{" "}
+                    {runSummary.current_stage ?? "—"}
                   </Text>
                   <Text fontSize="sm" color="fg.muted">
                     Completed: {formatDateTime(runSummary.completed_at)}
@@ -957,6 +985,14 @@ function DocumentCard({
                     {runSummary.error_message}
                   </Text>
                 ) : null}
+                {getUsageSummaryErrorMessages(
+                  runSummary.usage_summary,
+                  runSummary.error_message,
+                ).map((msg, i) => (
+                  <Text key={i} fontSize="sm" color="red.300">
+                    {msg}
+                  </Text>
+                ))}
               </Stack>
             ) : (
               <Text fontSize="sm" color="fg.muted">
@@ -1004,7 +1040,7 @@ function StageBadge({
               {formatStageStatus(status)}
             </Text>
             {error ? (
-              <Text fontSize="xs" color="red.300" maxW="160px" truncate>
+              <Text fontSize="xs" color="red.300" wordBreak="break-word">
                 {error}
               </Text>
             ) : null}
