@@ -127,6 +127,51 @@ async def test_openai_functions_apply_expected_request_timeout(
     assert captured_kwargs["request_timeout"] == expected_timeout
 
 
+def test_openai_get_llm_omits_response_format_when_not_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_kwargs: dict[str, Any] = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs: Any):
+            captured_kwargs.update(kwargs)
+
+    monkeypatch.setattr(openai_api, "ChatOpenAI", FakeChatOpenAI)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+
+    openai_api._get_llm(
+        model="gpt-4o-mini",
+        temperature=0.0,
+        max_tokens=128,
+        request_timeout=360,
+    )
+
+    assert "response_format" not in captured_kwargs
+
+
+def test_openai_get_llm_passes_response_format_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_kwargs: dict[str, Any] = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs: Any):
+            captured_kwargs.update(kwargs)
+
+    monkeypatch.setattr(openai_api, "ChatOpenAI", FakeChatOpenAI)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+
+    openai_api._get_llm(
+        model="gpt-4o-mini",
+        temperature=0.0,
+        max_tokens=128,
+        response_format={"type": "json_object"},
+        request_timeout=360,
+    )
+
+    assert captured_kwargs["response_format"] == {"type": "json_object"}
+
+
 def test_xai_api_initializes_chat_openai_with_request_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

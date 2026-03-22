@@ -83,13 +83,18 @@ def _get_llm(
     if not api_key:
         raise ValueError("OPENAI_API_KEY not found in .env file.")
 
-    return ChatOpenAI(  # type: ignore[call-arg]
-        model=model,
-        openai_api_key=api_key,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        response_format=response_format,
+    llm_kwargs: dict[str, Any] = {
+        "model": model,
+        "openai_api_key": api_key,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
         **kwargs,
+    }
+    if response_format is not None:
+        llm_kwargs["response_format"] = response_format
+
+    return ChatOpenAI(  # type: ignore[call-arg]
+        **llm_kwargs,
     )
 
 
