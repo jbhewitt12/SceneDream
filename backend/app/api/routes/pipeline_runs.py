@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.api.errors import api_error, api_error_from_exception, build_error_responses
 from app.api.deps import SessionDep
 from app.repositories import PipelineRunRepository
 from app.schemas import PipelineRunRead, PipelineRunStartRequest
@@ -75,6 +76,7 @@ def _build_execution_config(
     "",
     response_model=PipelineRunRead,
     status_code=status.HTTP_202_ACCEPTED,
+    responses=build_error_responses(400, 404, 422, 500),
 )
 async def start_pipeline_run(
     *,
@@ -88,7 +90,12 @@ async def start_pipeline_run(
     try:
         prepared = service.prepare_execution(config)
     except PipelineValidationError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        raise api_error_from_exception(
+            status_code=exc.status_code,
+            code="invalid_pipeline_request",
+            exc=exc,
+            default_message="Pipeline request validation failed",
+        ) from exc
 
     orchestrator = PipelineOrchestrator()
     coro = orchestrator.execute(prepared)
@@ -104,17 +111,21 @@ async def start_pipeline_run(
             "Failed to create pipeline run task: run_id=%s",
             prepared.run_id,
         )
-        raise HTTPException(
+        raise api_error_from_exception(
             status_code=500,
-            detail="Failed to start pipeline run",
+            code="pipeline_run_start_failed",
+            exc=exc,
+            default_message="Failed to start pipeline run",
         ) from exc
 
     # Fetch the persisted run to return
     run_repo = PipelineRunRepository(session)
     run = run_repo.get(prepared.run_id)
     if run is None:  # pragma: no cover
-        raise HTTPException(
-            status_code=500, detail="Pipeline run not found after creation"
+        raise api_error(
+            status_code=500,
+            code="pipeline_run_persistence_failed",
+            message="Pipeline run not found after creation",
         )
     return PipelineRunRead.model_validate(run)
 

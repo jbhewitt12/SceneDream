@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.api.errors import api_error, api_error_from_exception, build_error_responses
 from app.api.deps import SessionDep
 from app.repositories import ImagePromptRepository, SceneExtractionRepository
 from app.schemas import (
@@ -203,7 +204,9 @@ def get_image_prompt(
 
 
 @router.post(
-    "/{prompt_id}/metadata/generate", response_model=MetadataGenerationResponse
+    "/{prompt_id}/metadata/generate",
+    response_model=MetadataGenerationResponse,
+    responses=build_error_responses(404, 500),
 )
 async def generate_metadata_variants(
     *,
@@ -217,7 +220,11 @@ async def generate_metadata_variants(
     repository = ImagePromptRepository(session)
     prompt = repository.get(prompt_id)
     if prompt is None:
-        raise HTTPException(status_code=404, detail="Image prompt not found")
+        raise api_error(
+            status_code=404,
+            code="image_prompt_not_found",
+            message="Image prompt not found",
+        )
 
     service = PromptMetadataGenerationService(session)
     try:
@@ -229,17 +236,21 @@ async def generate_metadata_variants(
         logger.exception(
             "Failed to generate metadata variants for prompt %s", prompt_id
         )
-        raise HTTPException(
+        raise api_error_from_exception(
             status_code=500,
-            detail="Failed to generate metadata variants",
+            code="metadata_generation_failed",
+            exc=exc,
+            default_message="Failed to generate metadata variants",
         ) from exc
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception(
             "Unexpected error generating metadata variants for prompt %s", prompt_id
         )
-        raise HTTPException(
+        raise api_error_from_exception(
             status_code=500,
-            detail="Failed to generate metadata variants",
+            code="metadata_generation_failed",
+            exc=exc,
+            default_message="Failed to generate metadata variants",
         ) from exc
 
     return MetadataGenerationResponse(

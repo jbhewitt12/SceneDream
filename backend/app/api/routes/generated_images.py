@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 
+from app.api.errors import api_error, api_error_from_exception, build_error_responses
 from app.api.deps import SessionDep
 from app.repositories import (
     AppSettingsRepository,
@@ -447,6 +448,7 @@ def list_generated_images_for_prompt(
     "/{image_id}/remix",
     response_model=GeneratedImageRemixResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    responses=build_error_responses(400, 404, 422, 500),
 )
 async def remix_generated_image(
     *,
@@ -464,13 +466,19 @@ async def remix_generated_image(
     image_repository = GeneratedImageRepository(session)
     image = image_repository.get(image_id)
     if image is None:
-        raise HTTPException(status_code=404, detail="Generated image not found")
+        raise api_error(
+            status_code=404,
+            code="generated_image_not_found",
+            message="Generated image not found",
+        )
 
     prompt_repository = ImagePromptRepository(session)
     prompt = prompt_repository.get(image.image_prompt_id)
     if prompt is None:
-        raise HTTPException(
-            status_code=404, detail="Source image prompt for remix not found"
+        raise api_error(
+            status_code=404,
+            code="source_prompt_not_found",
+            message="Source image prompt for remix not found",
         )
 
     variants_count = request.variants_count or REMIX_VARIANTS_COUNT
@@ -496,7 +504,12 @@ async def remix_generated_image(
     try:
         prepared = service.prepare_execution(config)
     except PipelineValidationError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        raise api_error_from_exception(
+            status_code=exc.status_code,
+            code="invalid_remix_request",
+            exc=exc,
+            default_message="Remix request validation failed",
+        ) from exc
 
     orchestrator = PipelineOrchestrator()
     coro = orchestrator.execute(prepared)
@@ -511,9 +524,11 @@ async def remix_generated_image(
         logger.exception(
             "Failed to create remix generation task for image %s", image_id
         )
-        raise HTTPException(
+        raise api_error_from_exception(
             status_code=500,
-            detail="Failed to start remix generation",
+            code="remix_generation_start_failed",
+            exc=exc,
+            default_message="Failed to start remix generation",
         ) from exc
 
     estimated_seconds = max(variants_count * 60, 120)
@@ -529,6 +544,7 @@ async def remix_generated_image(
     "/{image_id}/custom-remix",
     response_model=GeneratedImageCustomRemixResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    responses=build_error_responses(400, 404, 422, 500),
 )
 async def custom_remix_generated_image(
     *,
@@ -541,21 +557,27 @@ async def custom_remix_generated_image(
     image_repository = GeneratedImageRepository(session)
     image = image_repository.get(image_id)
     if image is None:
-        raise HTTPException(status_code=404, detail="Generated image not found")
+        raise api_error(
+            status_code=404,
+            code="generated_image_not_found",
+            message="Generated image not found",
+        )
 
     prompt_repository = ImagePromptRepository(session)
     prompt = prompt_repository.get(image.image_prompt_id)
     if prompt is None:
-        raise HTTPException(
+        raise api_error(
             status_code=404,
-            detail="Source image prompt for custom remix not found",
+            code="source_prompt_not_found",
+            message="Source image prompt for custom remix not found",
         )
 
     custom_prompt_text = request.custom_prompt_text
     if not custom_prompt_text or not custom_prompt_text.strip():
-        raise HTTPException(
+        raise api_error(
             status_code=400,
-            detail="Custom prompt text must not be empty",
+            code="custom_prompt_required",
+            message="Custom prompt text must not be empty",
         )
 
     # Build config with CustomRemixTarget (custom_prompt_id set after creation)
@@ -579,7 +601,12 @@ async def custom_remix_generated_image(
     try:
         prepared = service.prepare_execution(config)
     except PipelineValidationError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        raise api_error_from_exception(
+            status_code=exc.status_code,
+            code="invalid_custom_remix_request",
+            exc=exc,
+            default_message="Custom remix request validation failed",
+        ) from exc
 
     run_id = prepared.run_id
 
@@ -596,26 +623,31 @@ async def custom_remix_generated_image(
         _fail_pending_run(
             session, run_id, f"Custom remix prompt creation failed: {exc}"
         )
-        raise HTTPException(
+        raise api_error_from_exception(
             status_code=400,
-            detail=str(exc),
+            code="custom_remix_prompt_creation_failed",
+            exc=exc,
+            default_message="Custom remix prompt creation failed",
         ) from exc
     except Exception as exc:
         _fail_pending_run(
             session, run_id, f"Custom remix prompt creation failed: {exc}"
         )
-        raise HTTPException(
+        raise api_error_from_exception(
             status_code=500,
-            detail="Custom remix prompt creation failed",
+            code="custom_remix_prompt_creation_failed",
+            exc=exc,
+            default_message="Custom remix prompt creation failed",
         ) from exc
 
     if not isinstance(custom_prompt, ImagePrompt):  # pragma: no cover - safety valve
         _fail_pending_run(
             session, run_id, "Custom remix prompt creation returned unexpected type"
         )
-        raise HTTPException(
+        raise api_error(
             status_code=500,
-            detail="Custom remix prompt creation failed",
+            code="custom_remix_prompt_creation_failed",
+            message="Custom remix prompt creation failed",
         )
 
     # Update the target with the created prompt ID and register in context
@@ -638,9 +670,11 @@ async def custom_remix_generated_image(
             image_id,
             prompt.id,
         )
-        raise HTTPException(
+        raise api_error_from_exception(
             status_code=500,
-            detail="Failed to start custom remix generation",
+            code="custom_remix_generation_start_failed",
+            exc=exc,
+            default_message="Failed to start custom remix generation",
         ) from exc
 
     logger.info(
@@ -841,7 +875,10 @@ async def retry_failed_posts(
     )
 
 
-@router.put("/{image_id}/crop")
+@router.put(
+    "/{image_id}/crop",
+    responses=build_error_responses(400, 404, 410, 500),
+)
 async def crop_image(
     *,
     session: SessionDep,
@@ -860,22 +897,32 @@ async def crop_image(
         contents = await _read_upload_contents(file)
         await service.save_cropped_image(image_id, contents)
     except ImageNotFoundError as exc:
-        raise HTTPException(
-            status_code=404, detail="Generated image not found"
+        raise api_error_from_exception(
+            status_code=404,
+            code="generated_image_not_found",
+            exc=exc,
+            default_message="Generated image not found",
         ) from exc
     except ImageFileDeletedError as exc:
-        raise HTTPException(
-            status_code=410, detail="Image file has been deleted"
+        raise api_error_from_exception(
+            status_code=410,
+            code="generated_image_deleted",
+            exc=exc,
+            default_message="Image file has been deleted",
         ) from exc
     except ImageFileNotFoundError as exc:
-        raise HTTPException(
+        raise api_error_from_exception(
             status_code=400,
-            detail="Original image file not found on disk",
+            code="generated_image_file_not_found",
+            exc=exc,
+            default_message="Original image file not found on disk",
         ) from exc
     except ImageFileWriteError as exc:
-        raise HTTPException(
+        raise api_error_from_exception(
             status_code=500,
-            detail="Failed to save cropped image",
+            code="generated_image_crop_save_failed",
+            exc=exc,
+            default_message="Failed to save cropped image",
         ) from exc
 
     return {"status": "success"}

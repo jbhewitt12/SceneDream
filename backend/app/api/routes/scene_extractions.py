@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from app.api.errors import api_error, api_error_from_exception, build_error_responses
 from app.api.deps import SessionDep
 from app.repositories import SceneExtractionRepository
 from app.schemas import (
@@ -104,6 +105,7 @@ def get_scene_extraction(*, session: SessionDep, scene_id: UUID) -> SceneExtract
     "/{scene_id}/generate",
     response_model=SceneGenerateResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    responses=build_error_responses(400, 404, 422, 500),
 )
 async def generate_for_scene(
     *,
@@ -120,7 +122,11 @@ async def generate_for_scene(
     scene_repo = SceneExtractionRepository(session)
     scene = scene_repo.get(scene_id)
     if scene is None:
-        raise HTTPException(status_code=404, detail="Scene extraction not found")
+        raise api_error(
+            status_code=404,
+            code="scene_not_found",
+            message="Scene extraction not found",
+        )
 
     target = SceneTarget(scene_ids=[scene_id])
 
@@ -155,7 +161,12 @@ async def generate_for_scene(
     try:
         prepared = service.prepare_execution(config)
     except PipelineValidationError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        raise api_error_from_exception(
+            status_code=exc.status_code,
+            code="invalid_scene_generation_request",
+            exc=exc,
+            default_message="Scene generation request validation failed",
+        ) from exc
 
     orchestrator = PipelineOrchestrator()
     coro = orchestrator.execute(prepared)
@@ -172,9 +183,11 @@ async def generate_for_scene(
             prepared.run_id,
             scene_id,
         )
-        raise HTTPException(
+        raise api_error_from_exception(
             status_code=500,
-            detail="Failed to start scene generation",
+            code="scene_generation_start_failed",
+            exc=exc,
+            default_message="Failed to start scene generation",
         ) from exc
 
     return SceneGenerateResponse(
