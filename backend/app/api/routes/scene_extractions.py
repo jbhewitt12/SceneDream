@@ -9,8 +9,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.errors import api_error, api_error_from_exception, build_error_responses
 from app.api.deps import SessionDep
+from app.api.errors import api_error, api_error_from_exception, build_error_responses
 from app.repositories import SceneExtractionRepository
 from app.schemas import (
     SceneExtractionFilterOptions,

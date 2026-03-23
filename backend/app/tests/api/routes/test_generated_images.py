@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -30,11 +31,11 @@ from models.scene_extraction import SceneExtraction
 
 
 def _assert_app_error(
-    payload: dict[str, object],
+    payload: dict[str, Any],
     *,
     code: str,
     message: str,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     detail = payload["detail"]
     assert isinstance(detail, dict)
     assert detail["code"] == code

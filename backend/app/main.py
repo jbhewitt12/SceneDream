@@ -11,8 +11,8 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 
 import sentry_sdk
-from app.api.main import api_router
 from app.api.errors import AppHTTPException, app_http_exception_handler
+from app.api.main import api_router
 from app.core.config import settings
 from app.core.db import engine
 from app.services.image_generation.batch_scheduler import (
@@ -65,7 +65,7 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan,
 )
-app.add_exception_handler(AppHTTPException, app_http_exception_handler)
+app.add_exception_handler(AppHTTPException, app_http_exception_handler)  # type: ignore[arg-type]
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:

@@ -52,13 +52,10 @@ class AppHTTPException(HTTPException):
         self.app_detail = detail
 
 
-def build_error_responses(*status_codes: int) -> dict[int, dict[str, Any]]:
+def build_error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     """Return FastAPI response-model declarations for the app error envelope."""
 
-    return {
-        status_code: {"model": ApiErrorResponse}
-        for status_code in status_codes
-    }
+    return {status_code: {"model": ApiErrorResponse} for status_code in status_codes}
 
 
 def _truncate_message(message: str | None, *, fallback: str) -> str:

@@ -93,9 +93,7 @@ def _get_llm(
     if response_format is not None:
         llm_kwargs["response_format"] = response_format
 
-    return ChatOpenAI(  # type: ignore[call-arg]
-        **llm_kwargs,
-    )
+    return ChatOpenAI(**llm_kwargs)
 
 
 async def simple_call(
