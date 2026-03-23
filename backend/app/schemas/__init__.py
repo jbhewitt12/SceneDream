@@ -8,7 +8,7 @@ from .app_settings import (
     ArtStyleListsUpdateRequest,
 )
 from .art_style import ArtStyleListResponse, ArtStyleRead
-from .common import Message
+from .common import ApiErrorDetail, ApiErrorResponse, Message
 from .document import (
     DocumentCreate,
     DocumentDashboardCounts,
@@ -85,6 +85,8 @@ __all__ = [
     "ArtStyleListsUpdateRequest",
     "ArtStyleListResponse",
     "ArtStyleRead",
+    "ApiErrorDetail",
+    "ApiErrorResponse",
     "Message",
     "DocumentCreate",
     "DocumentDashboardCounts",
