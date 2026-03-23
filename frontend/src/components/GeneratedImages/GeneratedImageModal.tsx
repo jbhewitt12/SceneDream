@@ -46,6 +46,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import useCustomToast from "@/hooks/useCustomToast"
+import { getDisplayErrorMessage } from "@/utils/apiErrors"
 import { buildGeneratedImageUrl } from "./url"
 
 type GeneratedImageModalProps = {
@@ -403,9 +404,7 @@ const GeneratedImageModal = ({
         queryClient.invalidateQueries({ queryKey: ["generated-images"] })
         showSuccessToast("Image cropped successfully")
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to crop image"
-        showErrorToast(message)
+        showErrorToast(getDisplayErrorMessage(error, "Failed to crop image"))
         throw error
       }
     },

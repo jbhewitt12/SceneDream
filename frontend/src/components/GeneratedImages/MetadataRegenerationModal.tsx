@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import useCustomToast from "@/hooks/useCustomToast"
+import { getDisplayErrorMessage } from "@/utils/apiErrors"
 
 type MetadataRegenerationModalProps = {
   isOpen: boolean
@@ -63,9 +64,7 @@ const MetadataRegenerationModal = ({
         setVariants(response.variants ?? [])
       } catch (err) {
         if (abortToken?.cancelled) return
-        const message =
-          err instanceof Error ? err.message : "Failed to generate metadata."
-        setError(message)
+        setError(getDisplayErrorMessage(err, "Failed to generate metadata."))
       } finally {
         if (!abortToken?.cancelled) {
           setIsGenerating(false)
@@ -136,7 +135,7 @@ const MetadataRegenerationModal = ({
       onClose()
     },
     onError: (err) => {
-      showErrorToast(err.message)
+      showErrorToast(getDisplayErrorMessage(err, "Failed to update metadata."))
     },
   })
 

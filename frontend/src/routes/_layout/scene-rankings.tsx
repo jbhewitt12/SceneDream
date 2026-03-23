@@ -46,6 +46,7 @@ import {
   SceneRankingService,
   type SceneRankingTopParams,
 } from "@/api/sceneRankings"
+import { getDisplayErrorMessage } from "@/utils/apiErrors"
 
 const sceneRankingSearchSchema = z.object({
   book_slug: z
@@ -722,7 +723,10 @@ function SceneRankingsPage() {
             <AlertIndicator />
             <AlertContent>
               {listQuery.error instanceof Error
-                ? listQuery.error.message
+                ? getDisplayErrorMessage(
+                    listQuery.error,
+                    "Unable to load scene rankings right now.",
+                  )
                 : "Unable to load scene rankings right now."}
             </AlertContent>
           </AlertRoot>

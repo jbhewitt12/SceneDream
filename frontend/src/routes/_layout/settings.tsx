@@ -27,6 +27,7 @@ import {
   getPromptArtStyleTextForPayload,
   getPromptArtStyleValidationMessage,
 } from "@/types/promptArtStyle"
+import { getDisplayErrorMessage } from "@/utils/apiErrors"
 
 export const Route = createFileRoute("/_layout/settings")({
   component: SettingsPage,
@@ -216,11 +217,9 @@ function SettingsPage() {
       showSuccessToast("Pipeline defaults updated.")
     },
     onError: (error) => {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to save pipeline defaults."
-      showErrorToast(message)
+      showErrorToast(
+        getDisplayErrorMessage(error, "Failed to save pipeline defaults."),
+      )
     },
   })
 
@@ -243,11 +242,9 @@ function SettingsPage() {
     },
     onError: (error, _enabled, context) => {
       setSocialPostingEnabled(context?.previous ?? false)
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to save general settings."
-      showErrorToast(message)
+      showErrorToast(
+        getDisplayErrorMessage(error, "Failed to save general settings."),
+      )
     },
   })
 
@@ -275,11 +272,9 @@ function SettingsPage() {
       showSuccessToast("Art style lists updated.")
     },
     onError: (error) => {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to save art style lists."
-      showErrorToast(message)
+      showErrorToast(
+        getDisplayErrorMessage(error, "Failed to save art style lists."),
+      )
     },
   })
 
@@ -292,11 +287,9 @@ function SettingsPage() {
       showSuccessToast("Art style lists reset to defaults.")
     },
     onError: (error) => {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to reset art style lists."
-      showErrorToast(message)
+      showErrorToast(
+        getDisplayErrorMessage(error, "Failed to reset art style lists."),
+      )
     },
   })
 
@@ -343,7 +336,7 @@ function SettingsPage() {
             <AlertIndicator />
             <AlertContent>
               {queryError instanceof Error
-                ? queryError.message
+                ? getDisplayErrorMessage(queryError, "Failed to load settings.")
                 : "Failed to load settings."}
             </AlertContent>
           </AlertRoot>

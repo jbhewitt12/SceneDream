@@ -47,6 +47,7 @@ import {
   GeneratedImageModal,
 } from "@/components/GeneratedImages"
 import useCustomToast from "@/hooks/useCustomToast"
+import { getDisplayErrorMessage } from "@/utils/apiErrors"
 
 const generatedImagesSearchSchema = z.object({
   book_slug: z
@@ -563,8 +564,8 @@ function GeneratedImagesGalleryPage() {
     onSuccess: () => {
       showSuccessToast("Remix started! Refresh in 2-3 minutes to see results.")
     },
-    onError: (error: Error) => {
-      showErrorToast(error.message)
+    onError: (error) => {
+      showErrorToast(getDisplayErrorMessage(error, "Failed to start remix."))
     },
   })
 
@@ -580,8 +581,10 @@ function GeneratedImagesGalleryPage() {
         "Custom remix started! Refresh in 1-2 minutes to see results.",
       )
     },
-    onError: (error: Error) => {
-      showErrorToast(error.message)
+    onError: (error) => {
+      showErrorToast(
+        getDisplayErrorMessage(error, "Failed to start custom remix."),
+      )
     },
   })
 
@@ -608,8 +611,10 @@ function GeneratedImagesGalleryPage() {
     onSuccess: (data) => {
       showSuccessToast(data.message)
     },
-    onError: (error: Error) => {
-      showErrorToast(error.message)
+    onError: (error) => {
+      showErrorToast(
+        getDisplayErrorMessage(error, "Failed to queue image for posting."),
+      )
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: listQueryKey })

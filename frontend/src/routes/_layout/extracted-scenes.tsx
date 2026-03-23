@@ -50,15 +50,10 @@ import {
   getPromptArtStyleTextForPayload,
   getPromptArtStyleValidationMessage,
 } from "@/types/promptArtStyle"
-import { ApiError } from "../../client"
-
-function getApiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const body = error.body as Record<string, unknown> | undefined
-    if (body && typeof body.detail === "string") return body.detail
-  }
-  return error instanceof Error ? error.message : fallback
-}
+import {
+  getDisplayErrorMessage,
+  getPipelineRunFailureMessage,
+} from "@/utils/apiErrors"
 
 const PAGE_SIZE = 20
 
@@ -444,21 +439,21 @@ const SceneLaunchPanel = ({
         setActiveRun({
           pipeline_run_id: current.pipeline_run_id,
           status: latest.status,
-          error_message: latest.error_message,
+          error_message: getPipelineRunFailureMessage(latest),
           completed_at: latest.completed_at,
         })
         if (isTerminalStatus(latest.status)) {
           if (latest.status === "completed") {
             showSuccessToast("Image generation completed.")
           } else {
-            showErrorToast(latest.error_message ?? "Pipeline run failed.")
+            showErrorToast(getPipelineRunFailureMessage(latest))
           }
           return
         }
       } catch (error) {
         if (!cancelled) {
           showErrorToast(
-            getApiErrorMessage(error, "Failed to poll run status."),
+            getDisplayErrorMessage(error, "Failed to poll run status."),
           )
           setActiveRun(undefined)
         }
@@ -507,7 +502,7 @@ const SceneLaunchPanel = ({
       showSuccessToast("Image generation started.")
     } catch (error) {
       showErrorToast(
-        getApiErrorMessage(error, "Failed to launch image generation."),
+        getDisplayErrorMessage(error, "Failed to launch image generation."),
       )
     } finally {
       setLaunching(false)
@@ -997,7 +992,10 @@ function ExtractedScenesPage() {
               <AlertIndicator />
               <AlertContent>
                 {listQuery.error instanceof Error
-                  ? listQuery.error.message
+                  ? getDisplayErrorMessage(
+                      listQuery.error,
+                      "Unable to load scenes right now.",
+                    )
                   : "Unable to load scenes right now."}
               </AlertContent>
             </AlertRoot>

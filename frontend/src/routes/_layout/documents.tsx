@@ -27,8 +27,8 @@ import { type DocumentDashboardEntry, DocumentsApi } from "@/api/documents"
 import { type PipelineRun, PipelineRunsApi } from "@/api/pipelineRuns"
 import { SettingsApi } from "@/api/settings"
 import {
-  type StageEntry,
   PipelineStageProgress,
+  type StageEntry,
 } from "@/components/Common/PipelineStageProgress"
 import { PromptArtStyleControl } from "@/components/Common/PromptArtStyleControl"
 import {
@@ -46,15 +46,10 @@ import {
   getPromptArtStyleSelectionFromSettings,
   getPromptArtStyleValidationMessage,
 } from "@/types/promptArtStyle"
-import { ApiError } from "../../client"
-
-function getApiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const body = error.body as Record<string, unknown> | undefined
-    if (body && typeof body.detail === "string") return body.detail
-  }
-  return error instanceof Error ? error.message : fallback
-}
+import {
+  getDisplayErrorMessage,
+  getPipelineRunFailureMessage,
+} from "@/utils/apiErrors"
 
 export const Route = createFileRoute("/_layout/documents")({
   component: DocumentsPage,
@@ -347,16 +342,16 @@ function DocumentsPage() {
               showSuccessToast("Pipeline run completed.")
             }
             if (latest.status === "failed") {
-              showErrorToast(
-                latest.error_message ??
-                  "Pipeline run failed. Check logs for details.",
-              )
+              showErrorToast(getPipelineRunFailureMessage(latest))
             }
           }
         } catch (error) {
           shouldRefreshDashboard = true
           showErrorToast(
-            getApiErrorMessage(error, "Failed to poll pipeline run status."),
+            getDisplayErrorMessage(
+              error,
+              "Failed to poll pipeline run status.",
+            ),
           )
           setActiveRunByKey((previous) => {
             const next = { ...previous }
@@ -503,7 +498,7 @@ function DocumentsPage() {
       void dashboardQuery.refetch()
     } catch (error) {
       showErrorToast(
-        getApiErrorMessage(error, "Failed to launch pipeline run."),
+        getDisplayErrorMessage(error, "Failed to launch pipeline run."),
       )
     } finally {
       setLaunchingByKey((previous) => ({
@@ -636,7 +631,10 @@ function DocumentsPage() {
             <AlertIndicator />
             <AlertContent>
               {settingsQuery.error instanceof Error
-                ? settingsQuery.error.message
+                ? getDisplayErrorMessage(
+                    settingsQuery.error,
+                    "Failed to load settings defaults.",
+                  )
                 : "Failed to load settings defaults."}
             </AlertContent>
           </AlertRoot>
@@ -653,7 +651,10 @@ function DocumentsPage() {
             <AlertIndicator />
             <AlertContent>
               {dashboardQuery.error instanceof Error
-                ? dashboardQuery.error.message
+                ? getDisplayErrorMessage(
+                    dashboardQuery.error,
+                    "Failed to load document dashboard.",
+                  )
                 : "Failed to load document dashboard."}
             </AlertContent>
           </AlertRoot>
