@@ -26,9 +26,16 @@ RECOMMENDED_STYLES: tuple[str, ...] = (
     "impasto",
     "neon noir",
     "mosaic art",
+    "cinematic fantasy anime",
+    "cinematic contemporary anime",
+    "modern stylized 3D animated cartoon",
 )
 
 OTHER_STYLES: tuple[str, ...] = (
+    "Photorealism",
+    "stylized 3D art",
+    "painterly storybook cartoon",
+    "polished modern anime",
     "3D voxel art",
     "neon-line drawing",
     "miniature diorama",
