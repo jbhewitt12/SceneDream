@@ -29,6 +29,19 @@ from models.image_prompt import ImagePrompt
 from models.scene_extraction import SceneExtraction
 
 
+def _assert_app_error(
+    payload: dict[str, object],
+    *,
+    code: str,
+    message: str,
+) -> dict[str, object]:
+    detail = payload["detail"]
+    assert isinstance(detail, dict)
+    assert detail["code"] == code
+    assert detail["message"] == message
+    return detail
+
+
 def _set_social_posting_enabled(db: Session, enabled: bool) -> bool:
     repository = AppSettingsRepository(db)
     settings = repository.get_or_create_global(commit=True, refresh=True)
@@ -285,7 +298,12 @@ def test_remix_endpoint_task_creation_failure(
     )
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "Failed to start remix generation"
+    detail = _assert_app_error(
+        response.json(),
+        code="remix_generation_start_failed",
+        message="scheduler unavailable",
+    )
+    assert "scheduler unavailable" in detail["cause_messages"]
 
 
 def test_custom_remix_endpoint_creates_pending_run_and_schedules_task(
@@ -418,7 +436,12 @@ def test_custom_remix_prompt_creation_failure_fails_pending_run(
     )
 
     assert response.status_code == 400
-    assert "prompt gen failed" in response.json()["detail"]
+    detail = _assert_app_error(
+        response.json(),
+        code="custom_remix_prompt_creation_failed",
+        message="prompt gen failed",
+    )
+    assert "prompt gen failed" in detail["cause_messages"]
 
     # Verify the pipeline run was marked as failed
     db.expire_all()
@@ -540,7 +563,11 @@ def test_crop_endpoint_returns_410_for_deleted_image(
         files={"file": ("crop.png", b"fake-png-data", "image/png")},
     )
     assert response.status_code == 410
-    assert response.json()["detail"] == "Image file has been deleted"
+    _assert_app_error(
+        response.json(),
+        code="generated_image_deleted",
+        message="Image file has been deleted",
+    )
 
 
 def test_list_response_excludes_file_deleted_images(

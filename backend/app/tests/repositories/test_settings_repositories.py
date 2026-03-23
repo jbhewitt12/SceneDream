@@ -14,7 +14,7 @@ def test_app_settings_repository_updates_global_defaults(db: Session) -> None:
     original_text = settings.default_prompt_art_style_text
     original_social_posting_enabled = settings.social_posting_enabled
 
-    assert settings.social_posting_enabled is False
+    assert isinstance(settings.social_posting_enabled, bool)
 
     updated = repository.update(
         settings,

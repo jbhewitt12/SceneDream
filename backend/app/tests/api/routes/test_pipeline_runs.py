@@ -28,6 +28,19 @@ from app.services.pipeline.orchestrator_config import (
 from models.document import Document
 
 
+def _assert_app_error(
+    payload: dict[str, object],
+    *,
+    code: str,
+    message: str,
+) -> dict[str, object]:
+    detail = payload["detail"]
+    assert isinstance(detail, dict)
+    assert detail["code"] == code
+    assert detail["message"] == message
+    return detail
+
+
 @pytest.fixture()
 def pipeline_document(db: Session) -> Generator[Document, None, None]:
     repository = DocumentRepository(db)
@@ -137,7 +150,12 @@ def test_start_pipeline_run_task_creation_failure(
     )
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "Failed to start pipeline run"
+    detail = _assert_app_error(
+        response.json(),
+        code="pipeline_run_start_failed",
+        message="scheduler unavailable",
+    )
+    assert "scheduler unavailable" in detail["cause_messages"]
 
 
 def test_start_pipeline_run_uses_document_defaults(
@@ -300,10 +318,14 @@ def test_start_pipeline_run_rejects_missing_source_when_no_resume_data(
     )
 
     assert response.status_code == 400
-    assert (
-        response.json()["detail"]
-        == "book_path does not exist and no extracted scenes are available to resume"
+    detail = _assert_app_error(
+        response.json(),
+        code="invalid_pipeline_request",
+        message="book_path does not exist and no extracted scenes are available to resume",
     )
+    assert detail["cause_messages"] == [
+        "book_path does not exist and no extracted scenes are available to resume"
+    ]
 
 
 def test_start_pipeline_run_applies_single_style_override(
@@ -528,9 +550,10 @@ def test_start_pipeline_run_rejects_invalid_settings_single_style_defaults(
             },
         )
         assert response.status_code == 422
-        assert (
-            response.json()["detail"]
-            == "prompt_art_style_text is required when prompt_art_style_mode is single_style"
+        _assert_app_error(
+            response.json(),
+            code="invalid_pipeline_request",
+            message="prompt_art_style_text is required when prompt_art_style_mode is single_style",
         )
     finally:
         settings_repo.update(
@@ -552,9 +575,10 @@ def test_start_pipeline_run_requires_slug_or_document(
         json={"images_for_scenes": 1},
     )
     assert response.status_code == 400
-    assert (
-        response.json()["detail"]
-        == "book_slug is required when document_id is not provided"
+    _assert_app_error(
+        response.json(),
+        code="invalid_pipeline_request",
+        message="book_slug is required when document_id is not provided",
     )
 
 
@@ -580,6 +604,43 @@ def test_get_pipeline_run_returns_record(
     assert payload["id"] == str(run.id)
     assert payload["book_slug"] == slug
     assert payload["usage_summary"] == {}
+
+    db.delete(run)
+    db.commit()
+
+
+def test_get_pipeline_run_includes_structured_failure(
+    client: TestClient,
+    db: Session,
+) -> None:
+    run_repo = PipelineRunRepository(db)
+    run = run_repo.create(
+        data={
+            "book_slug": f"failed-book-{uuid4()}",
+            "status": "failed",
+            "current_stage": "failed",
+            "error_message": "model not found",
+            "config_overrides": {},
+            "usage_summary": {
+                "failure": {
+                    "code": "stage_error",
+                    "message": "model not found",
+                    "cause_messages": ["Failed to generate prompts", "model not found"],
+                    "stage": "generating_prompts",
+                    "metadata": {},
+                }
+            },
+        },
+        commit=True,
+    )
+
+    response = client.get(f"/api/v1/pipeline-runs/{run.id}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["code"] == "stage_error"
+    assert payload["error"]["message"] == "model not found"
+    assert payload["error"]["stage"] == "generating_prompts"
+    assert payload["error"]["run_id"] == str(run.id)
 
     db.delete(run)
     db.commit()

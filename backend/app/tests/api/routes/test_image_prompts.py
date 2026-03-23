@@ -14,6 +14,19 @@ from app.services.prompt_metadata.prompt_metadata_service import (
 )
 
 
+def _assert_app_error(
+    payload: dict[str, object],
+    *,
+    code: str,
+    message: str,
+) -> dict[str, object]:
+    detail = payload["detail"]
+    assert isinstance(detail, dict)
+    assert detail["code"] == code
+    assert detail["message"] == message
+    return detail
+
+
 def test_list_prompts_for_scene_with_filters(
     client: TestClient,
     scene_factory,
@@ -222,7 +235,11 @@ def test_generate_metadata_variants_not_found(client: TestClient) -> None:
     )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Image prompt not found"
+    _assert_app_error(
+        response.json(),
+        code="image_prompt_not_found",
+        message="Image prompt not found",
+    )
 
 
 def test_generate_metadata_variants_server_error(
@@ -249,7 +266,12 @@ def test_generate_metadata_variants_server_error(
     )
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "Failed to generate metadata variants"
+    detail = _assert_app_error(
+        response.json(),
+        code="metadata_generation_failed",
+        message="metadata provider failed",
+    )
+    assert "metadata provider failed" in detail["cause_messages"]
 
 
 def test_update_prompt_metadata_success(

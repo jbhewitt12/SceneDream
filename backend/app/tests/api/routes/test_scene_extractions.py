@@ -18,6 +18,19 @@ from app.services.pipeline import (
 )
 
 
+def _assert_app_error(
+    payload: dict[str, object],
+    *,
+    code: str,
+    message: str,
+) -> dict[str, object]:
+    detail = payload["detail"]
+    assert isinstance(detail, dict)
+    assert detail["code"] == code
+    assert detail["message"] == message
+    return detail
+
+
 def test_list_scene_extractions_applies_filters_and_pagination(
     client: TestClient,
     scene_factory,
@@ -347,7 +360,11 @@ def test_generate_for_scene_returns_404_for_missing_scene(
     )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Scene extraction not found"
+    _assert_app_error(
+        response.json(),
+        code="scene_not_found",
+        message="Scene extraction not found",
+    )
 
 
 def test_generate_for_scene_validates_num_images(
@@ -469,4 +486,9 @@ def test_generate_for_scene_task_creation_failure(
     )
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "Failed to start scene generation"
+    detail = _assert_app_error(
+        response.json(),
+        code="scene_generation_start_failed",
+        message="scheduler unavailable",
+    )
+    assert "scheduler unavailable" in detail["cause_messages"]

@@ -196,8 +196,12 @@ class TestRunDiagnosticsTracker:
         result = tracker.finalize(
             status_value="failed",
             completed_at=t0,
-            error_code="stage_error",
-            error_message="ranking failed",
+            error={
+                "code": "stage_error",
+                "message": "ranking failed",
+                "cause_messages": ["ranking failed"],
+                "stage": "ranking",
+            },
         )
         assert result["error"]["code"] == "stage_error"
         assert result["error"]["message"] == "ranking failed"
@@ -304,6 +308,14 @@ class TestBuildUsageSummary:
             completed_at=now,
             error_message="extraction blew up",
             error_code="stage_error",
+            failure={
+                "code": "stage_error",
+                "message": "extraction blew up",
+                "cause_messages": ["extraction blew up"],
+                "stage": "extracting",
+                "run_id": str(prepared.run_id),
+                "metadata": {},
+            },
             diagnostics={"observed_stage": "extracting"},
         )
 
@@ -311,6 +323,7 @@ class TestBuildUsageSummary:
         assert summary["errors"]["count"] >= 1
         assert summary["errors"]["code"] == "stage_error"
         assert summary["diagnostics"]["observed_stage"] == "extracting"
+        assert summary["failure"]["message"] == "extraction blew up"
 
     def test_skip_flags_derived_from_stage_plan(self) -> None:
         """skip_* values come from the negation of the effective stage plan booleans."""
@@ -471,6 +484,10 @@ class TestOrchestratorFailure:
         # Usage summary records failure
         assert result.usage_summary["status"] == "failed"
         assert result.usage_summary["errors"]["code"] == "stage_error"
+        assert result.usage_summary["failure"]["message"] == "extraction failed hard"
+        assert result.usage_summary["failure"]["cause_messages"] == [
+            "extraction failed hard"
+        ]
 
         # Diagnostics include error
         assert result.diagnostics["error"]["code"] == "stage_error"
@@ -515,6 +532,9 @@ class TestOrchestratorFailure:
         assert "partial extraction failure" in (result.error_message or "")
         assert result.usage_summary["status"] == "failed"
         assert result.usage_summary["errors"]["count"] >= 1
+        assert result.usage_summary["failure"]["cause_messages"][0].startswith(
+            "partial extraction failure"
+        )
 
     def test_failure_at_ranking_stage_preserves_failed_stage(self) -> None:
         callbacks = _CapturingCallbacks()
