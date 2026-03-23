@@ -281,6 +281,54 @@ def test_generate_for_scene_falls_back_to_openai(
     assert captured_force_json["value"] is False
 
 
+def test_generate_for_scene_includes_exception_type_when_retry_error_is_blank(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene = scene_factory()
+    config = ImagePromptGenerationConfig(
+        dry_run=True,
+        variants_count=1,
+        retry_attempts=0,
+    )
+    service = ImagePromptGenerationService(db, config=config)
+    _patch_context(service, monkeypatch)
+
+    async def fail_gemini(**_: object) -> list[dict[str, object]]:
+        raise TimeoutError()
+
+    monkeypatch.setattr(gemini_api, "json_output", fail_gemini)
+
+    with pytest.raises(
+        ImagePromptGenerationServiceError,
+        match="LLM prompt generation failed after retries: TimeoutError",
+    ):
+        asyncio.run(service.generate_for_scene(scene))
+
+
+def test_generate_for_scene_includes_exception_message_in_retry_error(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene = scene_factory()
+    config = ImagePromptGenerationConfig(
+        dry_run=True,
+        variants_count=1,
+        retry_attempts=0,
+    )
+    service = ImagePromptGenerationService(db, config=config)
+    _patch_context(service, monkeypatch)
+
+    async def fail_gemini(**_: object) -> list[dict[str, object]]:
+        raise RuntimeError("quota exceeded")
+
+    monkeypatch.setattr(gemini_api, "json_output", fail_gemini)
+
+    with pytest.raises(
+        ImagePromptGenerationServiceError,
+        match="LLM prompt generation failed after retries: RuntimeError: quota exceeded",
+    ):
+        asyncio.run(service.generate_for_scene(scene))
+
+
 def test_generate_for_scene_returns_existing_when_overwrite_disabled(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:

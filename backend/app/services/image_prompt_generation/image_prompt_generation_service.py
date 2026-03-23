@@ -53,6 +53,13 @@ logger.addHandler(logging.NullHandler())
 REMIX_VARIANTS_COUNT = 2
 
 
+def _format_exception_summary(exc: Exception) -> str:
+    """Return a stable error summary even when str(exc) is empty."""
+    message = str(exc).strip()
+    exc_type = exc.__class__.__name__
+    return f"{exc_type}: {message}" if message else exc_type
+
+
 class ImagePromptGenerationService:
     """Generate structured image prompts for scenes using LLM (Gemini or OpenAI)."""
 
@@ -1009,23 +1016,26 @@ class ImagePromptGenerationService:
                 return response, llm_request_id, execution_time_ms
             except Exception as exc:  # pragma: no cover - retry path
                 last_error = exc
+                error_summary = _format_exception_summary(exc)
                 logger.warning(
-                    "LLM prompt generation failed (attempt %s/%s, vendor=%s): %s",
+                    "LLM prompt generation failed (attempt %s/%s, vendor=%s, model=%s): %s",
                     attempt,
                     attempts,
                     config.model_vendor,
-                    exc,
+                    config.model_name,
+                    error_summary,
                 )
                 if attempt >= attempts:
                     break
                 await asyncio.sleep(max(config.retry_backoff_seconds, 0))
         assert last_error is not None
+        error_summary = _format_exception_summary(last_error)
         if config.fail_on_error:
             raise ImagePromptGenerationServiceError(
-                f"LLM prompt generation failed: {last_error}"
+                f"LLM prompt generation failed: {error_summary}"
             ) from last_error
         raise ImagePromptGenerationServiceError(
-            f"LLM prompt generation failed after retries: {last_error}"
+            f"LLM prompt generation failed after retries: {error_summary}"
         ) from last_error
 
     async def _run_metadata_generation(
