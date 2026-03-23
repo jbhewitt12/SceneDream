@@ -1,3 +1,6 @@
+# Claude Code worktrees
+.claude/worktrees/
+
 # FastAPI Template
 .vscode
 node_modules/
