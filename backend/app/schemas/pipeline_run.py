@@ -13,6 +13,18 @@ from app.core.prompt_art_style import (
     coerce_prompt_art_style_selection,
     normalize_prompt_art_style_text,
 )
+from app.schemas.common import ApiErrorDetail
+
+
+def _coerce_failure_detail(value: Any) -> ApiErrorDetail | None:
+    if isinstance(value, ApiErrorDetail):
+        return value
+    if isinstance(value, dict):
+        try:
+            return ApiErrorDetail.model_validate(value)
+        except Exception:
+            return None
+    return None
 
 
 class PipelineRunCreate(BaseModel):
@@ -74,6 +86,7 @@ class PipelineRunRead(BaseModel):
     status: str
     current_stage: str | None
     error_message: str | None
+    error: ApiErrorDetail | None = None
     config_overrides: dict[str, Any] = Field(default_factory=dict)
     usage_summary: dict[str, Any] = Field(default_factory=dict)
     stage_progress: dict[str, Any] | None = None
@@ -83,6 +96,36 @@ class PipelineRunRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _hydrate_failure(self) -> PipelineRunRead:
+        failure = _coerce_failure_detail(self.error)
+        if failure is None:
+            usage_summary = self.usage_summary or {}
+            failure = _coerce_failure_detail(usage_summary.get("failure"))
+            if failure is None:
+                diagnostics = usage_summary.get("diagnostics")
+                if isinstance(diagnostics, dict):
+                    failure = _coerce_failure_detail(diagnostics.get("error"))
+
+            if failure is None and self.error_message:
+                errors_block = usage_summary.get("errors")
+                error_code = None
+                if isinstance(errors_block, dict):
+                    raw_code = errors_block.get("code")
+                    if isinstance(raw_code, str) and raw_code.strip():
+                        error_code = raw_code.strip()
+                failure = ApiErrorDetail(
+                    code=error_code or "pipeline_exception",
+                    message=self.error_message,
+                    cause_messages=[self.error_message],
+                )
+
+        if failure is not None and failure.run_id is None:
+            failure = failure.model_copy(update={"run_id": self.id})
+
+        self.error = failure
+        return self
 
 
 class PipelineRunListResponse(BaseModel):

@@ -15,6 +15,7 @@ from uuid import UUID
 
 from sqlmodel import Session
 
+from app.api.errors import build_api_error_detail, build_api_error_detail_from_exception
 from app.core.db import engine
 from app.repositories import (
     DocumentRepository,
@@ -184,8 +185,7 @@ class RunDiagnosticsTracker:
         *,
         status_value: str,
         completed_at: datetime,
-        error_code: str | None = None,
-        error_message: str | None = None,
+        error: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Close active stage and return persisted diagnostics payload."""
 
@@ -219,12 +219,8 @@ class RunDiagnosticsTracker:
             "stage_durations_ms": dict(self.stage_durations_ms),
             "stage_events": list(self.stage_events),
         }
-        if status_value == "failed":
-            diagnostics["error"] = {
-                "code": error_code or "pipeline_exception",
-                "message": (error_message or "")[:2000],
-                "stage": final_stage or "pending",
-            }
+        if status_value == "failed" and error is not None:
+            diagnostics["error"] = error
         return diagnostics
 
 
@@ -301,6 +297,7 @@ def build_usage_summary(
     completed_at: datetime,
     error_message: str | None = None,
     error_code: str | None = None,
+    failure: dict[str, Any] | None = None,
     diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the backward-compatible usage_summary dict from orchestrator state."""
@@ -320,17 +317,25 @@ def build_usage_summary(
 
     stats_dict = stats.to_dict() if stats is not None else {}
     raw_errors = stats_dict.get("errors", [])
-    error_messages = (
-        [str(message)[:200] for message in raw_errors[:5]]
-        if isinstance(raw_errors, list)
-        else []
-    )
+    error_messages: list[str] = []
+    if failure and isinstance(failure.get("cause_messages"), list):
+        error_messages.extend(
+            str(message)[:200]
+            for message in failure["cause_messages"][:5]
+            if isinstance(message, str) and message.strip()
+        )
+    elif isinstance(raw_errors, list):
+        error_messages.extend(str(message)[:200] for message in raw_errors[:5])
     if error_message:
         error_messages = [error_message[:200], *error_messages]
+    deduped_error_messages: list[str] = []
+    for message in error_messages:
+        if message and message not in deduped_error_messages:
+            deduped_error_messages.append(message)
 
     duration_ms = max(0, int((completed_at - started_at).total_seconds() * 1000))
 
-    return {
+    usage_summary = {
         "status": status_value,
         "timing": {
             "started_at": started_at.isoformat(),
@@ -382,12 +387,16 @@ def build_usage_summary(
             "images_generated": _safe_int(stats_dict.get("images_generated", 0)),
         },
         "errors": {
-            "count": len(error_messages),
-            "messages": error_messages,
+            "count": len(deduped_error_messages),
+            "messages": deduped_error_messages,
             "code": error_code,
+            "error_id": failure.get("error_id") if failure else None,
         },
         "diagnostics": diagnostics or {},
     }
+    if failure is not None:
+        usage_summary["failure"] = failure
+    return usage_summary
 
 
 # ---------------------------------------------------------------------------
@@ -518,16 +527,6 @@ def _sync_document_stage_statuses(
             "Failed to synchronize document stage status: run_id=%s",
             run_id,
         )
-
-
-def _format_failure_message(exc: Exception) -> str:
-    message = str(exc).strip() or exc.__class__.__name__
-    return message[:2000]
-
-
-# ---------------------------------------------------------------------------
-# Pipeline Orchestrator
-# ---------------------------------------------------------------------------
 
 
 class PipelineOrchestrator:
@@ -1239,18 +1238,25 @@ class PipelineOrchestrator:
     ) -> PipelineExecutionResult:
         """Handle an exception-based failure."""
 
-        failure_message = _format_failure_message(exc)
         completed_at = datetime.now(timezone.utc)
         error_code = classify_pipeline_error_code(
             exc=exc,
-            error_message=failure_message,
+            error_message=str(exc),
             observed_stage=diagnostics.current_stage,
         )
+        failure = build_api_error_detail_from_exception(
+            code=error_code,
+            exc=exc,
+            default_message="Pipeline execution failed",
+            stage=diagnostics.current_stage or "pending",
+            run_id=run_id,
+        )
+        failure_payload = failure.model_dump(mode="json")
+        failure_message = failure.message
         diagnostics_payload = diagnostics.finalize(
             status_value="failed",
             completed_at=completed_at,
-            error_code=error_code,
-            error_message=failure_message,
+            error=failure_payload,
         )
         usage_summary = build_usage_summary(
             prepared=prepared,
@@ -1260,6 +1266,7 @@ class PipelineOrchestrator:
             completed_at=completed_at,
             error_message=failure_message,
             error_code=error_code,
+            failure=failure_payload,
             diagnostics=diagnostics_payload,
         )
         log_pipeline_event(
@@ -1318,16 +1325,29 @@ class PipelineOrchestrator:
         """Handle failure when stats.errors is non-empty."""
 
         combined_error = " | ".join(stats.errors)
+        cause_messages = [
+            str(message)[:2000]
+            for message in stats.errors
+            if isinstance(message, str) and message.strip()
+        ]
         completed_at = datetime.now(timezone.utc)
         error_code = classify_pipeline_error_code(
             error_message=combined_error,
             observed_stage=diagnostics.current_stage,
         )
+        failure = build_api_error_detail(
+            code=error_code,
+            message=cause_messages[0] if cause_messages else combined_error[:2000],
+            cause_messages=cause_messages[:5],
+            stage=diagnostics.current_stage or "pending",
+            run_id=run_id,
+        )
+        failure_payload = failure.model_dump(mode="json")
+        failure_message = failure.message
         diagnostics_payload = diagnostics.finalize(
             status_value="failed",
             completed_at=completed_at,
-            error_code=error_code,
-            error_message=combined_error[:2000],
+            error=failure_payload,
         )
         usage_summary = build_usage_summary(
             prepared=prepared,
@@ -1335,8 +1355,9 @@ class PipelineOrchestrator:
             status_value="failed",
             started_at=started_at,
             completed_at=completed_at,
-            error_message=combined_error[:2000],
+            error_message=failure_message,
             error_code=error_code,
+            failure=failure_payload,
             diagnostics=diagnostics_payload,
         )
         if (
@@ -1348,7 +1369,7 @@ class PipelineOrchestrator:
             run_id=run_id,
             status_value="failed",
             current_stage="failed",
-            error_message=combined_error[:2000],
+            error_message=failure_message,
             usage_summary=usage_summary,
             stage_progress=copy.deepcopy(self._stage_progress)
             if self._stage_progress
@@ -1358,7 +1379,7 @@ class PipelineOrchestrator:
         self._set_document_stage_failed(
             run_id=run_id,
             pipeline_stage=diagnostics.current_stage,
-            error_message=combined_error[:2000],
+            error_message=failure_message,
         )
         self._sync_document_stage_statuses(
             run_id=run_id,
@@ -1372,7 +1393,7 @@ class PipelineOrchestrator:
             stage=diagnostics_payload.get("observed_stage") or "pending",
             error_code=error_code,
             error_count=len(stats.errors),
-            error_message=combined_error[:2000],
+            error_message=failure_message,
         )
         return PipelineExecutionResult(
             run_id=run_id,
@@ -1380,7 +1401,7 @@ class PipelineOrchestrator:
             stats=stats,
             diagnostics=diagnostics_payload,
             usage_summary=usage_summary,
-            error_message=combined_error[:2000],
+            error_message=failure_message,
             error_code=error_code,
         )
 
