@@ -251,7 +251,10 @@ export class GeneratedImagesService {
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {
-                422: 'Validation Error'
+                400: 'Bad Request',
+                404: 'Not Found',
+                422: 'Unprocessable Content',
+                500: 'Internal Server Error'
             }
         });
     }
@@ -275,7 +278,10 @@ export class GeneratedImagesService {
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {
-                422: 'Validation Error'
+                400: 'Bad Request',
+                404: 'Not Found',
+                422: 'Unprocessable Content',
+                500: 'Internal Server Error'
             }
         });
     }
@@ -403,7 +409,11 @@ export class GeneratedImagesService {
             formData: data.formData,
             mediaType: 'multipart/form-data',
             errors: {
-                422: 'Validation Error'
+                400: 'Bad Request',
+                404: 'Not Found',
+                410: 'Gone',
+                422: 'Validation Error',
+                500: 'Internal Server Error'
             }
         });
     }
@@ -564,7 +574,9 @@ export class ImagePromptsService {
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {
-                422: 'Validation Error'
+                404: 'Not Found',
+                422: 'Validation Error',
+                500: 'Internal Server Error'
             }
         });
     }
@@ -611,7 +623,10 @@ export class PipelineRunsService {
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {
-                422: 'Validation Error'
+                400: 'Bad Request',
+                404: 'Not Found',
+                422: 'Unprocessable Content',
+                500: 'Internal Server Error'
             }
         });
     }
@@ -729,7 +744,10 @@ export class SceneExtractionsService {
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {
-                422: 'Validation Error'
+                400: 'Bad Request',
+                404: 'Not Found',
+                422: 'Unprocessable Content',
+                500: 'Internal Server Error'
             }
         });
     }
