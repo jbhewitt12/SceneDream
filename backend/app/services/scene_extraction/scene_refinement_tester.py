@@ -146,12 +146,6 @@ def parse_args() -> argparse.Namespace:
         help="Temperature to use for the refinement model (default: 0.1)",
     )
     parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=None,
-        help="Maximum tokens for the refinement model (default: model default)",
-    )
-    parser.add_argument(
         "--show-all",
         action="store_true",
         help="Print results for every scene instead of mismatches only.",
@@ -175,7 +169,6 @@ def main() -> None:
         backup_vendor="openai",
         backup_model="gpt-5-mini",
         temperature=args.temperature,
-        max_tokens=args.max_tokens,
     )
 
     raw_scenes = [item.scene for item in labeled_scenes]

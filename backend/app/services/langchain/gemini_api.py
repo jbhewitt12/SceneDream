@@ -62,7 +62,6 @@ def _coerce_content_to_text(payload: Any) -> str:
 def _get_llm(
     model: str = DEFAULT_FLASH_MODEL,
     temperature: float = 0.7,
-    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> ChatGoogleGenerativeAI:
     """
@@ -71,7 +70,6 @@ def _get_llm(
 
     :param model: The Gemini model name (e.g., "gemini-pro-latest", "gemini-flash-latest").
     :param temperature: Controls randomness (0.0 for deterministic, higher for creative).
-    :param max_tokens: Maximum number of tokens in the response (optional).
     :param kwargs: Additional parameters like timeout, max_retries, etc.
     :return: Initialized ChatGoogleGenerativeAI instance.
     """
@@ -84,7 +82,6 @@ def _get_llm(
         model=model,
         google_api_key=api_key,
         temperature=temperature,
-        max_tokens=max_tokens,
         **kwargs,
     )
 
@@ -93,7 +90,6 @@ async def simple_call(
     prompt: str,
     model: str = DEFAULT_FLASH_MODEL,
     temperature: float = 0.7,
-    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> str:
     """
@@ -107,12 +103,11 @@ async def simple_call(
     :param prompt: The input prompt string.
     :param model: The Gemini model to use.
     :param temperature: Randomness control.
-    :param max_tokens: Max response tokens.
     :param kwargs: Additional LLM init params.
     :return: The generated text response as a string.
     """
     kwargs.setdefault("request_timeout", 120)
-    llm = _get_llm(model, temperature, max_tokens, **kwargs)
+    llm = _get_llm(model, temperature, **kwargs)
     response = await retry_with_backoff(llm.ainvoke, prompt)
     return _coerce_content_to_text(response.content)
 
@@ -121,7 +116,6 @@ async def chat_call(
     messages: list[dict[str, str]],
     model: str = DEFAULT_FLASH_MODEL,
     temperature: float = 0.7,
-    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> str:
     """
@@ -139,12 +133,11 @@ async def chat_call(
     :param messages: List of dicts with 'role' (system/user/assistant) and 'content'.
     :param model: The Gemini model to use.
     :param temperature: Randomness control.
-    :param max_tokens: Max response tokens.
     :param kwargs: Additional LLM init params.
     :return: The generated response as a string.
     """
     kwargs.setdefault("request_timeout", 120)
-    llm = _get_llm(model, temperature, max_tokens, **kwargs)
+    llm = _get_llm(model, temperature, **kwargs)
     lc_messages: list[SystemMessage | HumanMessage | AIMessage] = []
     for msg in messages:
         role = msg.get("role", "").lower()
@@ -167,7 +160,6 @@ async def call_with_tools(
     tools: list[Any],
     model: str = DEFAULT_PRO_MODEL,
     temperature: float = 0.7,
-    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> Any:
     """
@@ -189,12 +181,11 @@ async def call_with_tools(
     :param tools: List of tools (functions or dict schemas).
     :param model: The Gemini model to use (must support tool calling).
     :param temperature: Randomness control.
-    :param max_tokens: Max response tokens.
     :param kwargs: Additional LLM init params.
     :return: The full AIMessage response (may include .tool_calls list).
     """
     kwargs.setdefault("request_timeout", 180)
-    llm = _get_llm(model, temperature, max_tokens, **kwargs)
+    llm = _get_llm(model, temperature, **kwargs)
     llm_with_tools = llm.bind_tools(tools)
     response = await retry_with_backoff(llm_with_tools.ainvoke, prompt)
     return response
@@ -206,7 +197,6 @@ async def structured_output(
     method: str = "default",
     model: str = DEFAULT_PRO_MODEL,
     temperature: float = 0.0,
-    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> BaseModel:
     """
@@ -226,12 +216,11 @@ async def structured_output(
     :param method: "default" (function calling) or "json_mode" (native JSON).
     :param model: The Gemini model to use.
     :param temperature: Randomness control (low for structured output).
-    :param max_tokens: Max response tokens.
     :param kwargs: Additional LLM init params.
     :return: Instance of the schema with parsed data.
     """
     kwargs.setdefault("request_timeout", 240)
-    llm = _get_llm(model, temperature, max_tokens, **kwargs)
+    llm = _get_llm(model, temperature, **kwargs)
     if method == "json_mode":
         structured_llm = llm.with_structured_output(schema, method="json_mode")
     else:
@@ -248,7 +237,6 @@ async def json_output(
     system_instruction: str = "Respond only with valid JSON.",
     model: str = DEFAULT_PRO_MODEL,
     temperature: float = 0.0,
-    max_tokens: int | None = None,
     **kwargs: Any,
 ) -> Any:
     """
@@ -263,20 +251,13 @@ async def json_output(
     :param system_instruction: System prompt to enforce JSON (optional).
     :param model: The Gemini model to use.
     :param temperature: Randomness control (low for JSON).
-    :param max_tokens: Max response tokens.
     :param kwargs: Additional LLM init params.
     :return: Parsed JSON payload.
     """
     import json
 
     kwargs.setdefault("request_timeout", 360)
-    llm = _get_llm(
-        model,
-        temperature,
-        max_tokens,
-        response_mime_type="application/json",
-        **kwargs,
-    )
+    llm = _get_llm(model, temperature, response_mime_type="application/json", **kwargs)
     messages = [SystemMessage(content=system_instruction), HumanMessage(content=prompt)]
     response = await retry_with_backoff(llm.ainvoke, messages)
     content = _coerce_content_to_text(response.content).strip()
@@ -301,6 +282,6 @@ async def json_output(
         if finish_reason == "MAX_TOKENS":
             raise ValueError(
                 "Gemini response truncated before completing JSON (finish_reason=MAX_TOKENS). "
-                "Increase max_tokens or adjust the prompt for shorter output."
+                "Adjust the prompt for a shorter response."
             ) from exc
         raise ValueError("Failed to parse JSON from response: " + snippet) from exc

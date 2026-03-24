@@ -42,7 +42,7 @@ def _prompt_payload(
             "variants": [],
         },
         "temperature": 0.4,
-        "max_output_tokens": 4096,
+        "max_output_tokens": None,
         "llm_request_id": f"req-{uuid.uuid4()}",
         "execution_time_ms": 1200 + variant_index,
     }

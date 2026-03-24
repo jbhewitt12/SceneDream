@@ -142,7 +142,6 @@ class VariantProcessor:
                     "context_window": dict(context_window),
                     "raw_response": dict(raw_payload),
                     "temperature": config.temperature,
-                    "max_output_tokens": config.max_output_tokens,
                     "llm_request_id": llm_request_id,
                     "execution_time_ms": execution_time_ms,
                 }

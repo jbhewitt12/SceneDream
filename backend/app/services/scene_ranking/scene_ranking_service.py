@@ -159,7 +159,6 @@ class SceneRankingConfig:
     backup_model_vendor: LLMProvider = "openai"
     prompt_version: str = "scene-ranking-v1"
     temperature: float = 0.1
-    max_output_tokens: int | None = None
     system_instruction: str = DEFAULT_SYSTEM_INSTRUCTION
     weight_config: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_WEIGHT_CONFIG)
@@ -184,7 +183,6 @@ class SceneRankingConfig:
             "backup_model_vendor": self.backup_model_vendor,
             "prompt_version": self.prompt_version,
             "temperature": self.temperature,
-            "max_output_tokens": self.max_output_tokens,
             "system_instruction": self.system_instruction,
             "weight_config": dict(self.weight_config),
             "retry_attempts": self.retry_attempts,
@@ -359,7 +357,6 @@ class SceneRankingService:
             "model_name": config.model_name,
             "model_vendor": config.model_vendor,
             "temperature": config.temperature,
-            "max_output_tokens": config.max_output_tokens,
             "execution_time_ms": execution_time_ms,
             "weights": weight_cfg,
             "prompt": prompt,
@@ -752,7 +749,6 @@ class SceneRankingService:
                         system_instruction=config.system_instruction,
                         model=config.model_name,
                         temperature=config.temperature,
-                        max_tokens=config.max_output_tokens,
                     )
                 else:
                     payload = await openai_api.json_output(
@@ -760,7 +756,6 @@ class SceneRankingService:
                         system_instruction=config.system_instruction,
                         model=config.model_name,
                         temperature=config.temperature,
-                        max_tokens=config.max_output_tokens,
                     )
                 if not isinstance(payload, Mapping):
                     raise SceneRankingServiceError(
