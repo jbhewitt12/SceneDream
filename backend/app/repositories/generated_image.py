@@ -68,6 +68,7 @@ class GeneratedImageRepository:
         provider: str | None = None,
         model: str | None = None,
         include_file_deleted: bool = False,
+        exclude_errors: bool = False,
         newest_first: bool = True,
         limit: int | None = None,
         offset: int | None = None,
@@ -84,6 +85,8 @@ class GeneratedImageRepository:
             statement = statement.where(GeneratedImage.model == model)
         if not include_file_deleted:
             statement = statement.where(GeneratedImage.file_deleted.is_(False))
+        if exclude_errors:
+            statement = statement.where(GeneratedImage.error.is_(None))
 
         ordering = (
             GeneratedImage.created_at.desc()
@@ -117,6 +120,7 @@ class GeneratedImageRepository:
         provider: str | None = None,
         model: str | None = None,
         include_file_deleted: bool = False,
+        exclude_errors: bool = False,
         approval: bool | None = None,
         posted: bool | None = None,
         newest_first: bool = True,
@@ -136,6 +140,8 @@ class GeneratedImageRepository:
             statement = statement.where(GeneratedImage.model == model)
         if not include_file_deleted:
             statement = statement.where(GeneratedImage.file_deleted.is_(False))
+        if exclude_errors:
+            statement = statement.where(GeneratedImage.error.is_(None))
         if approval is not None:
             statement = statement.where(GeneratedImage.user_approved == approval)
 
@@ -188,6 +194,7 @@ class GeneratedImageRepository:
         provider: str | None = None,
         model: str | None = None,
         include_file_deleted: bool = False,
+        exclude_errors: bool = False,
         approval: bool | None = None,
         posted: bool | None = None,
         newest_first: bool = True,
@@ -209,6 +216,8 @@ class GeneratedImageRepository:
             statement = statement.where(GeneratedImage.model == model)
         if not include_file_deleted:
             statement = statement.where(GeneratedImage.file_deleted.is_(False))
+        if exclude_errors:
+            statement = statement.where(GeneratedImage.error.is_(None))
         if approval is not None:
             statement = statement.where(GeneratedImage.user_approved == approval)
 
