@@ -132,7 +132,6 @@ class ImagePromptGenerationService:
         prompt_version: str | None = None,
         variants_count: int | None = None,
         temperature: float | None = None,
-        max_output_tokens: int | None = None,
         overwrite: bool | None = None,
         dry_run: bool | None = None,
         metadata: Mapping[str, Any] | None = None,
@@ -143,7 +142,6 @@ class ImagePromptGenerationService:
             prompt_version=prompt_version,
             variants_count=variants_count,
             temperature=temperature,
-            max_output_tokens=max_output_tokens,
             overwrite=overwrite,
             dry_run=dry_run,
             metadata=metadata,
@@ -227,7 +225,6 @@ class ImagePromptGenerationService:
             "model_name": config.model_name,
             "model_vendor": config.model_vendor,
             "temperature": config.temperature,
-            "max_output_tokens": config.max_output_tokens,
             "variants_count": config.variants_count,
             "prompt_hash": prompt_hash,
             "target_provider": config.target_provider,
@@ -287,7 +284,7 @@ class ImagePromptGenerationService:
                     context_window=record["context_window"],
                     raw_response=preview_payload,
                     temperature=record["temperature"],
-                    max_output_tokens=record["max_output_tokens"],
+                    max_output_tokens=record.get("max_output_tokens"),
                     execution_time_ms=record["execution_time_ms"],
                     llm_request_id=record["llm_request_id"],
                 )
@@ -341,7 +338,6 @@ class ImagePromptGenerationService:
         prompt_version: str | None = None,
         variants_count: int | None = None,
         temperature: float | None = None,
-        max_output_tokens: int | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> tuple[str, ImagePromptGenerationConfig, Mapping[str, Any], str, list[str]]:
         """
@@ -355,7 +351,6 @@ class ImagePromptGenerationService:
             prompt_version=prompt_version,
             variants_count=variants_count,
             temperature=temperature,
-            max_output_tokens=max_output_tokens,
             overwrite=None,
             dry_run=None,
             metadata=metadata,
@@ -511,7 +506,6 @@ class ImagePromptGenerationService:
             "model_name": config.model_name,
             "model_vendor": config.model_vendor,
             "temperature": config.temperature,
-            "max_output_tokens": config.max_output_tokens,
         }
         if config.metadata:
             service_payload["run_metadata"] = dict(config.metadata)
@@ -547,7 +541,6 @@ class ImagePromptGenerationService:
                     "context_window": dict(prompt_record.context_window),
                     "raw_response": raw_bundle,
                     "temperature": config.temperature,
-                    "max_output_tokens": config.max_output_tokens,
                     "llm_request_id": llm_request_id,
                     "execution_time_ms": execution_time_ms,
                 }
@@ -583,7 +576,7 @@ class ImagePromptGenerationService:
                     context_window=record["context_window"],
                     raw_response=preview_payload,
                     temperature=record["temperature"],
-                    max_output_tokens=record["max_output_tokens"],
+                    max_output_tokens=record.get("max_output_tokens"),
                     execution_time_ms=record["execution_time_ms"],
                     llm_request_id=record["llm_request_id"],
                 )
@@ -662,7 +655,6 @@ class ImagePromptGenerationService:
                 if prompt_record.temperature is not None
                 else self._config.temperature
             ),
-            "max_output_tokens": prompt_record.max_output_tokens,
             "llm_request_id": None,
             "execution_time_ms": 0,
         }
@@ -762,7 +754,6 @@ class ImagePromptGenerationService:
         prompt_version: str | None,
         variants_count: int | None,
         temperature: float | None,
-        max_output_tokens: int | None,
         overwrite: bool | None,
         dry_run: bool | None,
         metadata: Mapping[str, Any] | None,
@@ -776,8 +767,6 @@ class ImagePromptGenerationService:
             overrides["use_ranking_recommendation"] = False
         if temperature is not None:
             overrides["temperature"] = temperature
-        if max_output_tokens is not None:
-            overrides["max_output_tokens"] = max_output_tokens
         if overwrite is not None:
             overrides["allow_overwrite"] = overwrite
         if dry_run is not None:
@@ -995,7 +984,6 @@ class ImagePromptGenerationService:
                         or self._system_instruction,
                         model=config.model_name,
                         temperature=config.temperature,
-                        max_tokens=config.max_output_tokens,
                     )
                 else:
                     response = await openai_api.json_output(
@@ -1004,7 +992,6 @@ class ImagePromptGenerationService:
                         or self._system_instruction,
                         model=config.model_name,
                         temperature=config.temperature,
-                        max_tokens=config.max_output_tokens,
                         force_json_object=False,
                     )
                 execution_time_ms = int((time.perf_counter() - start_time) * 1000)

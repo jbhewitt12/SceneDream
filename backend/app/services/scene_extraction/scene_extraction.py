@@ -75,7 +75,6 @@ class SceneExtractionConfig:
     refinement_backup_model_vendor: LLMProvider = "openai"
     refinement_backup_model: str = "gpt-5-mini"
     refinement_temperature: float = 0.1
-    refinement_max_tokens: int | None = None
     book_slug: str | None = None
     enable_refinement: bool = ENABLE_REFINEMENT
     resume_from_chapter: int | None = None
@@ -565,7 +564,6 @@ class SceneExtractor:
                 backup_vendor=self.config.refinement_backup_model_vendor,
                 backup_model=self.config.refinement_backup_model,
                 temperature=self.config.refinement_temperature,
-                max_tokens=self.config.refinement_max_tokens,
             )
         return self._refiner
 
@@ -863,12 +861,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--temperature", type=float, help="Override the refinement temperature."
     )
     refine_pending.add_argument(
-        "--max-tokens",
-        type=int,
-        dest="max_tokens",
-        help="Override the max tokens for refinement requests.",
-    )
-    refine_pending.add_argument(
         "--override",
         action="store_true",
         help="Re-run refinement even for scenes that already have decisions.",
@@ -907,8 +899,6 @@ def _cmd_refine_pending(args: argparse.Namespace) -> int:
                     config.refinement_backup_model = "gpt-5-mini"
     if getattr(args, "temperature", None) is not None:
         config.refinement_temperature = args.temperature
-    if getattr(args, "max_tokens", None) is not None:
-        config.refinement_max_tokens = args.max_tokens
     limit = args.limit if args.limit and args.limit > 0 else None
     with Session(engine) as session:
         extractor = SceneExtractor(session=session, config=config)

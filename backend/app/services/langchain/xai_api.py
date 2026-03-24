@@ -52,7 +52,6 @@ class XAIAPI:
         base_url: str = "https://api.x.ai/v1",
         model: str = "grok-beta",
         temperature: float = 0.7,
-        max_tokens: int = 1024,
     ):
         """
         Initializes the XAIAPI wrapper.
@@ -62,8 +61,6 @@ class XAIAPI:
             base_url: API endpoint base URL.
             model: Model name (e.g., 'grok-beta').
             temperature: Controls randomness (0-1).
-            max_tokens: Max tokens in response.
-
         This sets up the LangChain ChatOpenAI with custom base_url for xAI compatibility.
         Example from LangChain docs: ChatOpenAI can be pointed to custom endpoints.
         """
@@ -73,7 +70,6 @@ class XAIAPI:
             base_url=base_url,
             model=model,
             temperature=temperature,
-            max_tokens=max_tokens,
             request_timeout=240,
         )
         self.model = model

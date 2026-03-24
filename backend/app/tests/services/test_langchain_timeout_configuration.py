@@ -66,7 +66,6 @@ async def test_gemini_functions_apply_expected_request_timeout(
     def fake_get_llm(
         _model: str,
         _temperature: float,
-        _max_tokens: int | None,
         **kwargs: Any,
     ) -> _FakeLLM:
         captured_kwargs.update(kwargs)
@@ -112,7 +111,6 @@ async def test_openai_functions_apply_expected_request_timeout(
     def fake_get_llm(
         _model: str,
         _temperature: float,
-        _max_tokens: int | None,
         _response_format: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> _FakeLLM:
@@ -142,11 +140,11 @@ def test_openai_get_llm_omits_response_format_when_not_requested(
     openai_api._get_llm(
         model="gpt-4o-mini",
         temperature=0.0,
-        max_tokens=128,
         request_timeout=360,
     )
 
     assert "response_format" not in captured_kwargs
+    assert "max_tokens" not in captured_kwargs
 
 
 def test_openai_get_llm_passes_response_format_when_requested(
@@ -164,12 +162,33 @@ def test_openai_get_llm_passes_response_format_when_requested(
     openai_api._get_llm(
         model="gpt-4o-mini",
         temperature=0.0,
-        max_tokens=128,
         response_format={"type": "json_object"},
         request_timeout=360,
     )
 
     assert captured_kwargs["response_format"] == {"type": "json_object"}
+    assert "max_tokens" not in captured_kwargs
+
+
+def test_gemini_get_llm_omits_max_tokens_when_not_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_kwargs: dict[str, Any] = {}
+
+    class FakeChatGoogleGenerativeAI:
+        def __init__(self, **kwargs: Any):
+            captured_kwargs.update(kwargs)
+
+    monkeypatch.setattr(gemini_api, "ChatGoogleGenerativeAI", FakeChatGoogleGenerativeAI)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+
+    gemini_api._get_llm(
+        model="gemini-2.5-flash-lite",
+        temperature=0.0,
+        request_timeout=360,
+    )
+
+    assert "max_tokens" not in captured_kwargs
 
 
 def test_xai_api_initializes_chat_openai_with_request_timeout(
@@ -186,3 +205,4 @@ def test_xai_api_initializes_chat_openai_with_request_timeout(
     xai_api.XAIAPI(api_key="test-api-key")
 
     assert captured_kwargs["request_timeout"] == 240
+    assert "max_tokens" not in captured_kwargs

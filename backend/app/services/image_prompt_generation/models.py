@@ -39,7 +39,6 @@ class ImagePromptGenerationConfig:
     variants_count: int = 4
     use_ranking_recommendation: bool = True
     temperature: float = 0.4
-    max_output_tokens: int | None = 8192
     context_before: int = 3
     context_after: int = 1
     include_cheatsheet_path: str = DEFAULT_CHEATSHEET_PATH
@@ -81,7 +80,6 @@ class ImagePromptGenerationConfig:
             "variants_count": self.variants_count,
             "use_ranking_recommendation": self.use_ranking_recommendation,
             "temperature": self.temperature,
-            "max_output_tokens": self.max_output_tokens,
             "context_before": self.context_before,
             "context_after": self.context_after,
             "include_cheatsheet_path": self.include_cheatsheet_path,
@@ -104,8 +102,6 @@ class ImagePromptGenerationConfig:
                 normalized_overrides[key] = set(value) if value is not None else set()
             elif value is not None:
                 normalized_overrides[key] = value
-            elif key in {"max_output_tokens"}:
-                normalized_overrides[key] = None
         data.update(normalized_overrides)
         return ImagePromptGenerationConfig(**data)
 

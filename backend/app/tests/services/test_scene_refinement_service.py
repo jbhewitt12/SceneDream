@@ -56,7 +56,6 @@ def _refiner() -> SceneRefiner:
         backup_vendor="openai",
         backup_model="gpt-test",
         temperature=0.1,
-        max_tokens=None,
     )
 
 
