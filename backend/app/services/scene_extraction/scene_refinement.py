@@ -76,7 +76,6 @@ class SceneRefiner:
         backup_vendor: LLMProvider,
         backup_model: str,
         temperature: float,
-        max_tokens: int | None,
     ) -> None:
         self._routing = LLMRoutingConfig(
             default_vendor=default_vendor,
@@ -85,7 +84,6 @@ class SceneRefiner:
             backup_model=backup_model,
         )
         self._temperature = temperature
-        self._max_tokens = max_tokens
         self._last_model: ResolvedLLMModel | None = None
 
     @property
@@ -120,7 +118,6 @@ class SceneRefiner:
                         method="json_mode",
                         model=resolved.model,
                         temperature=self._temperature,
-                        max_tokens=self._max_tokens,
                     )
                 )
             else:
@@ -131,7 +128,6 @@ class SceneRefiner:
                         method="json_mode",
                         model=resolved.model,
                         temperature=self._temperature,
-                        max_tokens=self._max_tokens,
                     )
                 )
         except Exception as exc:

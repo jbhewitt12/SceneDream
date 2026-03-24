@@ -188,7 +188,6 @@ def test_scene_refiner_falls_back_to_openai(
         backup_vendor="openai",
         backup_model="gpt-5-mini",
         temperature=0.1,
-        max_tokens=None,
     )
     refinements = refiner.refine(chapter, [scene], fail_on_error=True)
 

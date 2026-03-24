@@ -84,11 +84,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Override the sampling temperature for LLM calls.",
     )
     run.add_argument(
-        "--max-output-tokens",
-        type=int,
-        help="Override the maximum tokens the LLM may return.",
-    )
-    run.add_argument(
         "--dry-run",
         action="store_true",
         help="Return previews without persisting prompts.",
@@ -138,11 +133,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--temperature",
         type=float,
         help="Override the sampling temperature reflected in the prompt metadata.",
-    )
-    preview.add_argument(
-        "--max-output-tokens",
-        type=int,
-        help="Override the maximum tokens reflected in the prompt metadata.",
     )
     preview.add_argument(
         "--context-before",
@@ -269,8 +259,6 @@ async def _handle_run(args: argparse.Namespace) -> int:
         config_kwargs["prompt_version"] = args.prompt_version
     if args.temperature is not None:
         config_kwargs["temperature"] = args.temperature
-    if args.max_output_tokens is not None:
-        config_kwargs["max_output_tokens"] = args.max_output_tokens
     # default variants to 3 unless explicitly overridden
     config_kwargs["variants_count"] = int(args.variants)
 
@@ -323,8 +311,6 @@ def _handle_preview(args: argparse.Namespace) -> int:
         config_kwargs["prompt_version"] = args.prompt_version
     if args.temperature is not None:
         config_kwargs["temperature"] = args.temperature
-    if args.max_output_tokens is not None:
-        config_kwargs["max_output_tokens"] = args.max_output_tokens
     if args.context_before is not None:
         config_kwargs["context_before"] = args.context_before
     if args.context_after is not None:
@@ -348,7 +334,6 @@ def _handle_preview(args: argparse.Namespace) -> int:
                     prompt_version=args.prompt_version,
                     variants_count=args.variants,
                     temperature=args.temperature,
-                    max_output_tokens=args.max_output_tokens,
                 )
                 print(prompt)
                 return 0

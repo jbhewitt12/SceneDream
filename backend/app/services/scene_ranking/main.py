@@ -78,11 +78,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Override the sampling temperature for LLM calls.",
     )
     rank.add_argument(
-        "--max-output-tokens",
-        type=int,
-        help="Override the maximum tokens the LLM may return (default uses model limit).",
-    )
-    rank.add_argument(
         "--weight",
         action="append",
         default=[],
@@ -251,8 +246,6 @@ async def _handle_rank(args: argparse.Namespace) -> int:
         config_kwargs["prompt_version"] = args.prompt_version
     if args.temperature is not None:
         config_kwargs["temperature"] = args.temperature
-    if args.max_output_tokens is not None:
-        config_kwargs["max_output_tokens"] = args.max_output_tokens
     if weight_overrides:
         config_kwargs["weight_config"] = weight_overrides
 

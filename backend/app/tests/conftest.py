@@ -224,7 +224,7 @@ def prompt_factory(db: Session) -> Callable[..., ImagePrompt]:
             },
             "raw_response": {},
             "temperature": 0.7,
-            "max_output_tokens": 2048,
+            "max_output_tokens": None,
             "llm_request_id": None,
             "execution_time_ms": 1000,
         }
