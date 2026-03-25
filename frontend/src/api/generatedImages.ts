@@ -79,6 +79,7 @@ export type ListGeneratedImagesParams = {
   model?: string
   approval?: boolean | null
   posted?: boolean
+  excludeErrors?: boolean
   newestFirst?: boolean
   limit?: number
   offset?: number
@@ -186,7 +187,7 @@ export const GeneratedImageApi = {
         model: params.model,
         approval: params.approval ?? undefined,
         posted: params.posted,
-        exclude_errors: true,
+        exclude_errors: params.excludeErrors,
         newest_first: params.newestFirst ?? true,
         limit: params.limit ?? 24,
         offset: params.offset,

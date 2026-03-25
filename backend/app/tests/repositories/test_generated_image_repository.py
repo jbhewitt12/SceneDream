@@ -194,6 +194,76 @@ def test_list_methods_exclude_file_deleted_by_default(
     assert deleted.id not in all_ids
 
 
+def test_list_methods_exclude_errors_when_flag_set(
+    db: Session,
+    scene_factory: Callable[..., SceneExtraction],
+    prompt_factory: Callable[..., ImagePrompt],
+) -> None:
+    scene = scene_factory()
+    prompt = prompt_factory(scene)
+    repo = GeneratedImageRepository(db)
+
+    good = repo.create(
+        data=_image_payload(scene, prompt, variant_index=0),
+        commit=True,
+    )
+    errored = repo.create(
+        data=_image_payload(scene, prompt, variant_index=1, error="API rate limit"),
+        commit=True,
+    )
+
+    scene_ids = {img.id for img in repo.list_for_scene(scene.id, exclude_errors=True)}
+    prompt_ids = {
+        img.id for img in repo.list_for_prompt(prompt.id, exclude_errors=True)
+    }
+    book_ids = {
+        img.id for img in repo.list_for_book(scene.book_slug, exclude_errors=True)
+    }
+    all_ids = {img.id for img in repo.list_all(exclude_errors=True)}
+
+    assert good.id in scene_ids
+    assert good.id in prompt_ids
+    assert good.id in book_ids
+    assert good.id in all_ids
+    assert errored.id not in scene_ids
+    assert errored.id not in prompt_ids
+    assert errored.id not in book_ids
+    assert errored.id not in all_ids
+
+
+def test_list_methods_include_errors_by_default(
+    db: Session,
+    scene_factory: Callable[..., SceneExtraction],
+    prompt_factory: Callable[..., ImagePrompt],
+) -> None:
+    scene = scene_factory()
+    prompt = prompt_factory(scene)
+    repo = GeneratedImageRepository(db)
+
+    good = repo.create(
+        data=_image_payload(scene, prompt, variant_index=0),
+        commit=True,
+    )
+    errored = repo.create(
+        data=_image_payload(scene, prompt, variant_index=1, error="API rate limit"),
+        commit=True,
+    )
+
+    scene_ids = {img.id for img in repo.list_for_scene(scene.id)}
+    prompt_ids = {img.id for img in repo.list_for_prompt(prompt.id)}
+    book_ids = {img.id for img in repo.list_for_book(scene.book_slug)}
+    all_ids = {img.id for img in repo.list_all()}
+
+    assert good.id in scene_ids
+    assert good.id in prompt_ids
+    assert good.id in book_ids
+    assert good.id in all_ids
+    assert errored.id in scene_ids
+    assert errored.id in prompt_ids
+    assert errored.id in book_ids
+    assert errored.id in all_ids
+
+
 def test_list_for_scene_can_include_file_deleted(
     db: Session,
     scene_factory: Callable[..., SceneExtraction],
