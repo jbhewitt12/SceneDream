@@ -624,11 +624,23 @@ def test_get_pipeline_run_includes_structured_failure(
             "config_overrides": {},
             "usage_summary": {
                 "failure": {
-                    "code": "stage_error",
-                    "message": "model not found",
-                    "cause_messages": ["Failed to generate prompts", "model not found"],
-                    "stage": "generating_prompts",
-                    "metadata": {},
+                    "code": "extraction_quota_error",
+                    "message": "Your OpenAI account does not have available credits for extraction.",
+                    "cause_messages": [
+                        "Your OpenAI account does not have available credits for extraction."
+                    ],
+                    "stage": "extracting",
+                    "metadata": {
+                        "category": "quota",
+                        "hint": "Add billing or prepaid credits to your OpenAI account, then rerun the pipeline.",
+                        "action_items": [
+                            "Confirm billing is enabled for your OpenAI API account.",
+                            "Add credits or raise your usage limit.",
+                            "Rerun the pipeline.",
+                        ],
+                        "provider": "openai",
+                        "model": "gpt-5-mini",
+                    },
                 }
             },
         },
@@ -638,10 +650,15 @@ def test_get_pipeline_run_includes_structured_failure(
     response = client.get(f"/api/v1/pipeline-runs/{run.id}")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["error"]["code"] == "stage_error"
-    assert payload["error"]["message"] == "model not found"
-    assert payload["error"]["stage"] == "generating_prompts"
+    assert payload["error"]["code"] == "extraction_quota_error"
+    assert payload["error"]["message"] == (
+        "Your OpenAI account does not have available credits for extraction."
+    )
+    assert payload["error"]["stage"] == "extracting"
     assert payload["error"]["run_id"] == str(run.id)
+    assert payload["error"]["metadata"]["category"] == "quota"
+    assert payload["error"]["metadata"]["provider"] == "openai"
+    assert payload["error"]["metadata"]["hint"].startswith("Add billing")
 
     db.delete(run)
     db.commit()

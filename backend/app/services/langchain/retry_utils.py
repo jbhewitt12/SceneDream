@@ -35,9 +35,30 @@ def _load_known_rate_limit_errors() -> tuple[type, ...]:
 
 KNOWN_RATE_LIMIT_ERRORS = _load_known_rate_limit_errors()
 
+_QUOTA_KEYWORDS = (
+    "insufficient_quota",
+    "insufficient quota",
+    "exceeded your current quota",
+    "out of credits",
+    "no credits",
+    "billing hard limit",
+    "credit balance",
+    "please check your plan and billing details",
+)
+
+
+def is_quota_error(exc: BaseException) -> bool:
+    """Detect fatal billing/quota failures that should not be retried."""
+
+    message = str(exc).lower()
+    return any(keyword in message for keyword in _QUOTA_KEYWORDS)
+
 
 def is_rate_limit_error(exc: BaseException) -> bool:
     """Detect whether the exception represents a rate limiting response."""
+
+    if is_quota_error(exc):
+        return False
 
     if KNOWN_RATE_LIMIT_ERRORS and isinstance(exc, KNOWN_RATE_LIMIT_ERRORS):
         return True
@@ -53,7 +74,7 @@ def is_rate_limit_error(exc: BaseException) -> bool:
     message = str(exc).lower()
     return any(
         keyword in message
-        for keyword in ("rate limit", "quota", "resourceexhausted", "429")
+        for keyword in ("rate limit", "too many requests", "resourceexhausted", "429")
     )
 
 

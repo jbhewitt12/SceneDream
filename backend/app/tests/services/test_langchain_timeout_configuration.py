@@ -179,7 +179,9 @@ def test_gemini_get_llm_omits_max_tokens_when_not_requested(
         def __init__(self, **kwargs: Any):
             captured_kwargs.update(kwargs)
 
-    monkeypatch.setattr(gemini_api, "ChatGoogleGenerativeAI", FakeChatGoogleGenerativeAI)
+    monkeypatch.setattr(
+        gemini_api, "ChatGoogleGenerativeAI", FakeChatGoogleGenerativeAI
+    )
     monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
 
     gemini_api._get_llm(

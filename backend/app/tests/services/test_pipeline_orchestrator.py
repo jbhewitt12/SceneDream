@@ -25,6 +25,10 @@ from app.services.pipeline.pipeline_orchestrator import (
     build_usage_summary,
     classify_pipeline_error_code,
 )
+from app.services.scene_extraction.provider_errors import (
+    ExtractionFailureInfo,
+    ExtractionQuotaError,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -579,6 +583,53 @@ class TestOrchestratorFailure:
 
         assert result.status == "failed"
         assert result.error_code == "missing_source"
+
+    def test_execute_failure_preserves_structured_extraction_metadata(self) -> None:
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator()
+
+        async def _failing_extraction(
+            prepared: PreparedPipelineExecution,  # noqa: ARG001
+            stats: PipelineStats,  # noqa: ARG001
+        ) -> None:
+            raise ExtractionQuotaError(
+                ExtractionFailureInfo(
+                    code="extraction_quota_error",
+                    message="Your OpenAI account does not have available credits for extraction.",
+                    category="quota",
+                    hint="Add billing or prepaid credits to your OpenAI account, then rerun the pipeline.",
+                    action_items=(
+                        "Confirm billing is enabled for your OpenAI API account.",
+                        "Add credits or raise your usage limit.",
+                        "Rerun the pipeline.",
+                    ),
+                    provider="openai",
+                    model="gpt-5-mini",
+                    cause_messages=(
+                        "Your OpenAI account does not have available credits for extraction.",
+                    ),
+                )
+            )
+
+        orchestrator._execute_extraction = _failing_extraction  # type: ignore[method-assign]
+
+        prepared = _make_prepared()
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        assert result.status == "failed"
+        assert result.error_code == "extraction_quota_error"
+        assert result.error_message == (
+            "Your OpenAI account does not have available credits for extraction."
+        )
+        assert result.usage_summary["failure"]["code"] == "extraction_quota_error"
+        assert result.usage_summary["failure"]["metadata"]["category"] == "quota"
+        assert result.usage_summary["failure"]["metadata"]["provider"] == "openai"
+        assert result.usage_summary["failure"]["metadata"]["model"] == "gpt-5-mini"
+        assert (
+            "Add credits or raise your usage limit."
+            in result.usage_summary["failure"]["metadata"]["action_items"]
+        )
+        assert callbacks.stage_failed_calls[0]["error_message"] == result.error_message
 
 
 class TestOrchestratorUsageSummaryCompatibility:

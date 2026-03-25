@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.schemas.common import ApiErrorDetail, hydrate_pipeline_failure_detail
 
 
 class DocumentCreate(BaseModel):
@@ -98,11 +100,22 @@ class DocumentDashboardRunSummary(BaseModel):
     status: str
     current_stage: str | None
     error_message: str | None
+    error: ApiErrorDetail | None = None
     usage_summary: dict[str, Any] = Field(default_factory=dict)
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def _hydrate_failure(self) -> DocumentDashboardRunSummary:
+        self.error = hydrate_pipeline_failure_detail(
+            error=self.error,
+            usage_summary=self.usage_summary,
+            error_message=self.error_message,
+            run_id=self.id,
+        )
+        return self
 
 
 class DocumentDashboardEntry(BaseModel):

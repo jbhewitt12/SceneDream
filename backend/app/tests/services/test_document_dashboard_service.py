@@ -174,6 +174,69 @@ def test_document_dashboard_service_uses_legacy_slug_fallback(
     assert match.last_run.usage_summary == {}
 
 
+def test_document_dashboard_service_hydrates_structured_last_run_failure(
+    db: Session,
+    scene_factory,
+    tmp_path: Path,
+) -> None:
+    source_path = "documents/Test Shelf/Fatal Setup Book.txt"
+    source_file = tmp_path / source_path
+    source_file.parent.mkdir(parents=True, exist_ok=True)
+    source_file.write_text("Plain text chapter content.", encoding="utf-8")
+
+    slug = "fatal-setup-book"
+    scene_factory(
+        book_slug=slug,
+        source_book_path=source_path,
+        document_id=None,
+    )
+
+    run_repo = PipelineRunRepository(db)
+    run_repo.create(
+        data={
+            "document_id": None,
+            "book_slug": slug,
+            "status": "failed",
+            "current_stage": "failed",
+            "error_message": "Legacy pipeline error",
+            "config_overrides": {"legacy": True},
+            "usage_summary": {
+                "failure": {
+                    "code": "extraction_auth_error",
+                    "message": "OpenAI rejected the configured API key for extraction.",
+                    "cause_messages": [
+                        "OpenAI rejected the configured API key for extraction."
+                    ],
+                    "stage": "extracting",
+                    "metadata": {
+                        "category": "authentication",
+                        "hint": "Replace OPENAI_API_KEY with a valid key and restart the backend.",
+                        "action_items": [
+                            "Check that the configured API key is valid and active.",
+                            "Update the key in `.env` if needed.",
+                            "Restart the backend and rerun the pipeline.",
+                        ],
+                        "provider": "openai",
+                        "model": "gpt-5-mini",
+                    },
+                }
+            },
+        },
+        commit=True,
+    )
+
+    service = DocumentDashboardService(db, project_root=tmp_path)
+    entries = service.list_entries()
+    match = next((entry for entry in entries if entry.source_path == source_path), None)
+
+    assert match is not None
+    assert match.last_run is not None
+    assert match.last_run.error is not None
+    assert match.last_run.error.code == "extraction_auth_error"
+    assert match.last_run.error.metadata["category"] == "authentication"
+    assert match.last_run.error.metadata["hint"].startswith("Replace OPENAI_API_KEY")
+
+
 def test_document_dashboard_service_marks_legacy_partial_ranking_as_completed(
     db: Session,
     scene_factory,

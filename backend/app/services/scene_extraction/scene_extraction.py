@@ -27,6 +27,9 @@ from app.services.langchain.model_routing import (
     infer_provider_from_model_name,
     resolve_llm_model,
 )
+from app.services.scene_extraction.provider_errors import (
+    classify_extraction_provider_error,
+)
 from app.services.scene_extraction.scene_refinement import (
     RefinedScene,
     SceneRefinementError,
@@ -348,7 +351,17 @@ class SceneExtractor:
         book_slug: str | None = None,
         chunk_start_index: int | None = None,
     ) -> list[RawScene]:
-        selected_model = self._resolve_extraction_model()
+        try:
+            selected_model = self._resolve_extraction_model()
+        except Exception as exc:
+            fatal_error = classify_extraction_provider_error(
+                exc,
+                provider=None,
+                model=None,
+            )
+            if fatal_error is not None:
+                raise fatal_error from exc
+            raise
         chunks = self._chunk_chapter(chapter)
         if chunk_limit is not None and chunk_limit <= 0:
             return []
@@ -400,6 +413,27 @@ class SceneExtractor:
                         )
                     )
             except Exception as exc:
+                fatal_error = classify_extraction_provider_error(
+                    exc,
+                    provider=selected_model.vendor,
+                    model=selected_model.model,
+                )
+                if fatal_error is not None:
+                    logger.error(
+                        "Fatal extraction setup/access failure for chapter %s chunk %s "
+                        "(vendor=%s, model=%s): %s",
+                        chapter.number,
+                        chunk.index,
+                        selected_model.vendor,
+                        selected_model.model,
+                        fatal_error.display_message,
+                        exc_info=exc,
+                    )
+                    print(
+                        "  Chunk "
+                        f"{chunk.index}: extraction failed ({fatal_error.display_message}); stopping"
+                    )
+                    raise fatal_error from exc
                 logger.error(
                     "Extraction failed for chapter %s chunk %s (vendor=%s, model=%s): %s",
                     chapter.number,

@@ -15,6 +15,9 @@ from app.services.langchain.model_routing import (
     ResolvedLLMModel,
     resolve_llm_model,
 )
+from app.services.scene_extraction.provider_errors import (
+    classify_extraction_provider_error,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - type checking only
     from .scene_extraction import Chapter, RawScene
@@ -104,6 +107,7 @@ class SceneRefiner:
         if not scenes:
             return {}
         prompt = self._build_refinement_prompt(chapter, scenes)
+        resolved: ResolvedLLMModel | None = None
         try:
             resolved = resolve_llm_model(
                 self._routing,
@@ -133,6 +137,13 @@ class SceneRefiner:
         except Exception as exc:
             chapter_number = getattr(chapter, "number", "?")
             logger.error("Refinement failed for chapter %s: %s", chapter_number, exc)
+            fatal_error = classify_extraction_provider_error(
+                exc,
+                provider=resolved.vendor if resolved is not None else None,
+                model=resolved.model if resolved is not None else None,
+            )
+            if fatal_error is not None:
+                raise fatal_error from exc
             if fail_on_error:
                 raise SceneRefinementError(str(exc)) from exc
             return {}

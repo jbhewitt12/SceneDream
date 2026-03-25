@@ -57,6 +57,27 @@ def test_get_documents_dashboard_returns_pipeline_status(
             "current_stage": "failed",
             "error_message": "Route-level failure",
             "config_overrides": {"route_test": True},
+            "usage_summary": {
+                "failure": {
+                    "code": "extraction_quota_error",
+                    "message": "Your OpenAI account does not have available credits for extraction.",
+                    "cause_messages": [
+                        "Your OpenAI account does not have available credits for extraction."
+                    ],
+                    "stage": "extracting",
+                    "metadata": {
+                        "category": "quota",
+                        "hint": "Add billing or prepaid credits to your OpenAI account, then rerun the pipeline.",
+                        "action_items": [
+                            "Confirm billing is enabled for your OpenAI API account.",
+                            "Add credits or raise your usage limit.",
+                            "Rerun the pipeline.",
+                        ],
+                        "provider": "openai",
+                        "model": "gpt-5-mini",
+                    },
+                }
+            },
         },
         commit=True,
     )
@@ -85,7 +106,9 @@ def test_get_documents_dashboard_returns_pipeline_status(
         assert target["last_run"] is not None
         assert target["last_run"]["id"] == str(run.id)
         assert target["last_run"]["error_message"] == "Route-level failure"
-        assert target["last_run"]["usage_summary"] == {}
+        assert target["last_run"]["error"]["code"] == "extraction_quota_error"
+        assert target["last_run"]["error"]["metadata"]["category"] == "quota"
+        assert target["last_run"]["error"]["metadata"]["hint"].startswith("Add billing")
     finally:
         if source_file.exists():
             source_file.unlink()

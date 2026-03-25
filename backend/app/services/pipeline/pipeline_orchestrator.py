@@ -24,6 +24,7 @@ from app.repositories import (
     SceneExtractionRepository,
     SceneRankingRepository,
 )
+from app.schemas.common import ApiErrorDetail
 from app.services.image_generation.image_generation_service import (
     ImageGenerationConfig,
     ImageGenerationService,
@@ -237,6 +238,10 @@ def classify_pipeline_error_code(
 ) -> str:
     """Classify errors into stable, machine-readable failure codes."""
 
+    structured_code = getattr(exc, "error_code", None)
+    if isinstance(structured_code, str) and structured_code.strip():
+        return structured_code.strip()
+
     message = (error_message or "").lower()
     if not message and exc is not None:
         message = str(exc).lower()
@@ -260,6 +265,44 @@ def classify_pipeline_error_code(
         return "pipeline_exception"
 
     return "pipeline_exception"
+
+
+def _build_failure_detail_for_exception(
+    *,
+    exc: Exception,
+    error_code: str,
+    stage: str,
+    run_id: UUID,
+) -> ApiErrorDetail:
+    structured_message = getattr(exc, "display_message", None)
+    structured_metadata = getattr(exc, "error_metadata", None)
+    structured_causes = getattr(exc, "cause_messages", None)
+
+    if isinstance(structured_message, str) and structured_message.strip():
+        metadata = (
+            dict(structured_metadata) if isinstance(structured_metadata, dict) else None
+        )
+        cause_messages = (
+            [str(item) for item in structured_causes if str(item).strip()]
+            if isinstance(structured_causes, list)
+            else None
+        )
+        return build_api_error_detail(
+            code=error_code,
+            message=structured_message,
+            cause_messages=cause_messages,
+            stage=stage,
+            run_id=run_id,
+            metadata=metadata,
+        )
+
+    return build_api_error_detail_from_exception(
+        code=error_code,
+        exc=exc,
+        default_message="Pipeline execution failed",
+        stage=stage,
+        run_id=run_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1244,10 +1287,9 @@ class PipelineOrchestrator:
             error_message=str(exc),
             observed_stage=diagnostics.current_stage,
         )
-        failure = build_api_error_detail_from_exception(
-            code=error_code,
+        failure = _build_failure_detail_for_exception(
             exc=exc,
-            default_message="Pipeline execution failed",
+            error_code=error_code,
             stage=diagnostics.current_stage or "pending",
             run_id=run_id,
         )

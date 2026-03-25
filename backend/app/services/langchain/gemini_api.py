@@ -25,7 +25,8 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
-from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
+
+from .retry_utils import async_retry_with_backoff
 
 DEFAULT_FLASH_MODEL = "gemini-flash-latest"
 DEFAULT_PRO_MODEL = "gemini-pro-latest"
@@ -34,18 +35,8 @@ logger = logging.getLogger(__name__)
 
 
 async def retry_with_backoff(async_func: Any, *args: Any, **kwargs: Any) -> Any:
-    """
-    Asynchronous retry wrapper with exponential backoff.
-    Retries the async function on exceptions.
-    """
-    retrying = AsyncRetrying(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        reraise=True,
-    )
-    async for attempt in retrying:
-        with attempt:
-            return await async_func(*args, **kwargs)
+    """Retry only known throttling failures with async backoff."""
+    return await async_retry_with_backoff(async_func, *args, **kwargs)
 
 
 def _coerce_content_to_text(payload: Any) -> str:
