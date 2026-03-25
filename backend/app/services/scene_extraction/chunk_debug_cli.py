@@ -45,13 +45,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--chunk-overlap",
         type=int,
-        default=2,
+        default=1,
         help="Paragraph overlap between successive chunks.",
     )
     parser.add_argument(
         "--max-chunk-chars",
         type=int,
-        default=12000,
+        default=6000,
         help="Maximum characters per chunk (matches extractor config).",
     )
     parser.add_argument(

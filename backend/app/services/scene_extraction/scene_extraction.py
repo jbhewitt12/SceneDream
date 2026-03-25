@@ -68,8 +68,8 @@ class SceneExtractionConfig:
     extraction_backup_model_vendor: LLMProvider = "openai"
     extraction_backup_model: str = "gpt-5-mini"
     gemini_temperature: float = 0.0
-    max_chunk_chars: int = 12000
-    chunk_overlap_paragraphs: int = 2
+    max_chunk_chars: int = 6000
+    chunk_overlap_paragraphs: int = 1
     refinement_model_vendor: LLMProvider = "google"
     refinement_model: str = "gemini-2.5-flash-lite"
     refinement_backup_model_vendor: LLMProvider = "openai"

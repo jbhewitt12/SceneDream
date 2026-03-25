@@ -503,3 +503,23 @@ def test_extract_preview_limits_chapters_and_chunks(
             "refinement_count": 0,
         },
     ]
+
+
+def test_chunk_chapter_uses_reduced_default_chunk_size_and_overlap(db: Session) -> None:
+    extractor = SceneExtractor(
+        session=db,
+        config=SceneExtractionConfig(enable_refinement=False),
+    )
+    chapter = Chapter(
+        number=1,
+        title="Dense Chapter",
+        paragraphs=["a" * 1500, "b" * 1500, "c" * 1500, "d" * 1500, "e" * 1500],
+        source_name="chapter1.xhtml",
+    )
+
+    chunks = extractor._chunk_chapter(chapter)
+
+    assert [(chunk.start_paragraph, chunk.end_paragraph) for chunk in chunks] == [
+        (1, 4),
+        (4, 5),
+    ]
