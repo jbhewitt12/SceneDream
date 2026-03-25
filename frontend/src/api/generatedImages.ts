@@ -186,6 +186,7 @@ export const GeneratedImageApi = {
         model: params.model,
         approval: params.approval ?? undefined,
         posted: params.posted,
+        exclude_errors: true,
         newest_first: params.newestFirst ?? true,
         limit: params.limit ?? 24,
         offset: params.offset,

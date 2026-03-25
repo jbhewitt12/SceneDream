@@ -652,7 +652,6 @@ function GeneratedImagesGalleryPage() {
   // Flatten all pages into a single array
   const images = (imagesQuery.data?.pages ?? [])
     .flatMap((page) => page.data)
-    .filter((image) => !image.error)
     .filter((image) => {
       if (search.approval === undefined) return true
       if (search.approval === null) return image.user_approved === null
