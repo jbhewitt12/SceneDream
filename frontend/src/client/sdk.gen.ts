@@ -60,6 +60,7 @@ export class GeneratedImagesService {
      * @param data.model
      * @param data.approval
      * @param data.posted
+     * @param data.excludeErrors
      * @param data.newestFirst
      * @param data.limit
      * @param data.offset
@@ -79,6 +80,7 @@ export class GeneratedImagesService {
                 model: data.model,
                 approval: data.approval,
                 posted: data.posted,
+                exclude_errors: data.excludeErrors,
                 newest_first: data.newestFirst,
                 limit: data.limit,
                 offset: data.offset

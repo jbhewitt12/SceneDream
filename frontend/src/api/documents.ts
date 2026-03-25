@@ -25,6 +25,15 @@ export type DocumentDashboardRunSummary = {
   status: string
   current_stage: string | null
   error_message: string | null
+  error: {
+    code: string
+    message: string
+    cause_messages: string[]
+    stage: string | null
+    run_id: string | null
+    error_id: string | null
+    metadata: Record<string, unknown>
+  } | null
   usage_summary: Record<string, unknown>
   started_at: string | null
   completed_at: string | null

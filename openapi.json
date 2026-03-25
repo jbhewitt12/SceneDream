@@ -1409,6 +1409,16 @@
             }
           },
           {
+            "name": "exclude_errors",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Exclude Errors"
+            }
+          },
+          {
             "name": "newest_first",
             "in": "query",
             "required": false,
@@ -3157,6 +3167,16 @@
               }
             ],
             "title": "Error Message"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "usage_summary": {
             "type": "object",

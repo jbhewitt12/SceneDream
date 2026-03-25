@@ -40,6 +40,10 @@ import {
   buildPipelineRunStartPayload,
   shouldLaunchImageGenerationOnly,
 } from "@/features/documents/documentsLaunch"
+import {
+  PipelineFailureNotice,
+  getPipelineFailureDisplay,
+} from "@/features/documents/pipelineFailureDisplay"
 import useCustomToast from "@/hooks/useCustomToast"
 import {
   type PromptArtStyleSelection,
@@ -725,6 +729,10 @@ type RunSummaryLike = {
   status: string
   current_stage: string | null
   error_message: string | null
+  error?: {
+    message?: string | null
+    metadata?: Record<string, unknown> | null
+  } | null
   usage_summary?: Record<string, unknown>
   stage_progress?: Record<string, unknown> | null
   completed_at: string | null
@@ -762,6 +770,17 @@ function DocumentCard({
     activeRun ?? (entry.last_run ? { ...entry.last_run } : null)
   const usageText = runSummary
     ? formatUsageSummary(runSummary.usage_summary)
+    : null
+  const pipelineFailure = runSummary
+    ? getPipelineFailureDisplay(
+        runSummary,
+        getUsageSummaryErrorMessages(
+          runSummary.usage_summary,
+          runSummary.error?.message?.trim() ||
+            runSummary.error_message?.trim() ||
+            null,
+        ),
+      )
     : null
   const hasActiveRun =
     activeRun !== undefined && !isTerminalRunStatus(activeRun.status)
@@ -995,19 +1014,7 @@ function DocumentCard({
                     }
                   />
                 ) : null}
-                {runSummary.error_message ? (
-                  <Text fontSize="sm" color="red.300">
-                    {runSummary.error_message}
-                  </Text>
-                ) : null}
-                {getUsageSummaryErrorMessages(
-                  runSummary.usage_summary,
-                  runSummary.error_message,
-                ).map((msg, i) => (
-                  <Text key={i} fontSize="sm" color="red.300">
-                    {msg}
-                  </Text>
-                ))}
+                <PipelineFailureNotice failure={pipelineFailure} />
               </Stack>
             ) : (
               <Text fontSize="sm" color="fg.muted">

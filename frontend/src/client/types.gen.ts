@@ -144,6 +144,7 @@ export type DocumentDashboardRunSummary = {
     status: string;
     current_stage: (string | null);
     error_message: (string | null);
+    error?: (ApiErrorDetail | null);
     usage_summary?: {
         [key: string]: unknown;
     };
@@ -740,6 +741,7 @@ export type GeneratedImagesListGeneratedImagesData = {
     approval?: (boolean | null);
     book?: (string | null);
     chapter?: (number | null);
+    excludeErrors?: boolean;
     limit?: number;
     model?: (string | null);
     newestFirst?: boolean;
