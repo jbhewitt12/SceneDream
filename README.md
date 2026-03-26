@@ -82,15 +82,25 @@ docker compose watch
 
 5. Open the app: [http://localhost:5173](http://localhost:5173)
 
+6. Optional but recommended before your first run:
+
+Go to [http://localhost:5173/settings](http://localhost:5173/settings) and click **Run configuration test**. This checks API-key presence plus common billing/quota/model-access issues before you spend time on a full pipeline run.
+
 ## Quickstart (Run Backend/Frontend Directly)
 
-1. Start only Postgres in Docker:
+1. Check your local tooling first:
+
+```bash
+./scripts/doctor.sh
+```
+
+2. Start only Postgres in Docker:
 
 ```bash
 docker compose up -d db
 ```
 
-2. Start backend:
+3. Start backend:
 
 ```bash
 cd backend
@@ -99,13 +109,17 @@ uv run alembic upgrade head
 uv run fastapi dev app/main.py
 ```
 
-3. Start frontend in another terminal:
+4. Start frontend in another terminal:
 
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+
+5. Open the app at [http://localhost:5173](http://localhost:5173)
+
+6. Go to [http://localhost:5173/settings](http://localhost:5173/settings) and click **Run configuration test** before your first pipeline run.
 
 ## Cost and Time Expectations
 
@@ -136,6 +150,7 @@ The Settings page ([http://localhost:5173/settings](http://localhost:5173/settin
 - **Default scenes per run** — how many scenes to process each time you launch a pipeline run.
 - **Default art style mode** — choose between *Random Style Mix* (randomly samples from two lists of art styles you can edit) or *Single art style* (always uses one specific style).
 - **Recommended Styles / Other Styles** — two prepopulated editable lists of art style descriptions that the random mix draws from. Edit these to steer the aesthetic of generated images toward styles you like.
+- **Test configuration** — run a lightweight preflight that checks API-key presence and common provider failures such as invalid keys, no credits/quota, or missing model access before you launch a pipeline run.
 - **Social media posting** — enable the social posting feature (disabled by default). At the moment, you can post to you Flickr and X.com accounts by clicking a button in the frontend. If you want to do that, you will need to add the appropriate API keys to the.env file. When disabled, posting controls are hidden across the app.
 
 ## Image Generation Workflows

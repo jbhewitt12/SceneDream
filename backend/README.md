@@ -8,6 +8,12 @@ FastAPI backend for ingestion, extraction, ranking, prompt generation, image gen
 - `uv`
 - PostgreSQL (local) or Docker compose `db` service
 
+Before using the direct-run path from the repository root, run:
+
+```bash
+./scripts/doctor.sh
+```
+
 ## Environment Setup
 
 Backend settings are loaded from the repository root `.env` file.
@@ -29,6 +35,9 @@ Set provider keys only for the stages you run:
 - `XAI_API_KEY`
 - `OPENAI_API_KEY`
 
+The root `.env.example` now marks which fields are required, optional, or safe
+to leave at their defaults for local development.
+
 ## Run Locally
 
 ```bash
@@ -37,6 +46,10 @@ uv sync
 uv run alembic upgrade head
 uv run fastapi dev app/main.py
 ```
+
+After the backend and frontend are both running, go to
+`http://localhost:5173/settings` and click **Run configuration test** before
+starting your first pipeline run.
 
 ## Tests and Lint
 

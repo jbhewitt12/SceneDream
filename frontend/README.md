@@ -17,13 +17,26 @@ npm run dev
 
 Default local URL: http://localhost:5173
 
+Use `http://localhost:5173` as the canonical local URL. The recommended local
+frontend env leaves `VITE_API_URL` blank so `/api` and `/img` go through the
+Vite proxy, which avoids localhost vs `127.0.0.1` CORS mismatches in the common
+direct-run setup.
+
 ## Frontend Environment
 
-`frontend/.env` controls frontend-only variables. Defaults in this repository point to a local backend:
+Create a local frontend env file if you need one:
 
-- `VITE_API_URL=http://localhost:8000`
+```bash
+cp frontend/.env.example frontend/.env
+```
 
-Update this value if your backend runs elsewhere.
+`frontend/.env` controls frontend-only variables. The example file in this repository points to a local backend:
+
+- `VITE_API_URL=` so the dev server uses relative `/api` and `/img` requests
+- `VITE_API_PROXY_TARGET=http://127.0.0.1:8000`
+
+If you explicitly want the browser to call a different backend origin directly,
+set `VITE_API_URL=http://your-backend-host:8000` instead.
 
 ## Lint and Build
 
