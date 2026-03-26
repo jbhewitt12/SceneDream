@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.api.deps import SessionDep
+from app.api.errors import api_error_from_exception, build_error_responses
 from app.core.prompt_art_style import coerce_prompt_art_style_selection
 from app.repositories import AppSettingsRepository, ArtStyleRepository
 from app.schemas import (
@@ -15,11 +16,13 @@ from app.schemas import (
     ArtStyleListsRead,
     ArtStyleListsUpdateRequest,
     ArtStyleRead,
+    ConfigurationTestResponse,
 )
 from app.services.art_style import (
     ArtStyleCatalogService,
     ArtStyleCatalogValidationError,
 )
+from app.services.configuration_test_service import ConfigurationTestService
 from app.services.image_prompt_generation.core.style_sampler import (
     OTHER_STYLES,
     RECOMMENDED_STYLES,
@@ -116,6 +119,26 @@ async def update_settings(
         settings=AppSettingsRead.model_validate(settings),
         art_styles=[ArtStyleRead.model_validate(style) for style in styles],
     )
+
+
+@router.post(
+    "/test-configuration",
+    response_model=ConfigurationTestResponse,
+    responses=build_error_responses(500),
+)
+async def test_configuration() -> ConfigurationTestResponse:
+    """Probe configured providers so users can validate setup before a run."""
+
+    service = ConfigurationTestService()
+    try:
+        return await service.run()
+    except Exception as exc:
+        raise api_error_from_exception(
+            status_code=500,
+            code="settings_configuration_test_failed",
+            exc=exc,
+            default_message="Failed to test pipeline configuration",
+        ) from exc
 
 
 @router.get("/art-styles", response_model=ArtStyleListResponse)

@@ -2413,6 +2413,38 @@
         }
       }
     },
+    "/api/v1/settings/test-configuration": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Test Configuration",
+        "description": "Probe configured providers so users can validate setup before a run.",
+        "operationId": "settings-test_configuration",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigurationTestResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/settings/art-styles": {
       "get": {
         "tags": [
@@ -3001,6 +3033,156 @@
           "file"
         ],
         "title": "Body_generated-images-crop_image"
+      },
+      "ConfigurationCheckRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "scene_extraction",
+              "scene_ranking",
+              "prompt_generation",
+              "image_generation"
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "warning"
+            ],
+            "title": "Status"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "used_backup_model": {
+            "type": "boolean",
+            "title": "Used Backup Model",
+            "default": false
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "action_items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Action Items"
+          },
+          "cause_messages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cause Messages"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "metadata": {
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "status",
+          "message"
+        ],
+        "title": "ConfigurationCheckRead",
+        "description": "Single configuration-test result shown in Settings."
+      },
+      "ConfigurationTestResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "warning"
+            ],
+            "title": "Status"
+          },
+          "ready_for_pipeline": {
+            "type": "boolean",
+            "title": "Ready For Pipeline"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checked At"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigurationCheckRead"
+            },
+            "type": "array",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "ready_for_pipeline",
+          "summary",
+          "checked_at",
+          "checks"
+        ],
+        "title": "ConfigurationTestResponse",
+        "description": "Aggregate Settings response for pipeline configuration checks."
       },
       "DocumentDashboardCounts": {
         "properties": {

@@ -102,6 +102,41 @@ export type Body_generated_images_crop_image = {
 };
 
 /**
+ * Single configuration-test result shown in Settings.
+ */
+export type ConfigurationCheckRead = {
+    key: 'scene_extraction' | 'scene_ranking' | 'prompt_generation' | 'image_generation';
+    label: string;
+    status: 'passed' | 'failed' | 'warning';
+    provider?: (string | null);
+    model?: (string | null);
+    used_backup_model?: boolean;
+    message: string;
+    hint?: (string | null);
+    action_items?: Array<(string)>;
+    cause_messages?: Array<(string)>;
+    latency_ms?: (number | null);
+    metadata?: {
+        [key: string]: unknown;
+    };
+};
+
+export type key = 'scene_extraction' | 'scene_ranking' | 'prompt_generation' | 'image_generation';
+
+export type status = 'passed' | 'failed' | 'warning';
+
+/**
+ * Aggregate Settings response for pipeline configuration checks.
+ */
+export type ConfigurationTestResponse = {
+    status: 'passed' | 'failed' | 'warning';
+    ready_for_pipeline: boolean;
+    summary: string;
+    checked_at: string;
+    checks: Array<ConfigurationCheckRead>;
+};
+
+/**
  * Per-document counts for each pipeline output stage.
  */
 export type DocumentDashboardCounts = {
@@ -982,6 +1017,8 @@ export type SettingsUpdateSettingsData = {
 };
 
 export type SettingsUpdateSettingsResponse = (AppSettingsBundleResponse);
+
+export type SettingsTestConfigurationResponse = (ConfigurationTestResponse);
 
 export type SettingsListArtStylesResponse = (ArtStyleListResponse);
 

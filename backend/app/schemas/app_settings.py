@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal
 from datetime import datetime
 from uuid import UUID
 
@@ -76,3 +77,39 @@ class ArtStyleListsUpdateRequest(BaseModel):
 
     recommended_styles: list[str]
     other_styles: list[str]
+
+
+ConfigurationCheckStatus = Literal["passed", "failed", "warning"]
+ConfigurationCheckKey = Literal[
+    "scene_extraction",
+    "scene_ranking",
+    "prompt_generation",
+    "image_generation",
+]
+
+
+class ConfigurationCheckRead(BaseModel):
+    """Single configuration-test result shown in Settings."""
+
+    key: ConfigurationCheckKey
+    label: str
+    status: ConfigurationCheckStatus
+    provider: str | None = None
+    model: str | None = None
+    used_backup_model: bool = False
+    message: str
+    hint: str | None = None
+    action_items: list[str] = Field(default_factory=list)
+    cause_messages: list[str] = Field(default_factory=list)
+    latency_ms: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConfigurationTestResponse(BaseModel):
+    """Aggregate Settings response for pipeline configuration checks."""
+
+    status: ConfigurationCheckStatus
+    ready_for_pipeline: bool
+    summary: str
+    checked_at: datetime
+    checks: list[ConfigurationCheckRead]

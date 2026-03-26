@@ -6,6 +6,8 @@ from .app_settings import (
     AppSettingsUpdateRequest,
     ArtStyleListsRead,
     ArtStyleListsUpdateRequest,
+    ConfigurationCheckRead,
+    ConfigurationTestResponse,
 )
 from .art_style import ArtStyleListResponse, ArtStyleRead
 from .common import ApiErrorDetail, ApiErrorResponse, Message
@@ -83,6 +85,8 @@ __all__ = [
     "AppSettingsUpdateRequest",
     "ArtStyleListsRead",
     "ArtStyleListsUpdateRequest",
+    "ConfigurationCheckRead",
+    "ConfigurationTestResponse",
     "ArtStyleListResponse",
     "ArtStyleRead",
     "ApiErrorDetail",

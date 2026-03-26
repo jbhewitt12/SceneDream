@@ -3,6 +3,7 @@ from typing import cast
 from fastapi.testclient import TestClient
 
 import app.api.routes.settings as settings_routes
+from app.schemas.app_settings import ConfigurationCheckRead, ConfigurationTestResponse
 from models.app_settings import AppSettings
 from models.art_style import ArtStyle
 
@@ -294,6 +295,57 @@ def test_post_art_style_lists_reset_restores_defaults(client: TestClient) -> Non
         assert get_response.json()["other_styles"] == list(OTHER_STYLES)
     finally:
         _restore_style_lists(client, original_lists)
+
+
+def test_test_configuration_returns_diagnostics(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    async def fake_run(self) -> ConfigurationTestResponse:
+        return ConfigurationTestResponse(
+            status="warning",
+            ready_for_pipeline=True,
+            summary="LLM checks passed.",
+            checked_at="2026-03-26T12:00:00Z",
+            checks=[
+                ConfigurationCheckRead(
+                    key="scene_extraction",
+                    label="Scene extraction",
+                    status="passed",
+                    provider="openai",
+                    model="gpt-5-mini",
+                    used_backup_model=True,
+                    message="Connected to OpenAI gpt-5-mini via the configured backup model.",
+                    latency_ms=123,
+                )
+            ],
+        )
+
+    monkeypatch.setattr(settings_routes.ConfigurationTestService, "run", fake_run)
+
+    response = client.post("/api/v1/settings/test-configuration")
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload["status"] == "warning"
+    assert payload["ready_for_pipeline"] is True
+    assert payload["checks"][0]["key"] == "scene_extraction"
+    assert payload["checks"][0]["used_backup_model"] is True
+
+
+def test_test_configuration_wraps_unexpected_errors(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    async def fake_run(self) -> ConfigurationTestResponse:
+        raise RuntimeError("unexpected settings failure")
+
+    monkeypatch.setattr(settings_routes.ConfigurationTestService, "run", fake_run)
+
+    response = client.post("/api/v1/settings/test-configuration")
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "settings_configuration_test_failed"
+    assert "unexpected settings failure" in response.json()["detail"]["message"]
 
 
 def test_put_art_style_lists_rejects_empty_payload(client: TestClient) -> None:

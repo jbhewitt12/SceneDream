@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { DocumentsGetDocumentsDashboardResponse, DocumentsSyncDocumentStagesResponse, GeneratedImagesListProvidersResponse, GeneratedImagesListGeneratedImagesData, GeneratedImagesListGeneratedImagesResponse, GeneratedImagesGetGeneratedImageData, GeneratedImagesGetGeneratedImageResponse, GeneratedImagesUpdateImageApprovalData, GeneratedImagesUpdateImageApprovalResponse, GeneratedImagesStreamGeneratedImageFileData, GeneratedImagesStreamGeneratedImageFileResponse, GeneratedImagesListGeneratedImagesForSceneData, GeneratedImagesListGeneratedImagesForSceneResponse, GeneratedImagesListGeneratedImagesForPromptData, GeneratedImagesListGeneratedImagesForPromptResponse, GeneratedImagesRemixGeneratedImageData, GeneratedImagesRemixGeneratedImageResponse, GeneratedImagesCustomRemixGeneratedImageData, GeneratedImagesCustomRemixGeneratedImageResponse, GeneratedImagesTriggerImageGenerationData, GeneratedImagesTriggerImageGenerationResponse, GeneratedImagesQueueImageForPostingData, GeneratedImagesQueueImageForPostingResponse, GeneratedImagesGetImagePostingStatusData, GeneratedImagesGetImagePostingStatusResponse, GeneratedImagesRetryFailedPostsData, GeneratedImagesRetryFailedPostsResponse, GeneratedImagesCropImageData, GeneratedImagesCropImageResponse, ImagePromptsListPromptsForSceneData, ImagePromptsListPromptsForSceneResponse, ImagePromptsListPromptsData, ImagePromptsListPromptsResponse, ImagePromptsListPromptsForBookData, ImagePromptsListPromptsForBookResponse, ImagePromptsGetImagePromptData, ImagePromptsGetImagePromptResponse, ImagePromptsGenerateMetadataVariantsData, ImagePromptsGenerateMetadataVariantsResponse, ImagePromptsUpdatePromptMetadataData, ImagePromptsUpdatePromptMetadataResponse, PipelineRunsStartPipelineRunData, PipelineRunsStartPipelineRunResponse, PipelineRunsGetPipelineRunData, PipelineRunsGetPipelineRunResponse, SceneExtractionsListSceneExtractionsData, SceneExtractionsListSceneExtractionsResponse, SceneExtractionsGetFilterOptionsResponse, SceneExtractionsGetSceneExtractionData, SceneExtractionsGetSceneExtractionResponse, SceneExtractionsGenerateForSceneData, SceneExtractionsGenerateForSceneResponse, SceneRankingsListTopSceneRankingsData, SceneRankingsListTopSceneRankingsResponse, SceneRankingsListSceneRankingHistoryData, SceneRankingsListSceneRankingHistoryResponse, SceneRankingsGetSceneRankingData, SceneRankingsGetSceneRankingResponse, SettingsGetSettingsResponse, SettingsUpdateSettingsData, SettingsUpdateSettingsResponse, SettingsListArtStylesResponse, SettingsGetArtStyleListsResponse, SettingsUpdateArtStyleListsData, SettingsUpdateArtStyleListsResponse, SettingsResetArtStyleListsResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { DocumentsGetDocumentsDashboardResponse, DocumentsSyncDocumentStagesResponse, GeneratedImagesListProvidersResponse, GeneratedImagesListGeneratedImagesData, GeneratedImagesListGeneratedImagesResponse, GeneratedImagesGetGeneratedImageData, GeneratedImagesGetGeneratedImageResponse, GeneratedImagesUpdateImageApprovalData, GeneratedImagesUpdateImageApprovalResponse, GeneratedImagesStreamGeneratedImageFileData, GeneratedImagesStreamGeneratedImageFileResponse, GeneratedImagesListGeneratedImagesForSceneData, GeneratedImagesListGeneratedImagesForSceneResponse, GeneratedImagesListGeneratedImagesForPromptData, GeneratedImagesListGeneratedImagesForPromptResponse, GeneratedImagesRemixGeneratedImageData, GeneratedImagesRemixGeneratedImageResponse, GeneratedImagesCustomRemixGeneratedImageData, GeneratedImagesCustomRemixGeneratedImageResponse, GeneratedImagesTriggerImageGenerationData, GeneratedImagesTriggerImageGenerationResponse, GeneratedImagesQueueImageForPostingData, GeneratedImagesQueueImageForPostingResponse, GeneratedImagesGetImagePostingStatusData, GeneratedImagesGetImagePostingStatusResponse, GeneratedImagesRetryFailedPostsData, GeneratedImagesRetryFailedPostsResponse, GeneratedImagesCropImageData, GeneratedImagesCropImageResponse, ImagePromptsListPromptsForSceneData, ImagePromptsListPromptsForSceneResponse, ImagePromptsListPromptsData, ImagePromptsListPromptsResponse, ImagePromptsListPromptsForBookData, ImagePromptsListPromptsForBookResponse, ImagePromptsGetImagePromptData, ImagePromptsGetImagePromptResponse, ImagePromptsGenerateMetadataVariantsData, ImagePromptsGenerateMetadataVariantsResponse, ImagePromptsUpdatePromptMetadataData, ImagePromptsUpdatePromptMetadataResponse, PipelineRunsStartPipelineRunData, PipelineRunsStartPipelineRunResponse, PipelineRunsGetPipelineRunData, PipelineRunsGetPipelineRunResponse, SceneExtractionsListSceneExtractionsData, SceneExtractionsListSceneExtractionsResponse, SceneExtractionsGetFilterOptionsResponse, SceneExtractionsGetSceneExtractionData, SceneExtractionsGetSceneExtractionResponse, SceneExtractionsGenerateForSceneData, SceneExtractionsGenerateForSceneResponse, SceneRankingsListTopSceneRankingsData, SceneRankingsListTopSceneRankingsResponse, SceneRankingsListSceneRankingHistoryData, SceneRankingsListSceneRankingHistoryResponse, SceneRankingsGetSceneRankingData, SceneRankingsGetSceneRankingResponse, SettingsGetSettingsResponse, SettingsUpdateSettingsData, SettingsUpdateSettingsResponse, SettingsTestConfigurationResponse, SettingsListArtStylesResponse, SettingsGetArtStyleListsResponse, SettingsUpdateArtStyleListsData, SettingsUpdateArtStyleListsResponse, SettingsResetArtStyleListsResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class DocumentsService {
     /**
@@ -874,6 +874,22 @@ export class SettingsService {
             mediaType: 'application/json',
             errors: {
                 422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Test Configuration
+     * Probe configured providers so users can validate setup before a run.
+     * @returns ConfigurationTestResponse Successful Response
+     * @throws ApiError
+     */
+    public static testConfiguration(): CancelablePromise<SettingsTestConfigurationResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/settings/test-configuration',
+            errors: {
+                500: 'Internal Server Error'
             }
         });
     }

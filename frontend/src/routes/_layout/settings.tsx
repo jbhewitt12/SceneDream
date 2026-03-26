@@ -18,7 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
 
-import { SettingsApi } from "@/api/settings"
+import { SettingsApi, type SettingsConfigurationTest } from "@/api/settings"
 import { PromptArtStyleControl } from "@/components/Common/PromptArtStyleControl"
 import useCustomToast from "@/hooks/useCustomToast"
 import {
@@ -44,6 +44,39 @@ const formatDateTime = (value: string) => {
   }).format(date)
 }
 
+const formatConfigurationStatus = (status: string) => {
+  if (status === "passed") {
+    return "Passed"
+  }
+  if (status === "warning") {
+    return "Needs attention"
+  }
+  return "Failed"
+}
+
+const getConfigurationStatusColor = (status: string) => {
+  if (status === "passed") {
+    return "green.300"
+  }
+  if (status === "warning") {
+    return "orange.300"
+  }
+  return "red.300"
+}
+
+const formatProviderLabel = (provider: string | null | undefined) => {
+  if (provider === "openai") {
+    return "OpenAI"
+  }
+  if (provider === "google") {
+    return "Gemini"
+  }
+  if (provider === "openai_gpt_image") {
+    return "OpenAI GPT Image"
+  }
+  return provider
+}
+
 function SettingsPage() {
   const queryClient = useQueryClient()
   const { showErrorToast, showSuccessToast } = useCustomToast()
@@ -55,6 +88,8 @@ function SettingsPage() {
   const [socialPostingEnabled, setSocialPostingEnabled] = useState(false)
   const [recommendedStylesText, setRecommendedStylesText] = useState<string>("")
   const [otherStylesText, setOtherStylesText] = useState<string>("")
+  const [configurationTestResult, setConfigurationTestResult] =
+    useState<SettingsConfigurationTest | null>(null)
 
   const settingsQuery = useQuery({
     queryKey: ["settings", "bundle"],
@@ -293,6 +328,23 @@ function SettingsPage() {
     },
   })
 
+  const testConfigurationMutation = useMutation({
+    mutationFn: () => SettingsApi.testConfiguration(),
+    onSuccess: (payload) => {
+      setConfigurationTestResult(payload)
+      if (payload.ready_for_pipeline) {
+        showSuccessToast(payload.summary)
+        return
+      }
+      showErrorToast(payload.summary)
+    },
+    onError: (error) => {
+      showErrorToast(
+        getDisplayErrorMessage(error, "Failed to test pipeline configuration."),
+      )
+    },
+  })
+
   const handlePipelineDefaultsReset = () => {
     if (!settingsQuery.data) {
       return
@@ -427,6 +479,174 @@ function SettingsPage() {
                     Save pipeline defaults
                   </Button>
                 </Flex>
+              </Stack>
+            </Box>
+
+            <Box
+              p={5}
+              borderWidth="1px"
+              borderRadius="lg"
+              bg="rgba(255,255,255,0.04)"
+              backdropFilter="blur(8px) saturate(140%)"
+            >
+              <Stack gap={4}>
+                <Heading size="sm">Test Configuration</Heading>
+                <Text fontSize="sm" color="fg.muted">
+                  Run lightweight provider checks before your first pipeline
+                  run. This verifies the configured LLM models can authenticate
+                  and respond, and it validates the default image provider
+                  locally without generating a billed test image.
+                </Text>
+
+                <Flex
+                  justify="space-between"
+                  align="center"
+                  gap={4}
+                  wrap="wrap"
+                >
+                  <Text fontSize="sm" color="fg.muted">
+                    Use{" "}
+                    <Text as="span" fontFamily="mono" color="fg.default">
+                      http://localhost:5173
+                    </Text>{" "}
+                    as the canonical local URL. The direct-run dev setup now
+                    uses the Vite proxy so localhost and 127.0.0.1 loopback
+                    mixes do not trip CORS in the common path.
+                  </Text>
+                  <Button
+                    colorScheme="blue"
+                    onClick={() => testConfigurationMutation.mutate()}
+                    loading={testConfigurationMutation.isPending}
+                  >
+                    Run configuration test
+                  </Button>
+                </Flex>
+
+                {configurationTestResult ? (
+                  <Box p={4} borderWidth="1px" borderRadius="md" bg="bg.subtle">
+                    <Stack gap={4}>
+                      <Box>
+                        <Text
+                          textTransform="uppercase"
+                          fontSize="xs"
+                          color="fg.subtle"
+                        >
+                          Latest result
+                        </Text>
+                        <Text
+                          mt={1}
+                          fontWeight="semibold"
+                          color={getConfigurationStatusColor(
+                            configurationTestResult.status,
+                          )}
+                        >
+                          {formatConfigurationStatus(
+                            configurationTestResult.status,
+                          )}
+                        </Text>
+                        <Text mt={2} fontSize="sm" color="fg.muted">
+                          {configurationTestResult.summary}
+                        </Text>
+                        <Text mt={2} fontSize="sm" color="fg.muted">
+                          Last checked:{" "}
+                          {formatDateTime(configurationTestResult.checked_at)}
+                        </Text>
+                      </Box>
+
+                      <Stack gap={3}>
+                        {configurationTestResult.checks.map((check) => (
+                          <Box
+                            key={check.key}
+                            p={4}
+                            borderWidth="1px"
+                            borderRadius="md"
+                            borderColor={getConfigurationStatusColor(
+                              check.status,
+                            )}
+                          >
+                            <Stack gap={2}>
+                              <Flex
+                                justify="space-between"
+                                align="flex-start"
+                                gap={4}
+                                wrap="wrap"
+                              >
+                                <Box>
+                                  <Text
+                                    textTransform="uppercase"
+                                    fontSize="xs"
+                                    color="fg.subtle"
+                                  >
+                                    {check.label}
+                                  </Text>
+                                  <Text
+                                    mt={1}
+                                    fontWeight="semibold"
+                                    color={getConfigurationStatusColor(
+                                      check.status,
+                                    )}
+                                  >
+                                    {formatConfigurationStatus(check.status)}
+                                  </Text>
+                                </Box>
+                                <Text fontSize="sm" color="fg.muted">
+                                  {formatProviderLabel(check.provider) ||
+                                    "No provider"}
+                                  {check.model ? ` · ${check.model}` : ""}
+                                  {check.used_backup_model
+                                    ? " · backup model"
+                                    : ""}
+                                  {check.latency_ms !== null
+                                    ? ` · ${check.latency_ms} ms`
+                                    : ""}
+                                </Text>
+                              </Flex>
+
+                              <Text fontSize="sm">{check.message}</Text>
+
+                              {check.hint ? (
+                                <Text fontSize="sm" color="fg.muted">
+                                  Next step: {check.hint}
+                                </Text>
+                              ) : null}
+
+                              {(check.action_items?.length ?? 0) > 0 ? (
+                                <Stack gap={1}>
+                                  {check.action_items?.map((item) => (
+                                    <Text
+                                      key={`${check.key}-${item}`}
+                                      fontSize="sm"
+                                      color="fg.muted"
+                                    >
+                                      - {item}
+                                    </Text>
+                                  ))}
+                                </Stack>
+                              ) : null}
+
+                              {(check.cause_messages?.length ?? 0) > 0 ? (
+                                <Stack gap={1}>
+                                  {check.cause_messages
+                                    ?.slice(0, 2)
+                                    .map((message, index) => (
+                                      <Text
+                                        key={`${check.key}-cause-${index}`}
+                                        fontSize="sm"
+                                        color="fg.muted"
+                                        fontFamily="mono"
+                                      >
+                                        {message}
+                                      </Text>
+                                    ))}
+                                </Stack>
+                              ) : null}
+                            </Stack>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </Stack>
+                  </Box>
+                ) : null}
               </Stack>
             </Box>
 
