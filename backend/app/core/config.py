@@ -1,5 +1,6 @@
 import warnings
 from typing import Annotated, Any, Literal
+from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from pydantic import (
     AnyUrl,
@@ -22,6 +23,30 @@ def parse_cors(v: Any) -> list[str] | str:
     raise ValueError(v)
 
 
+def _loopback_alias_origin(origin: str) -> str | None:
+    parsed = urlsplit(origin)
+    host = parsed.hostname
+    if host == "localhost":
+        alias = "127.0.0.1"
+    elif host == "127.0.0.1":
+        alias = "localhost"
+    else:
+        return None
+
+    netloc = alias
+    if parsed.port is not None:
+        netloc = f"{alias}:{parsed.port}"
+
+    aliased = SplitResult(
+        scheme=parsed.scheme,
+        netloc=netloc,
+        path="",
+        query="",
+        fragment="",
+    )
+    return urlunsplit(aliased).rstrip("/")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Use top level .env file (one level above ./backend/)
@@ -40,9 +65,17 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def all_cors_origins(self) -> list[str]:
-        return [str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS] + [
-            self.FRONTEND_HOST
+        origins = [str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS] + [
+            self.FRONTEND_HOST.rstrip("/")
         ]
+        expanded: list[str] = []
+        for origin in origins:
+            if origin and origin not in expanded:
+                expanded.append(origin)
+            alias = _loopback_alias_origin(origin)
+            if alias and alias not in expanded:
+                expanded.append(alias)
+        return expanded
 
     PROJECT_NAME: str
     SENTRY_DSN: HttpUrl | None = None

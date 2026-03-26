@@ -7,7 +7,7 @@ import { routeTree } from "./routeTree.gen"
 import { OpenAPI } from "./client"
 import { CustomProvider } from "./components/ui/provider"
 
-OpenAPI.BASE = import.meta.env.VITE_API_URL
+OpenAPI.BASE = import.meta.env.VITE_API_URL?.trim() || ""
 const queryClient = new QueryClient()
 
 const router = createRouter({ routeTree })
