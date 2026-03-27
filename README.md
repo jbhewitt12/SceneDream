@@ -213,32 +213,19 @@ uv run python -m app.services.image_generation.main --help
 
 ## Troubleshooting
 
-**Docker isn't running**
-Make sure Docker Desktop is open and the whale icon is visible in your menu bar or taskbar before running `docker compose watch`.
+Use the left column to match the symptom you are seeing and the right column for the fix.
 
-**The app won't load at localhost:5173**
-Give it 30–60 seconds after starting — the frontend container takes a moment to build on first run. Check `docker compose logs` if it still doesn't appear.
-
-**API key errors / pipeline fails immediately**
-Open your `.env` file and confirm `OPENAI_API_KEY` is set correctly with no extra spaces or quotes around the value.
-
-**The pipeline status says no API key is configured for extraction**
-Add `OPENAI_API_KEY` (and/or `GEMINI_API_KEY` if you want Gemini extraction) to `.env`, restart the backend, and rerun the pipeline. The Documents dashboard now keeps this remediation message in the pipeline status area after the run fails.
-
-**The pipeline status says OpenAI rejected the configured API key**
-Replace `OPENAI_API_KEY` with a valid key, restart the backend, and rerun the pipeline.
-
-**The pipeline status says your OpenAI account does not have available credits**
-Check billing and usage at [platform.openai.com/usage](https://platform.openai.com/usage), add billing or prepaid credits, then rerun the pipeline.
-
-**My document doesn't appear in the dashboard**
-Make sure the file is placed directly in the `documents/` folder (or a subfolder within it) and is one of the supported formats: `.epub`, `.mobi`, `.txt`, `.md`, or `.docx`. Then refresh the page.
-
-**Pipeline finishes but no images were generated**
-Check that your OpenAI account has available credits at [platform.openai.com/usage](https://platform.openai.com/usage). A failed image generation step won't stop the rest of the pipeline from completing.
-
-**Port conflict on 5173 or 8000**
-Another app is already using that port. Stop it, or edit `docker-compose.yml` to map to a different local port.
+| Problem | What to do |
+|---|---|
+| Docker isn't running | Open Docker Desktop and make sure the whale icon is visible in your menu bar or taskbar before running `docker compose watch`. |
+| The app won't load at `http://localhost:5173` | Wait 30–60 seconds after startup because the frontend container takes a moment to build on first run. If it still does not appear, check `docker compose logs`. |
+| API key errors or the pipeline fails immediately | Open `.env` and confirm `OPENAI_API_KEY` is set correctly with no extra spaces or quotes around the value. |
+| The pipeline status says no API key is configured for extraction | Add `OPENAI_API_KEY` to `.env`. If you want Gemini extraction, add `GEMINI_API_KEY` as well. Restart the backend and rerun the pipeline. The Documents dashboard keeps this remediation message visible after the run fails. |
+| The pipeline status says OpenAI rejected the configured API key | Replace `OPENAI_API_KEY` with a valid key, restart the backend, and rerun the pipeline. |
+| The pipeline status says your OpenAI account does not have available credits | Check billing and usage at [platform.openai.com/usage](https://platform.openai.com/usage), add billing or prepaid credits, then rerun the pipeline. |
+| My document doesn't appear in the dashboard | Make sure the file is inside `documents/` or one of its subfolders and uses a supported format: `.epub`, `.mobi`, `.txt`, `.md`, or `.docx`. Then refresh the page. |
+| The pipeline finishes but no images were generated | Check that your OpenAI account has available credits at [platform.openai.com/usage](https://platform.openai.com/usage). A failed image generation step does not stop the rest of the pipeline from completing. |
+| Port conflict on `5173` or `8000` | Another app is already using that port. Stop it, or edit `docker-compose.yml` to map SceneDream to a different local port. |
 
 ## License
 
