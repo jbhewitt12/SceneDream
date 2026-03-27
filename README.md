@@ -213,8 +213,6 @@ uv run python -m app.services.image_generation.main --help
 
 ## Troubleshooting
 
-Use the left column to match the symptom you are seeing and the right column for the fix.
-
 | Problem | What to do |
 |---|---|
 | Docker isn't running | Open Docker Desktop and make sure the whale icon is visible in your menu bar or taskbar before running `docker compose watch`. |
