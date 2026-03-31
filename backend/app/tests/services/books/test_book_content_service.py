@@ -16,7 +16,7 @@ EXCESSION_EPUB = (
 )
 EXAMPLE_DOCS_DIR = Path(__file__).resolve().parents[5] / "example_docs"
 EXAMPLE_TXT = EXAMPLE_DOCS_DIR / "H_G_Wells-The_Star.txt"
-EXAMPLE_MD = EXAMPLE_DOCS_DIR / "E_A_Poe-The_Cask_of_Amontillado.md"
+EXAMPLE_MD = EXAMPLE_DOCS_DIR / "O_Wilde-The_Selfish_Giant.md"
 EXAMPLE_DOCX = EXAMPLE_DOCS_DIR / "F_R_Stockton-The_Lady_or_the_Tiger.docx"
 
 

@@ -97,7 +97,7 @@ def test_cleanup_source_document_removes_only_target_story_artifacts(
 
     target_document = Document(
         slug=f"test-book-target-doc-{uuid4()}",
-        display_name="The Cask of Amontillado",
+        display_name="The Selfish Giant",
         source_path=target_source_path,
         source_type="md",
     )

@@ -9,7 +9,7 @@ from app.services.books.markdown_loader import MarkdownBookLoader
 EXAMPLE_MD = (
     Path(__file__).resolve().parents[5]
     / "example_docs"
-    / "E_A_Poe-The_Cask_of_Amontillado.md"
+    / "O_Wilde-The_Selfish_Giant.md"
 )
 
 
@@ -30,4 +30,4 @@ def test_load_example_markdown_document() -> None:
         for chapter in content.chapters.values()
         for paragraph in chapter.paragraphs
     )
-    assert "the thousand injuries of fortunato" in flattened
+    assert "every afternoon, as they were coming from school" in flattened

@@ -1,7 +1,7 @@
 """Reset the shortest example story fixture for end-to-end testing.
 
 This script targets:
-    example_docs/E_A_Poe-The_Cask_of_Amontillado.md
+    example_docs/O_Wilde-The_Selfish_Giant.md
 
 Run from backend/:
     uv run python scripts/reset_short_story_fixture.py --dry-run
@@ -21,8 +21,8 @@ from sqlmodel import Session
 from app.core.db import engine
 from app.services.source_document_cleanup_service import SourceDocumentCleanupService
 
-TARGET_STORY_LABEL = "The Cask of Amontillado"
-TARGET_SOURCE_PATH = "example_docs/E_A_Poe-The_Cask_of_Amontillado.md"
+TARGET_STORY_LABEL = "The Selfish Giant"
+TARGET_SOURCE_PATH = "example_docs/O_Wilde-The_Selfish_Giant.md"
 
 
 def _build_parser() -> argparse.ArgumentParser:

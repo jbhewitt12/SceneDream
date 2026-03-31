@@ -69,7 +69,7 @@ cp .env.example .env
 
 Drop any `.epub`, `.mobi`, `.txt`, `.md`, or `.docx` file into the `documents/` directory. If you don't have one handy, the repo includes four public domain short stories you can use straight away:
 
-- `E_A_Poe-The_Cask_of_Amontillado.md`
+- `O_Wilde-The_Selfish_Giant.md`
 - `F_R_Stockton-The_Lady_or_the_Tiger.docx`
 - `H_G_Wells-The_Star.txt`
 - `W_W_Jacobs-The_Monkeys_Paw.epub`

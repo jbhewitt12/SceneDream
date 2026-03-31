@@ -161,7 +161,7 @@ Add document-level stage fields for extraction and ranking, keep them synchroniz
   - `cd frontend && npm run lint`
 
 ### Required frontend manual verification (Agent Browser)
-The implementing Codex agent must perform browser validation with the Agent Browser plugin/skill on at least one short story from `example_docs/` (for example `example_docs/W_W_Jacobs-The_Monkeys_Paw.epub` or `example_docs/E_A_Poe-The_Cask_of_Amontillado.md`).
+The implementing Codex agent must perform browser validation with the Agent Browser plugin/skill on at least one short story from `example_docs/` (for example `example_docs/W_W_Jacobs-The_Monkeys_Paw.epub` or `example_docs/O_Wilde-The_Selfish_Giant.md`).
 
 Required manual flow:
 - Ensure the selected `example_docs` short story appears in the Documents dashboard.
