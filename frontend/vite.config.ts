@@ -5,7 +5,9 @@ import react from "@vitejs/plugin-react-swc"
 import type { Connect } from "vite"
 import { defineConfig, loadEnv } from "vite"
 
-const STATIC_PATH_PREFIXES = ["/assets/", "/img/"]
+// Generated images are served by the backend in local dev via the Vite proxy.
+// Only frontend-owned build assets should be short-circuited here.
+const STATIC_PATH_PREFIXES = ["/assets/"]
 
 const isStaticAssetRequest = (url: string) => {
   const pathname = new URL(url, "http://localhost").pathname
