@@ -263,7 +263,7 @@ class PromptBuilder:
         return (
             f"- Return ONLY strict JSON (no markdown) representing an array of {variants_count} objects.\n"
             "- Each array element must contain the keys: title, prompt_text, style_tags, attributes.\n"
-            "- title can be null; prompt_text must be self-contained, visually clear, and built around a clear central subject plus readable scene action.\n"
+            "- title can be null; prompt_text must be self-contained, visually clear, and built around a clear central subject plus one readable moment.\n"
             "- style_tags must be a list of short descriptors (2-5 entries).\n"
             "- attributes must detail composition, camera, lens, lighting, palette, atmosphere, aspect_ratio, style_intent, and references (list of influences or movements).\n"
             "- Make composition, perspective, and palette explicit in both prompt_text and attributes so the image direction is easy to interpret.\n"

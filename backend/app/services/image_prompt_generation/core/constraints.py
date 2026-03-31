@@ -31,6 +31,7 @@ class CriticalConstraints:
             "- Select clear, intentional visual treatments that match the excerpt's tone and setting.\n"
             f"- Attributes.aspect_ratio must be exactly one of: {self.aspect_ratio_display}.\n"
             "- Ensure style_tags include the chosen medium or technique.\n"
+            "- CRITICAL: Describe a single moment in time; avoid before/after actions, incompatible subject states, or multi-panel layouts.\n"
             "- CRITICAL: Never include character names, proper nouns, or invented terminology from the source material in prompt_text. "
             "The image model has no knowledge of the book and cannot interpret names like 'Navani' or fantasy terms like 'gloryspren'. "
             "Instead, describe characters by their visual appearance (e.g., 'a regal woman crowned in gold', 'a young warrior in blue plate armor') "

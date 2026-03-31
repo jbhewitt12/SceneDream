@@ -893,6 +893,23 @@ def test_render_prompt_template_uses_fixed_style_section_for_single_style(
     assert "keeping the same art style across the full set" in prompt
 
 
+def test_render_prompt_template_instructs_single_decisive_instant(
+    db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scene = scene_factory()
+    service = ImagePromptGenerationService(
+        db,
+        config=ImagePromptGenerationConfig(variants_count=2),
+    )
+    _patch_context(service, monkeypatch)
+
+    prompt, *_ = service.render_prompt_template(scene)
+
+    assert "Describe a single moment in time" in prompt
+    assert "multi-panel layouts" in prompt
+    assert "plus one readable moment" in prompt
+
+
 def test_generate_for_scene_dry_run_single_style_records_mode_specific_metadata(
     db: Session, scene_factory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
