@@ -303,9 +303,9 @@ def test_test_configuration_returns_diagnostics(
 ) -> None:
     async def fake_run(self) -> ConfigurationTestResponse:
         return ConfigurationTestResponse(
-            status="warning",
+            status="passed",
             ready_for_pipeline=True,
-            summary="LLM checks passed.",
+            summary="All configuration checks passed.",
             checked_at="2026-03-26T12:00:00Z",
             checks=[
                 ConfigurationCheckRead(
@@ -327,7 +327,7 @@ def test_test_configuration_returns_diagnostics(
     assert response.status_code == 200
 
     payload = response.json()
-    assert payload["status"] == "warning"
+    assert payload["status"] == "passed"
     assert payload["ready_for_pipeline"] is True
     assert payload["checks"][0]["key"] == "scene_extraction"
     assert payload["checks"][0]["used_backup_model"] is True

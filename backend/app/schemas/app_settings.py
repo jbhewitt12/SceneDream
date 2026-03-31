@@ -84,7 +84,6 @@ ConfigurationCheckKey = Literal[
     "scene_extraction",
     "scene_ranking",
     "prompt_generation",
-    "image_generation",
 ]
 
 

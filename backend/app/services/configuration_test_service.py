@@ -4,18 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import os
 import time
 from typing import Any
 
 from app.api.errors import extract_exception_chain, is_safe_error_message
-from app.core.config import settings
 from app.schemas.app_settings import ConfigurationCheckRead, ConfigurationTestResponse
-from app.services.image_generation import (
-    dalle_image_api,  # noqa: F401 - ensures provider registration
-    gpt_image_api,  # noqa: F401 - ensures provider registration
-)
-from app.services.image_generation.provider_registry import ProviderRegistry
 from app.services.image_prompt_generation.models import ImagePromptGenerationConfig
 from app.services.langchain import gemini_api, openai_api
 from app.services.langchain.model_routing import (
@@ -298,9 +291,8 @@ class ConfigurationTestService:
                 )
             ),
         ]
-        checks = [*llm_checks, self._run_image_generation_check()]
+        checks = llm_checks
         failed_checks = [check for check in checks if check.status == "failed"]
-        warning_checks = [check for check in checks if check.status == "warning"]
 
         if failed_checks:
             status = "failed"
@@ -315,13 +307,6 @@ class ConfigurationTestService:
                     f"{len(failed_checks)} checks failed. Fix the failed items below "
                     "and rerun the test."
                 )
-        elif warning_checks:
-            status = "warning"
-            ready_for_pipeline = True
-            summary = (
-                "LLM access checks passed. Image generation configuration was only "
-                "validated locally to avoid billed test images."
-            )
         else:
             status = "passed"
             ready_for_pipeline = True
@@ -415,94 +400,6 @@ class ConfigurationTestService:
             )
             return
         raise ValueError(f"Unsupported provider for configuration test: {provider}")
-
-    def _run_image_generation_check(self) -> ConfigurationCheckRead:
-        provider_name = settings.DEFAULT_IMAGE_PROVIDER
-        model_name = settings.DEFAULT_IMAGE_MODEL
-        provider = ProviderRegistry.get(provider_name)
-
-        if provider is None:
-            return ConfigurationCheckRead(
-                key="image_generation",
-                label="Image generation",
-                status="failed",
-                provider=provider_name,
-                model=model_name,
-                used_backup_model=False,
-                message=f"Unknown image provider: {provider_name}.",
-                hint="Change DEFAULT_IMAGE_PROVIDER to a registered provider.",
-                action_items=[
-                    "Set DEFAULT_IMAGE_PROVIDER to a supported value.",
-                    "Restart the backend and rerun the configuration test.",
-                ],
-                metadata={"available_providers": ProviderRegistry.list_providers()},
-            )
-
-        if model_name not in provider.supported_models:
-            return ConfigurationCheckRead(
-                key="image_generation",
-                label="Image generation",
-                status="failed",
-                provider=provider_name,
-                model=model_name,
-                used_backup_model=False,
-                message=f"{provider_name} does not support {model_name}.",
-                hint="Change DEFAULT_IMAGE_MODEL to a model supported by the selected provider.",
-                action_items=[
-                    f"Choose one of: {', '.join(provider.supported_models)}.",
-                    "Restart the backend and rerun the configuration test.",
-                ],
-                metadata={"supported_models": list(provider.supported_models)},
-            )
-
-        api_key = self._resolve_image_provider_api_key(provider_name)
-        is_valid, error = provider.validate_config(api_key)
-        if not is_valid:
-            hint = "Add OPENAI_API_KEY to `.env` and restart the backend."
-            if error and "format" in error.lower():
-                hint = (
-                    "Replace OPENAI_API_KEY with a valid key and restart the backend."
-                )
-            return ConfigurationCheckRead(
-                key="image_generation",
-                label="Image generation",
-                status="failed",
-                provider=provider_name,
-                model=model_name,
-                used_backup_model=False,
-                message=error or "Image generation is not configured correctly.",
-                hint=hint,
-                action_items=[
-                    "Update the image generation API key in `.env`.",
-                    "Restart the backend so the updated environment is loaded.",
-                    "Run the configuration test again.",
-                ],
-            )
-
-        return ConfigurationCheckRead(
-            key="image_generation",
-            label="Image generation",
-            status="warning",
-            provider=provider_name,
-            model=model_name,
-            used_backup_model=False,
-            message=(
-                "Local image-generation configuration looks valid. SceneDream did "
-                "not generate a billed test image."
-            ),
-            hint=(
-                "Your first real image request is still the final check for "
-                "image-generation-specific billing and model access."
-            ),
-            metadata={"remote_probe_skipped": True},
-        )
-
-    def _resolve_image_provider_api_key(self, provider_name: str) -> str | None:
-        if provider_name in {"openai", "openai_gpt_image"}:
-            if "OPENAI_API_KEY" in os.environ:
-                return os.getenv("OPENAI_API_KEY")
-            return settings.OPENAI_API_KEY
-        return None
 
     def _build_failed_check(
         self,

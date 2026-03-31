@@ -38,15 +38,18 @@ async def test_run_reports_pipeline_ready_with_openai_fallback(
     checks = {check.key: check for check in result.checks}
 
     assert result.ready_for_pipeline is True
-    assert result.status == "warning"
+    assert result.status == "passed"
     assert len(calls) == 3
+    assert set(checks) == {
+        "scene_extraction",
+        "scene_ranking",
+        "prompt_generation",
+    }
     assert checks["scene_extraction"].status == "passed"
     assert checks["scene_extraction"].provider == "openai"
     assert checks["scene_extraction"].used_backup_model is True
     assert checks["scene_ranking"].status == "passed"
     assert checks["prompt_generation"].status == "passed"
-    assert checks["image_generation"].status == "warning"
-    assert checks["image_generation"].metadata["remote_probe_skipped"] is True
 
 
 @pytest.mark.anyio("asyncio")
@@ -63,11 +66,18 @@ async def test_run_fails_when_no_provider_keys_are_configured(
 
     assert result.ready_for_pipeline is False
     assert result.status == "failed"
+    assert set(checks) == {
+        "scene_extraction",
+        "scene_ranking",
+        "prompt_generation",
+    }
     assert checks["scene_extraction"].status == "failed"
     assert checks["scene_extraction"].metadata["category"] == "missing_credentials"
     assert "OPENAI_API_KEY" in (checks["scene_extraction"].hint or "")
-    assert checks["image_generation"].status == "failed"
-    assert "API key" in checks["image_generation"].message
+    assert checks["scene_ranking"].status == "failed"
+    assert checks["scene_ranking"].metadata["category"] == "missing_credentials"
+    assert checks["prompt_generation"].status == "failed"
+    assert checks["prompt_generation"].metadata["category"] == "missing_credentials"
 
 
 @pytest.mark.anyio("asyncio")
@@ -86,12 +96,11 @@ async def test_run_surfaces_provider_auth_failures(
     result = await service.run()
 
     failed_checks = [check for check in result.checks if check.status == "failed"]
-    llm_failures = [check for check in failed_checks if check.key != "image_generation"]
 
     assert result.ready_for_pipeline is False
     assert result.status == "failed"
-    assert len(llm_failures) == 3
-    assert all(check.metadata["category"] == "authentication" for check in llm_failures)
+    assert len(failed_checks) == 3
+    assert all(check.metadata["category"] == "authentication" for check in failed_checks)
     assert all(
-        "rejected the configured API key" in check.message for check in llm_failures
+        "rejected the configured API key" in check.message for check in failed_checks
     )

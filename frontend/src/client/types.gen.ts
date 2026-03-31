@@ -105,7 +105,7 @@ export type Body_generated_images_crop_image = {
  * Single configuration-test result shown in Settings.
  */
 export type ConfigurationCheckRead = {
-    key: 'scene_extraction' | 'scene_ranking' | 'prompt_generation' | 'image_generation';
+    key: 'scene_extraction' | 'scene_ranking' | 'prompt_generation';
     label: string;
     status: 'passed' | 'failed' | 'warning';
     provider?: (string | null);
@@ -121,7 +121,7 @@ export type ConfigurationCheckRead = {
     };
 };
 
-export type key = 'scene_extraction' | 'scene_ranking' | 'prompt_generation' | 'image_generation';
+export type key = 'scene_extraction' | 'scene_ranking' | 'prompt_generation';
 
 export type status = 'passed' | 'failed' | 'warning';
 

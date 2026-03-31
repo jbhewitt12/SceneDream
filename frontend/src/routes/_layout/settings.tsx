@@ -494,8 +494,8 @@ function SettingsPage() {
                 <Text fontSize="sm" color="fg.muted">
                   Run lightweight provider checks before your first pipeline
                   run. This verifies the configured LLM models can authenticate
-                  and respond, and it validates the default image provider
-                  locally without generating a billed test image.
+                  and respond for scene extraction, ranking, and prompt
+                  generation.
                 </Text>
 
                 <Flex

@@ -3041,8 +3041,7 @@
             "enum": [
               "scene_extraction",
               "scene_ranking",
-              "prompt_generation",
-              "image_generation"
+              "prompt_generation"
             ],
             "title": "Key"
           },
