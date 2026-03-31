@@ -504,15 +504,6 @@ function SettingsPage() {
                   gap={4}
                   wrap="wrap"
                 >
-                  <Text fontSize="sm" color="fg.muted">
-                    Use{" "}
-                    <Text as="span" fontFamily="mono" color="fg.default">
-                      http://localhost:5173
-                    </Text>{" "}
-                    as the canonical local URL. The direct-run dev setup now
-                    uses the Vite proxy so localhost and 127.0.0.1 loopback
-                    mixes do not trip CORS in the common path.
-                  </Text>
                   <Button
                     colorScheme="blue"
                     onClick={() => testConfigurationMutation.mutate()}
