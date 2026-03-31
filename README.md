@@ -4,7 +4,7 @@
 
 <img src="img/assets/banner/Aria-of-Impact.png" width="19%"><img src="img/assets/banner/Ink-Stained-Singularity.png" width="19%"><img src="img/assets/banner/Baroque-Breach.png" width="19%"><img src="img/assets/banner/Command-of-the-Depths.png" width="19%"><img src="img/assets/banner/Diamond-Sky.png" width="19%">
 
-SceneDream is a project for automatically turning text based stories into AI generated images. You put in a story, and the best scenes are turned into images!
+SceneDream is a project for automatically turning text based stories into AI generated images. You put in a story, and the most cinematic scenes are turned into images!
 
 It's set up as a pipeline you run on your own computer that ingests source text, extracts cinematic scenes, ranks them, creates image generation prompts, and generates images.
 
