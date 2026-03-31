@@ -16,6 +16,7 @@ from app.repositories import (
 from models.document import Document
 from models.generated_asset import GeneratedAsset
 from models.generated_image import GeneratedImage
+from models.image_generation_batch import ImageGenerationBatch
 from models.image_prompt import ImagePrompt
 from models.pipeline_run import PipelineRun
 from models.scene_extraction import SceneExtraction
@@ -108,6 +109,12 @@ def db() -> Generator[Session, None, None]:
             delete(PipelineRun).where(
                 PipelineRun.book_slug.startswith("test-book")
                 | PipelineRun.book_slug.startswith("gallery-book")
+            )
+        )
+        session.execute(
+            delete(ImageGenerationBatch).where(
+                ImageGenerationBatch.book_slug.startswith("test-book")
+                | ImageGenerationBatch.book_slug.startswith("gallery-book")
             )
         )
         session.commit()
