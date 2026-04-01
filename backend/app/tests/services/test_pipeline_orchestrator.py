@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import app.services.pipeline.pipeline_orchestrator as orchestrator_module
 from typing import Any
 from uuid import uuid4
 
@@ -1402,6 +1403,142 @@ class TestStageProgress:
             "generating_images",
         ):
             assert stage in sp
+
+    def test_ranking_progress_counts_only_rankable_scenes(
+        self,
+        monkeypatch,
+    ) -> None:
+        """Ranking progress excludes discarded scenes from the denominator."""
+        callbacks = _CapturingCallbacks()
+        orchestrator = callbacks.build_orchestrator(stub_stages=False)
+        orchestrator._execute_extraction = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_prompt_generation = _noop_stage  # type: ignore[method-assign]
+        orchestrator._execute_image_generation = _noop_stage  # type: ignore[method-assign]
+
+        ranked_results: list[Any] = []
+        scenes = [
+            type(
+                "Scene",
+                (),
+                {
+                    "id": uuid4(),
+                    "chapter_number": 1,
+                    "scene_number": 1,
+                    "refinement_decision": "keep",
+                },
+            )(),
+            type(
+                "Scene",
+                (),
+                {
+                    "id": uuid4(),
+                    "chapter_number": 1,
+                    "scene_number": 2,
+                    "refinement_decision": "discard",
+                },
+            )(),
+            type(
+                "Scene",
+                (),
+                {
+                    "id": uuid4(),
+                    "chapter_number": 1,
+                    "scene_number": 3,
+                    "refinement_decision": "keep",
+                },
+            )(),
+        ]
+
+        class _FakeSession:
+            def __enter__(self) -> object:
+                return object()
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+        class _FakeSceneRepository:
+            def __init__(self, session: object) -> None:
+                self._session = session
+
+            def get(self, scene_id: object) -> Any | None:
+                for scene in scenes:
+                    if scene.id == scene_id:
+                        return scene
+                return None
+
+            def list_for_book(self, book_slug: str) -> list[Any]:
+                assert book_slug == "test-book"
+                return list(scenes)
+
+        class _FakeRankingService:
+            def __init__(self, session: object, config: object | None = None) -> None:
+                self._session = session
+                self._config = config
+
+            async def rank_scene(self, scene: Any, **kwargs: Any) -> Any:
+                ranked_results.append(scene.id)
+                return type(
+                    "RankingResult",
+                    (),
+                    {
+                        "id": uuid4(),
+                        "overall_priority": 8.0,
+                    },
+                )()
+
+        monkeypatch.setattr(
+            orchestrator_module,
+            "Session",
+            lambda _engine: _FakeSession(),
+        )
+        monkeypatch.setattr(
+            orchestrator_module,
+            "SceneExtractionRepository",
+            _FakeSceneRepository,
+        )
+        monkeypatch.setattr(
+            orchestrator_module,
+            "SceneRankingService",
+            _FakeRankingService,
+        )
+
+        prepared = _make_prepared(
+            run_extraction=False,
+            run_ranking=True,
+            run_prompt_generation=False,
+            run_image_generation=False,
+        )
+
+        result = asyncio.run(orchestrator.execute(prepared))
+
+        assert result.status == "completed"
+        assert len(ranked_results) == 2
+
+        ranking_updates = [
+            update
+            for update in callbacks.status_updates
+            if update.get("current_stage") == "ranking"
+        ]
+        assert len(ranking_updates) >= 2
+
+        zero_progress = next(
+            update["stage_progress"]["ranking"]
+            for update in ranking_updates
+            if update["stage_progress"]["ranking"].get("items") == 0
+        )
+        assert zero_progress == {
+            "status": "running",
+            "items": 0,
+            "total": 2,
+            "unit": "scenes",
+            "discarded": 1,
+        }
+
+        final_progress = callbacks.status_updates[-1]["stage_progress"]["ranking"]
+        assert final_progress["status"] == "completed"
+        assert final_progress["items"] == 2
+        assert final_progress["total"] == 2
+        assert final_progress["discarded"] == 1
 
     def test_build_stage_progress_helper(self) -> None:
         """build_stage_progress() returns all four stages as pending."""

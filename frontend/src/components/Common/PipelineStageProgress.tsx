@@ -5,6 +5,7 @@ export type StageEntry = {
   items?: number
   total?: number
   unit?: string
+  discarded?: number
 }
 
 type StageProgressProps = {
@@ -53,12 +54,17 @@ function statusColor(status: string): string {
 
 function counterText(entry: StageEntry): string | null {
   if (entry.status === "pending") return null
-  const { items, total, unit } = entry
+  const { items, total, unit, discarded } = entry
+  const discardedSuffix =
+    discarded !== undefined && discarded > 0 ? ` (${discarded} discarded)` : ""
   if (items !== undefined && total !== undefined) {
-    return `${items} / ${total} ${unit ?? ""}`
+    return `${items} / ${total} ${unit ?? ""}${discardedSuffix}`
   }
   if (items !== undefined) {
-    return `${items}${unit ? ` ${unit}` : ""}`
+    return `${items}${unit ? ` ${unit}` : ""}${discardedSuffix}`
+  }
+  if (discardedSuffix) {
+    return discardedSuffix.trim()
   }
   return null
 }

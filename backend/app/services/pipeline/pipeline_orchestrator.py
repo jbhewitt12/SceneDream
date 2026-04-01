@@ -64,6 +64,12 @@ def _safe_int(value: object) -> int:
     return 0
 
 
+def _is_discarded_scene(scene: object) -> bool:
+    """Return True when refinement marked the scene as discarded."""
+    decision = getattr(scene, "refinement_decision", None)
+    return isinstance(decision, str) and decision.strip().lower() == "discard"
+
+
 # ---------------------------------------------------------------------------
 # Stage execution helpers
 # ---------------------------------------------------------------------------
@@ -834,8 +840,28 @@ class PipelineOrchestrator:
             else:
                 scenes_to_rank = scene_repo.list_for_book(book_slug)
 
-            total_to_rank = len(scenes_to_rank)
-            for scene in scenes_to_rank:
+            discarded_count = sum(
+                1 for scene in scenes_to_rank if _is_discarded_scene(scene)
+            )
+            rankable_scenes = [
+                scene for scene in scenes_to_rank if not _is_discarded_scene(scene)
+            ]
+            total_to_rank = len(rankable_scenes)
+            progress: dict[str, Any] = {
+                "status": "running",
+                "items": 0,
+                "total": total_to_rank,
+                "unit": "scenes",
+            }
+            if discarded_count > 0:
+                progress["discarded"] = discarded_count
+            self._write_stage_progress(
+                run_id=run_id,
+                stage="ranking",
+                progress=progress,
+            )
+
+            for scene in rankable_scenes:
                 try:
                     result = await ranking_service.rank_scene(
                         scene,
@@ -860,6 +886,11 @@ class PipelineOrchestrator:
                                 "items": stats.scenes_ranked,
                                 "total": total_to_rank,
                                 "unit": "scenes",
+                                **(
+                                    {"discarded": discarded_count}
+                                    if discarded_count > 0
+                                    else {}
+                                ),
                             },
                         )
                 except Exception as exc:

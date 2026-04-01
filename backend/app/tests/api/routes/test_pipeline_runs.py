@@ -771,7 +771,13 @@ def test_get_pipeline_run_returns_stage_progress(
     run_repo = PipelineRunRepository(db)
     progress = {
         "extracting": {"status": "completed", "items": 30, "unit": "scenes"},
-        "ranking": {"status": "completed", "items": 30, "total": 30, "unit": "scenes"},
+        "ranking": {
+            "status": "completed",
+            "items": 30,
+            "total": 30,
+            "unit": "scenes",
+            "discarded": 2,
+        },
         "generating_prompts": {
             "status": "running",
             "items": 5,
@@ -798,6 +804,7 @@ def test_get_pipeline_run_returns_stage_progress(
     sp = payload["stage_progress"]
     assert sp is not None
     assert sp["extracting"]["status"] == "completed"
+    assert sp["ranking"]["discarded"] == 2
     assert sp["generating_prompts"]["status"] == "running"
     assert sp["generating_images"]["status"] == "pending"
 
